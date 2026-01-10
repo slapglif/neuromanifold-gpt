@@ -1,0 +1,20 @@
+[project]
+name = "neuromanifold-gpt"
+version = "0.1.0"
+description = "NeuroManifoldGPT: Soliton-Spectral Attention with SDR Memory"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "einops>=0.7",
+    "lightning>=2.0",
+    "scipy>=1.10",
+    "loguru>=0.7",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov", "ruff", "black"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
