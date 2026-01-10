@@ -54,6 +54,11 @@ class NeuroManifoldConfig:
         max_dag_depth: Maximum depth of task DAG
         imagination_steps: Number of diffusion steps for imagination
         imagination_dim: Dimension of imagination latent space
+        learning_rate: Learning rate for optimizer (default 3e-4)
+        weight_decay: Weight decay for AdamW (default 0.1)
+        beta1: AdamW beta1 parameter (default 0.9)
+        beta2: AdamW beta2 parameter (default 0.95)
+        grad_clip: Gradient clipping norm (default 1.0)
     """
 
     # Vocabulary and sequence
@@ -99,6 +104,13 @@ class NeuroManifoldConfig:
     max_dag_depth: int = 8
     imagination_steps: int = 4
     imagination_dim: int = 256
+
+    # Training configuration
+    learning_rate: float = 3e-4
+    weight_decay: float = 0.1
+    beta1: float = 0.9
+    beta2: float = 0.95
+    grad_clip: float = 1.0
 
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""
