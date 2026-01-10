@@ -1,0 +1,93 @@
+# neuromanifold_gpt/tests/test_gpt.py
+"""Tests for complete NeuroManifoldGPT model."""
+import pytest
+import torch
+from neuromanifold_gpt.config import NeuroManifoldConfigNano
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+
+
+def test_gpt_forward():
+    """Model forward pass should produce logits."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+
+    tokens = torch.randint(0, config.vocab_size, (2, 50))
+
+    logits, loss, info = model(tokens)
+
+    assert logits.shape == (2, 50, config.vocab_size)
+    assert loss is None  # No targets provided
+
+
+def test_gpt_with_targets():
+    """Should compute loss when targets provided."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+
+    tokens = torch.randint(0, config.vocab_size, (2, 50))
+    targets = torch.randint(0, config.vocab_size, (2, 50))
+
+    logits, loss, info = model(tokens, targets)
+
+    assert loss is not None
+    assert loss.ndim == 0  # Scalar
+
+
+def test_gpt_generate():
+    """Should generate new tokens."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+    model.eval()
+
+    prompt = torch.randint(0, config.vocab_size, (1, 10))
+
+    generated = model.generate(prompt, max_new_tokens=5)
+
+    assert generated.shape == (1, 15)
+
+
+def test_gpt_info_dict():
+    """Info dict should contain diagnostic information."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+
+    tokens = torch.randint(0, config.vocab_size, (1, 20))
+
+    _, _, info = model(tokens)
+
+    assert "sdr" in info
+    assert "sdr_scores" in info
+    assert "block_infos" in info
+    assert "memory_size" in info
+    assert len(info["block_infos"]) == config.n_layer
+
+
+def test_gpt_memory_stores_during_training():
+    """Engram memory should store SDRs during training."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+    model.train()
+
+    initial_memory_size = len(model.memory)
+
+    tokens = torch.randint(0, config.vocab_size, (1, 10))
+    _ = model(tokens)
+
+    # Memory should have grown
+    assert len(model.memory) > initial_memory_size
+
+
+def test_gpt_no_memory_during_eval():
+    """Engram memory should NOT store during eval."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+    model.eval()
+
+    initial_memory_size = len(model.memory)
+
+    tokens = torch.randint(0, config.vocab_size, (1, 10))
+    with torch.no_grad():
+        _ = model(tokens)
+
+    # Memory should be unchanged
+    assert len(model.memory) == initial_memory_size
