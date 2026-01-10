@@ -1,5 +1,6 @@
 """NeuroManifoldGPT model components."""
 
+from neuromanifold_gpt.model.attention.soliton import SolitonAttention, SolitonDynamics
 from neuromanifold_gpt.model.context_encoder import ContextEncoder
 from neuromanifold_gpt.model.manifold import ManifoldProjection
 from neuromanifold_gpt.model.sdr_ops import SDROperations
@@ -13,5 +14,7 @@ __all__ = [
     "SDROperations",
     "SemanticFoldingEncoder",
     "SemanticRetina",
+    "SolitonAttention",
+    "SolitonDynamics",
     "SpectralDecomposition",
 ]
