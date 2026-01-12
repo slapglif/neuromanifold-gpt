@@ -55,6 +55,23 @@ class ManifoldProjection(nn.Module):
 
         # Small epsilon for numerical stability
         self._eps = 1e-4
+        
+        # Initialize weights
+        self._init_weights()
+
+    def _init_weights(self):
+        # Initialize encoder to near-identity or random orthogonal?
+        # Initialize metric net to output near zero (so A is small, G is approx Identity)
+        # This makes the manifold locally Euclidean at initialization
+        for m in self.metric_net:
+            if isinstance(m, nn.Linear):
+                nn.init.zeros_(m.weight)
+                nn.init.zeros_(m.bias)
+                
+        # Encoder: Kaiming normal
+        for m in self.encoder:
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight)
 
     def forward(self, sdr: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

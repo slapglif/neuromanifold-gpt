@@ -60,15 +60,17 @@ class TestNeuroManifoldConfig:
         assert config.n_eigenvectors == 32
         assert config.spectral_sigma == 1.0
 
-    def test_config_soliton_defaults(self):
-        """Test default soliton attention values."""
+    def test_config_fhn_defaults(self):
+        """Test default FHN attention values."""
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
         config = NeuroManifoldConfig()
-        assert config.soliton_threshold == 0.5
-        assert config.soliton_tau == 0.1
-        assert config.soliton_velocity == 1.0
+        assert config.fhn_threshold == 0.5
+        assert config.fhn_tau == 12.5  # Fixed: proper slow-fast separation
+        assert config.fhn_velocity == 1.0
         assert config.pulse_width_base == 4
+        assert config.n_fhn_steps == 2  # IMEX allows 2 steps
+        assert config.use_fhn_imex is True  # Semi-implicit scheme
 
     def test_config_engram_defaults(self):
         """Test default engram memory values."""

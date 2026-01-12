@@ -37,24 +37,35 @@ class SDROperations:
 
     @staticmethod
     def soft_topk(
-        scores: torch.Tensor, 
-        n_active: int, 
+        scores: torch.Tensor,
+        n_active: int,
         temperature: float = 1.0
     ) -> torch.Tensor:
         """Differentiable top-k using straight-through estimator.
-        
+
         Forward pass: returns hard_topk result
         Backward pass: gradients flow through soft sigmoid approximation
-        
+
         Args:
             scores: Tensor of any shape, scores computed over last dimension
             n_active: Number of active bits to select
             temperature: Controls sharpness of soft approximation
-            
+
         Returns:
             Binary tensor with gradients that flow through
         """
-        scaled = scores / (temperature + 1e-8)
+        # Numerical stability: clamp temperature and normalize scores
+        temp = max(temperature, 0.1)  # Prevent temperature from going too low
+
+        # Normalize scores to prevent extreme sigmoid saturation
+        scores_centered = scores - scores.mean(dim=-1, keepdim=True)
+        scores_std = scores_centered.std(dim=-1, keepdim=True).clamp(min=1e-6)
+        scores_norm = scores_centered / scores_std
+
+        # Scale for sigmoid (keep in reasonable range to avoid gradient vanishing)
+        scaled = scores_norm / temp
+        scaled = scaled.clamp(-10.0, 10.0)  # Prevent extreme saturation
+
         soft = torch.sigmoid(scaled)
         hard = SDROperations.hard_topk(scores, n_active)
         # Straight-through estimator: forward uses hard, backward uses soft

@@ -6,7 +6,8 @@ import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
-from model import GPTConfig, GPT
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
@@ -35,9 +36,20 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 if init_from == 'resume':
     # init from a model saved in a specific directory
     ckpt_path = os.path.join(out_dir, 'ckpt.pt')
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    gptconf = GPTConfig(**checkpoint['model_args'])
-    model = GPT(gptconf)
+    # Weights only load issue in PyTorch 2.6+ with custom configs (trust local source)
+    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+    
+    # Check if it's a NeuroManifold checkpoint (has 'config' object) or legacy nanoGPT
+    if 'config' in checkpoint and isinstance(checkpoint['config'], (NeuroManifoldConfig, type(None))):
+        print("Loading NeuroManifoldGPT model...")
+        nm_config = checkpoint['config']
+        model = NeuroManifoldGPT(nm_config)
+    else:
+        # Legacy/Standard GPT
+        print("Loading standard GPT model...")
+        gptconf = GPTConfig(**checkpoint['model_args'])
+        model = GPT(gptconf)
+        
     state_dict = checkpoint['model']
     unwanted_prefix = '_orig_mod.'
     for k,v in list(state_dict.items()):
@@ -55,8 +67,19 @@ if compile:
 
 # look for the meta pickle in case it is available in the dataset folder
 load_meta = False
-if init_from == 'resume' and 'config' in checkpoint and 'dataset' in checkpoint['config']: # older checkpoints might not have these...
-    meta_path = os.path.join('data', checkpoint['config']['dataset'], 'meta.pkl')
+# Handle NeuroManifold config (object) vs Dict config
+dataset_name = None
+if 'config' in checkpoint:
+    if hasattr(checkpoint['config'], 'dataset'):
+        dataset_name = checkpoint['config'].dataset
+    elif isinstance(checkpoint['config'], dict) and 'dataset' in checkpoint['config']:
+        dataset_name = checkpoint['config']['dataset']
+    else:
+        # Fallback to shakespeare_char if likely
+        dataset_name = 'shakespeare_char'
+
+if dataset_name:
+    meta_path = os.path.join('data', dataset_name, 'meta.pkl')
     load_meta = os.path.exists(meta_path)
 if load_meta:
     print(f"Loading meta from {meta_path}...")

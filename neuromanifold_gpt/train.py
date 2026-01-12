@@ -99,6 +99,7 @@ class NeuroManifoldLightning(L.LightningModule):
 
         # Log validation metrics
         self.log('val_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log('val_perplexity', torch.exp(loss), prog_bar=True, on_step=False, on_epoch=True)
 
         return loss
 
