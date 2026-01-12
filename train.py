@@ -62,6 +62,8 @@ class TrainConfig:
     batch_size: int = 64
     block_size: int = 256
     num_workers: int = 4
+    streaming: bool = False  # Use HuggingFace streaming for general text
+    vocab_size: int = 0  # 0 = auto-detect, 50257 = GPT-2 BPE
 
     # Model
     model_type: str = "neuromanifold"  # "neuromanifold" or "gpt"
@@ -208,6 +210,55 @@ class TextDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.num_workers > 0,
+        )
+
+
+class StreamingDataModule(pl.LightningDataModule):
+    """Lightning DataModule for streaming HuggingFace datasets."""
+
+    def __init__(
+        self,
+        dataset_name: str,
+        block_size: int,
+        batch_size: int,
+        num_workers: int = 2,
+    ):
+        super().__init__()
+        self.dataset_name = dataset_name
+        self.block_size = block_size
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.vocab_size = 50257  # GPT-2 BPE tokenizer
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        from neuromanifold_gpt.data.streaming import create_streaming_dataset
+        self.train_ds = create_streaming_dataset(
+            self.dataset_name,
+            block_size=self.block_size
+        )
+        self.val_ds = create_streaming_dataset(
+            self.dataset_name,
+            block_size=self.block_size
+        )
+        logger.info(f"Streaming dataset: {self.dataset_name}, vocab_size={self.vocab_size}")
+
+    def train_dataloader(self) -> DataLoader:
+        from neuromanifold_gpt.data.streaming import create_streaming_dataset
+        dataset = create_streaming_dataset(self.dataset_name, self.block_size)
+        return DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        from neuromanifold_gpt.data.streaming import create_streaming_dataset
+        dataset = create_streaming_dataset(self.dataset_name, self.block_size)
+        return DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            num_workers=1,
         )
 
 
@@ -511,14 +562,30 @@ def train(config: TrainConfig) -> None:
     pl.seed_everything(1337)
 
     # Setup data
-    data_dir = os.path.join("data", config.dataset)
-    data_module = TextDataModule(
-        data_dir=data_dir,
-        block_size=config.block_size,
-        batch_size=config.batch_size,
-        num_workers=config.num_workers,
-    )
-    data_module.setup()
+    if config.streaming:
+        # Use streaming data module for HuggingFace datasets
+        data_module = StreamingDataModule(
+            dataset_name=config.dataset,
+            block_size=config.block_size,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+        )
+        data_module.setup()
+        logger.info(f"Using streaming data from: {config.dataset}")
+    else:
+        # Use local memmap data
+        data_dir = os.path.join("data", config.dataset)
+        data_module = TextDataModule(
+            data_dir=data_dir,
+            block_size=config.block_size,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+        )
+        data_module.setup()
+
+    # Override vocab_size if specified
+    if config.vocab_size > 0:
+        data_module.vocab_size = config.vocab_size
 
     # Build model config
     if config.model_type == "neuromanifold":
