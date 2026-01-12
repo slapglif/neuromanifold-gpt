@@ -1,336 +1,723 @@
 """
-This training script can be run both on a single gpu in debug mode,
-and also in a larger training run with distributed data parallel (ddp).
+PyTorch Lightning training script for NeuroManifoldGPT and baseline GPT.
 
-To run on a single GPU, example:
-$ python train.py --batch_size=32 --compile=False
+Supports:
+- Single GPU and multi-GPU (DDP) training
+- Mixed precision (bf16/fp16/fp32)
+- Gradient accumulation
+- WandB logging
+- Checkpoint resume
+- Early stopping
+- Sample generation during training
 
-To run with DDP on 4 gpus on 1 node, example:
-$ torchrun --standalone --nproc_per_node=4 train.py
+Usage:
+    # Single GPU
+    python train.py --config config/train_neuromanifold_shakespeare.py
 
-To run with DDP on 4 gpus across 2 nodes, example:
-- Run on the first (master) node with example IP 123.456.123.456:
-$ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py
-- Run on the worker node:
-$ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
-(If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
+    # Multi-GPU (Lightning handles DDP)
+    python train.py --config config/train_neuromanifold_shakespeare.py --devices 4
 """
 
 import os
-import time
 import math
 import pickle
-from contextlib import nullcontext
+from typing import Optional, Dict, Any
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import (
+    ModelCheckpoint,
+    EarlyStopping,
+    LearningRateMonitor,
+    Callback,
+)
+from pytorch_lightning.loggers import WandbLogger
+from loguru import logger
+
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from model import GPTConfig, GPT
 
-# -----------------------------------------------------------------------------
-# default config values designed to train a gpt2 (124M) on OpenWebText
-# I/O
-out_dir = 'out'
-eval_interval = 2000
-log_interval = 1
-eval_iters = 200
-eval_only = False # if True, script exits right after the first eval
-always_save_checkpoint = True # if True, always save a checkpoint after each eval
-init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
-# wandb logging
-wandb_log = False # disabled by default
-wandb_project = 'owt'
-wandb_run_name = 'gpt2' # 'run' + str(time.time())
-# data
-dataset = 'openwebtext'
-gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 1024
-# model
-n_layer = 12
-n_head = 12
-n_embd = 768
-dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
-bias = False # do we use bias inside LayerNorm and Linear layers?
-# adamw optimizer
-learning_rate = 6e-4 # max learning rate
-max_iters = 600000 # total number of training iterations
-weight_decay = 1e-1
-beta1 = 0.9
-beta2 = 0.95
-grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
-# learning rate decay settings
-decay_lr = True # whether to decay the learning rate
-warmup_iters = 2000 # how many steps to warm up for
-lr_decay_iters = 600000 # should be ~= max_iters per Chinchilla
-min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
-# DDP settings
-backend = 'nccl' # 'nccl', 'gloo', etc.
-# system
-device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
-compile = True # use PyTorch 2.0 to compile the model to be faster
-# -----------------------------------------------------------------------------
-config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
-exec(open('configurator.py').read()) # overrides from command line or config file
-config = {k: globals()[k] for k in config_keys} # will be useful for logging
-# -----------------------------------------------------------------------------
 
-# various inits, derived attributes, I/O setup
-ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
-if ddp:
-    init_process_group(backend=backend)
-    ddp_rank = int(os.environ['RANK'])
-    ddp_local_rank = int(os.environ['LOCAL_RANK'])
-    ddp_world_size = int(os.environ['WORLD_SIZE'])
-    device = f'cuda:{ddp_local_rank}'
-    torch.cuda.set_device(device)
-    master_process = ddp_rank == 0 # this process will do logging, checkpointing etc.
-    seed_offset = ddp_rank # each process gets a different seed
-    # world_size number of processes will be training simultaneously, so we can scale
-    # down the desired gradient accumulation iterations per process proportionally
-    assert gradient_accumulation_steps % ddp_world_size == 0
-    gradient_accumulation_steps //= ddp_world_size
-else:
-    # if not ddp, we are running on a single gpu, and one process
-    master_process = True
-    seed_offset = 0
-    ddp_world_size = 1
-tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
-print(f"tokens per iteration will be: {tokens_per_iter:,}")
+# -----------------------------------------------------------------------------
+# Default Configuration
+# -----------------------------------------------------------------------------
+@dataclass
+class TrainConfig:
+    """Training configuration with all hyperparameters."""
+    # I/O
+    out_dir: str = "out-lightning"
+    eval_interval: int = 2000
+    log_interval: int = 10
+    eval_iters: int = 200
+    save_checkpoints: bool = True
 
-if master_process:
-    os.makedirs(out_dir, exist_ok=True)
-torch.manual_seed(1337 + seed_offset)
-torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
-torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
-device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
-# note: float16 data type will automatically use a GradScaler
-ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    # Data
+    dataset: str = "shakespeare_char"
+    batch_size: int = 64
+    block_size: int = 256
+    num_workers: int = 4
 
-# poor man's data loader
-data_dir = os.path.join('data', dataset)
-def get_batch(split):
-    # We recreate np.memmap every batch to avoid a memory leak, as per
-    # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
-    if split == 'train':
-        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    # Model
+    model_type: str = "neuromanifold"  # "neuromanifold" or "gpt"
+    n_layer: int = 6
+    n_head: int = 6
+    n_embd: int = 384
+    dropout: float = 0.0
+    bias: bool = False
+
+    # NeuroManifold specific
+    sdr_size: int = 2048
+    manifold_dim: int = 64
+    n_eigenvectors: int = 32
+    use_sdr: bool = False
+    use_kan: bool = True
+    kan_type: str = "faster"
+    kan_wavelet: str = "dog"
+    use_fast_wavekan: bool = True
+    kan_num_centers: int = 3
+    fhn_threshold: float = 0.5
+    fhn_tau: float = 12.5
+    n_fhn_steps: int = 2
+    use_fhn_imex: bool = True
+    use_fhn_partitioning: bool = True
+    use_fhn_fused: bool = False
+    use_mhc: bool = True
+    use_full_mhc: bool = True
+    mhc_n_streams: int = 2
+    use_kaufmann_attention: bool = False
+
+    # Speed optimization
+    skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
+
+    # Training
+    max_iters: int = 5000
+    gradient_accumulation_steps: int = 1
+    learning_rate: float = 3e-4
+    min_lr: float = 3e-5
+    weight_decay: float = 0.1
+    beta1: float = 0.9
+    beta2: float = 0.95
+    grad_clip: float = 1.0
+    warmup_iters: int = 100
+    lr_decay_iters: int = 5000
+
+    # Early stopping
+    early_stopping_patience: int = 50
+
+    # Sampling during training
+    sample_interval: int = 500
+    sample_max_tokens: int = 200
+    sample_temperature: float = 1.0
+    sample_top_k: int = 40
+
+    # Hardware
+    devices: int = 1
+    precision: str = "bf16-mixed"
+    compile_model: bool = False
+
+    # Logging
+    wandb_log: bool = False
+    wandb_project: str = "neuromanifold-gpt"
+    wandb_run_name: str = "neuromanifold"
+
+
+# -----------------------------------------------------------------------------
+# Dataset
+# -----------------------------------------------------------------------------
+class MemmapDataset(Dataset):
+    """Memory-mapped dataset for efficient large file handling."""
+
+    def __init__(self, data_path: str, block_size: int):
+        self.data = np.memmap(data_path, dtype=np.uint16, mode="r")
+        self.block_size = block_size
+
+    def __len__(self) -> int:
+        return max(1, len(self.data) - self.block_size - 1)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        # Random sampling within data (ignore idx for randomness like original)
+        pos = torch.randint(len(self.data) - self.block_size, (1,)).item()
+        chunk = torch.from_numpy(
+            self.data[pos : pos + self.block_size + 1].astype(np.int64)
+        )
+        x = chunk[:-1]
+        y = chunk[1:]
+        return x, y
+
+
+class TextDataModule(pl.LightningDataModule):
+    """Lightning DataModule for text datasets."""
+
+    def __init__(
+        self,
+        data_dir: str,
+        block_size: int,
+        batch_size: int,
+        num_workers: int = 4,
+    ):
+        super().__init__()
+        self.data_dir = data_dir
+        self.block_size = block_size
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.vocab_size = None
+        self.itos = None
+        self.stoi = None
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        # Load vocab info if available
+        meta_path = os.path.join(self.data_dir, "meta.pkl")
+        if os.path.exists(meta_path):
+            with open(meta_path, "rb") as f:
+                meta = pickle.load(f)
+            self.vocab_size = meta["vocab_size"]
+            self.itos = meta.get("itos")
+            self.stoi = meta.get("stoi")
+            logger.info(f"Loaded vocab_size={self.vocab_size} from {meta_path}")
+        else:
+            self.vocab_size = 50304  # GPT-2 default
+            logger.info(f"No meta.pkl found, using default vocab_size={self.vocab_size}")
+
+        self.train_ds = MemmapDataset(
+            os.path.join(self.data_dir, "train.bin"), self.block_size
+        )
+        self.val_ds = MemmapDataset(
+            os.path.join(self.data_dir, "val.bin"), self.block_size
+        )
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            shuffle=True,
+            persistent_workers=self.num_workers > 0,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.val_ds,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.num_workers > 0,
+        )
+
+
+# -----------------------------------------------------------------------------
+# Lightning Module
+# -----------------------------------------------------------------------------
+class NeuroManifoldLitModule(pl.LightningModule):
+    """PyTorch Lightning module for NeuroManifold/GPT training."""
+
+    def __init__(
+        self,
+        model_config: NeuroManifoldConfig | GPTConfig,
+        train_config: TrainConfig,
+        itos: Optional[Dict[int, str]] = None,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["itos"])
+
+        self.train_config = train_config
+        self.model_config = model_config
+        self.itos = itos
+
+        # Build model
+        if isinstance(model_config, NeuroManifoldConfig):
+            self.model = NeuroManifoldGPT(model_config)
+            logger.info("Initialized NeuroManifoldGPT")
+        else:
+            self.model = GPT(model_config)
+            logger.info("Initialized baseline GPT")
+
+        # Log parameter count
+        n_params = sum(p.numel() for p in self.model.parameters())
+        logger.info(f"Model parameters: {n_params/1e6:.2f}M")
+
+    def forward(self, x: torch.Tensor, targets: Optional[torch.Tensor] = None):
+        return self.model(x, targets)
+
+    def _compute_loss(self, batch: tuple) -> tuple[torch.Tensor, Dict[str, Any]]:
+        """Compute loss and extract info from model output."""
+        x, y = batch
+        outputs = self.model(x, y)
+
+        # Handle different return signatures
+        if len(outputs) == 3:
+            logits, loss, info = outputs
+        else:
+            logits, loss = outputs
+            info = {}
+
+        return loss, info
+
+    def training_step(self, batch: tuple, batch_idx: int) -> torch.Tensor:
+        loss, info = self._compute_loss(batch)
+
+        # Log metrics
+        self.log("train/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
+
+        # Log perplexity
+        ppl = torch.exp(loss.detach()).clamp(max=1000)
+        self.log("train/perplexity", ppl, on_step=True, on_epoch=False)
+
+        # Log additional info from model
+        for k, v in info.items():
+            if isinstance(v, torch.Tensor) and v.is_floating_point():
+                self.log(f"train/{k}", v.mean(), on_step=False, on_epoch=True)
+
+        return loss
+
+    def validation_step(self, batch: tuple, batch_idx: int) -> torch.Tensor:
+        loss, info = self._compute_loss(batch)
+
+        self.log("val/loss", loss, prog_bar=True, sync_dist=True)
+
+        ppl = torch.exp(loss.detach()).clamp(max=1000)
+        self.log("val/perplexity", ppl, sync_dist=True)
+
+        return loss
+
+    def configure_optimizers(self):
+        """Configure optimizer with cosine LR schedule and warmup.
+
+        Note: We always use manual param grouping with fused=False to avoid
+        conflicts with Lightning's gradient clipping in AMP mode.
+        """
+        # Manual param grouping - separate decay and no-decay params
+        decay_params = []
+        nodecay_params = []
+        for name, param in self.model.named_parameters():
+            if not param.requires_grad:
+                continue
+            # Biases, LayerNorm, embeddings don't get weight decay
+            if param.dim() < 2 or "ln" in name or "norm" in name:
+                nodecay_params.append(param)
+            else:
+                decay_params.append(param)
+
+        # IMPORTANT: fused=False to avoid conflict with Lightning's gradient clipping
+        # When using AMP (bf16-mixed), fused AdamW does internal gradient unscaling
+        # which conflicts with Lightning's gradient clipping mechanism
+        optimizer = torch.optim.AdamW(
+            [
+                {"params": decay_params, "weight_decay": self.train_config.weight_decay},
+                {"params": nodecay_params, "weight_decay": 0.0},
+            ],
+            lr=self.train_config.learning_rate,
+            betas=(self.train_config.beta1, self.train_config.beta2),
+            fused=False,  # Required for Lightning gradient clipping compatibility
+        )
+
+        # Cosine annealing with warmup
+        def lr_lambda(step: int) -> float:
+            # Warmup
+            if step < self.train_config.warmup_iters:
+                return (step + 1) / (self.train_config.warmup_iters + 1)
+            # Decay
+            if step > self.train_config.lr_decay_iters:
+                return self.train_config.min_lr / self.train_config.learning_rate
+            # Cosine decay
+            decay_ratio = (step - self.train_config.warmup_iters) / (
+                self.train_config.lr_decay_iters - self.train_config.warmup_iters
+            )
+            coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+            return (
+                self.train_config.min_lr
+                + coeff * (self.train_config.learning_rate - self.train_config.min_lr)
+            ) / self.train_config.learning_rate
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            },
+        }
+
+    @torch.no_grad()
+    def generate(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ) -> torch.Tensor:
+        """Generate tokens autoregressively."""
+        self.model.eval()
+
+        for _ in range(max_new_tokens):
+            # Crop context if needed
+            block_size = getattr(self.model_config, "block_size", 1024)
+            idx_cond = idx if idx.size(1) <= block_size else idx[:, -block_size:]
+
+            # Forward
+            outputs = self.model(idx_cond)
+            logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            logits = logits[:, -1, :] / temperature
+
+            # Top-k sampling
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = float("-inf")
+
+            probs = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat([idx, idx_next], dim=1)
+
+        self.model.train()
+        return idx
+
+
+# -----------------------------------------------------------------------------
+# Callbacks
+# -----------------------------------------------------------------------------
+class SampleGenerationCallback(Callback):
+    """Generate samples periodically during training."""
+
+    def __init__(
+        self,
+        sample_interval: int,
+        max_tokens: int = 200,
+        temperature: float = 1.0,
+        top_k: int = 40,
+        itos: Optional[Dict[int, str]] = None,
+        stoi: Optional[Dict[str, int]] = None,
+    ):
+        self.sample_interval = sample_interval
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.top_k = top_k
+        self.itos = itos
+        self.stoi = stoi
+
+    def on_train_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: NeuroManifoldLitModule,
+        outputs,
+        batch,
+        batch_idx: int,
+    ) -> None:
+        if self.sample_interval <= 0:
+            return
+        if self.itos is None:
+            return
+
+        global_step = trainer.global_step
+        if global_step > 0 and global_step % self.sample_interval == 0:
+            self._generate_sample(pl_module, trainer)
+
+    def _generate_sample(
+        self, pl_module: NeuroManifoldLitModule, trainer: pl.Trainer
+    ) -> None:
+        """Generate and log a sample."""
+        device = pl_module.device
+
+        # Start token
+        start_char = "\n"
+        if self.stoi and start_char in self.stoi:
+            start_idx = self.stoi[start_char]
+        else:
+            start_idx = 0
+
+        start = torch.tensor([[start_idx]], device=device, dtype=torch.long)
+
+        try:
+            out_idx = pl_module.generate(
+                start,
+                max_new_tokens=self.max_tokens,
+                temperature=self.temperature,
+                top_k=self.top_k,
+            )
+
+            text = "".join([self.itos[i] for i in out_idx[0].tolist()])
+            logger.info(f"\n--- Sample (step {trainer.global_step}) ---\n{text}\n--- End Sample ---")
+
+            # Log to wandb if available
+            if trainer.logger and hasattr(trainer.logger, "experiment"):
+                try:
+                    trainer.logger.experiment.log(
+                        {"samples/text": text, "global_step": trainer.global_step}
+                    )
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.warning(f"Sample generation failed: {e}")
+
+
+class MFUCallback(Callback):
+    """Track Model FLOPs Utilization."""
+
+    def __init__(self, log_interval: int = 100):
+        self.log_interval = log_interval
+        self.running_mfu = -1.0
+
+    def on_train_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: NeuroManifoldLitModule,
+        outputs,
+        batch,
+        batch_idx: int,
+    ) -> None:
+        if batch_idx % self.log_interval != 0:
+            return
+
+        model = pl_module.model
+        if not hasattr(model, "estimate_mfu"):
+            return
+
+        # Estimate MFU
+        batch_size = batch[0].size(0)
+        accum = pl_module.train_config.gradient_accumulation_steps
+
+        # Get time per iteration from trainer
+        if hasattr(trainer, "progress_bar_metrics"):
+            # Approximate dt from throughput
+            dt = 0.1  # fallback
+        else:
+            dt = 0.1
+
+        try:
+            mfu = model.estimate_mfu(batch_size * accum, dt)
+            if self.running_mfu < 0:
+                self.running_mfu = mfu
+            else:
+                self.running_mfu = 0.9 * self.running_mfu + 0.1 * mfu
+
+            pl_module.log("train/mfu", self.running_mfu * 100, on_step=True)
+        except Exception:
+            pass
+
+
+# -----------------------------------------------------------------------------
+# Main Training Function
+# -----------------------------------------------------------------------------
+def train(config: TrainConfig) -> None:
+    """Main training entry point."""
+    pl.seed_everything(1337)
+
+    # Setup data
+    data_dir = os.path.join("data", config.dataset)
+    data_module = TextDataModule(
+        data_dir=data_dir,
+        block_size=config.block_size,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+    )
+    data_module.setup()
+
+    # Build model config
+    if config.model_type == "neuromanifold":
+        model_config = NeuroManifoldConfig(
+            vocab_size=data_module.vocab_size,
+            block_size=config.block_size,
+            n_layer=config.n_layer,
+            n_heads=config.n_head,
+            n_embd=config.n_embd,
+            dropout=config.dropout,
+            bias=config.bias,
+            # SDR
+            use_sdr=config.use_sdr,
+            sdr_size=config.sdr_size,
+            # Manifold
+            manifold_dim=config.manifold_dim,
+            n_eigenvectors=config.n_eigenvectors,
+            # KAN
+            use_kan=config.use_kan,
+            kan_type=config.kan_type,
+            kan_wavelet=config.kan_wavelet,
+            use_fast_wavekan=config.use_fast_wavekan,
+            kan_num_centers=config.kan_num_centers,
+            # FHN
+            fhn_threshold=config.fhn_threshold,
+            fhn_tau=config.fhn_tau,
+            n_fhn_steps=config.n_fhn_steps,
+            use_fhn_imex=config.use_fhn_imex,
+            use_fhn_partitioning=config.use_fhn_partitioning,
+            use_fhn_fused=config.use_fhn_fused,
+            # mHC
+            use_mhc=config.use_mhc,
+            use_full_mhc=config.use_full_mhc,
+            mhc_n_streams=config.mhc_n_streams,
+            # Attention
+            use_kaufmann_attention=config.use_kaufmann_attention,
+            # Speed optimization
+            skip_manifold_spectral=config.skip_manifold_spectral,
+            # Training
+            learning_rate=config.learning_rate,
+            weight_decay=config.weight_decay,
+            beta1=config.beta1,
+            beta2=config.beta2,
+            grad_clip=config.grad_clip,
+        )
     else:
-        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
-    if device_type == 'cuda':
-        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-    else:
-        x, y = x.to(device), y.to(device)
-    return x, y
+        model_config = GPTConfig(
+            vocab_size=data_module.vocab_size,
+            block_size=config.block_size,
+            n_layer=config.n_layer,
+            n_head=config.n_head,
+            n_embd=config.n_embd,
+            dropout=config.dropout,
+            bias=config.bias,
+        )
 
-# init these up here, can override if init_from='resume' (i.e. from a checkpoint)
-iter_num = 0
-best_val_loss = 1e9
+    # Build Lightning module
+    lit_module = NeuroManifoldLitModule(
+        model_config=model_config,
+        train_config=config,
+        itos=data_module.itos,
+    )
 
-# attempt to derive vocab_size from the dataset
-meta_path = os.path.join(data_dir, 'meta.pkl')
-meta_vocab_size = None
-if os.path.exists(meta_path):
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-    meta_vocab_size = meta['vocab_size']
-    print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
+    # Compile model if requested
+    if config.compile_model:
+        logger.info("Compiling model with torch.compile()...")
+        lit_module.model = torch.compile(lit_module.model)
 
-# model init
-model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
-if init_from == 'scratch':
-    # init a new model from scratch
-    print("Initializing a new model from scratch")
-    # determine the vocab size we'll use for from-scratch training
-    if meta_vocab_size is None:
-        print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
-elif init_from == 'resume':
-    print(f"Resuming training from {out_dir}")
-    # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    checkpoint_model_args = checkpoint['model_args']
-    # force these config attributes to be equal otherwise we can't even resume training
-    # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-        model_args[k] = checkpoint_model_args[k]
-    # create the model
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
-    state_dict = checkpoint['model']
-    # fix the keys of the state dictionary :(
-    # honestly no idea how checkpoints sometimes get this prefix, have to debug more
-    unwanted_prefix = '_orig_mod.'
-    for k,v in list(state_dict.items()):
-        if k.startswith(unwanted_prefix):
-            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
-    iter_num = checkpoint['iter_num']
-    best_val_loss = checkpoint['best_val_loss']
-elif init_from.startswith('gpt2'):
-    print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-    # initialize from OpenAI GPT-2 weights
-    override_args = dict(dropout=dropout)
-    model = GPT.from_pretrained(init_from, override_args)
-    # read off the created config params, so we can store them into checkpoint correctly
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-        model_args[k] = getattr(model.config, k)
-# crop down the model block size if desired, using model surgery
-if block_size < model.config.block_size:
-    model.crop_block_size(block_size)
-    model_args['block_size'] = block_size # so that the checkpoint will have the right value
-model.to(device)
+    # Callbacks
+    callbacks = [
+        LearningRateMonitor(logging_interval="step"),
+    ]
 
-# initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+    if config.save_checkpoints:
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=config.out_dir,
+                filename="ckpt-{step:06d}-{val/loss:.4f}",
+                monitor="val/loss",
+                mode="min",
+                save_top_k=3,
+                save_last=True,
+            )
+        )
 
-# optimizer
-optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
-if init_from == 'resume':
-    optimizer.load_state_dict(checkpoint['optimizer'])
-checkpoint = None # free up memory
+    if config.early_stopping_patience > 0:
+        callbacks.append(
+            EarlyStopping(
+                monitor="val/loss",
+                patience=config.early_stopping_patience,
+                mode="min",
+                verbose=True,
+            )
+        )
 
-# compile the model
-if compile:
-    print("compiling the model... (takes a ~minute)")
-    unoptimized_model = model
-    model = torch.compile(model) # requires PyTorch 2.0
+    if config.sample_interval > 0 and data_module.itos:
+        callbacks.append(
+            SampleGenerationCallback(
+                sample_interval=config.sample_interval,
+                max_tokens=config.sample_max_tokens,
+                temperature=config.sample_temperature,
+                top_k=config.sample_top_k,
+                itos=data_module.itos,
+                stoi=data_module.stoi,
+            )
+        )
 
-# wrap model into DDP container
-if ddp:
-    model = DDP(model, device_ids=[ddp_local_rank])
+    callbacks.append(MFUCallback(log_interval=config.log_interval))
 
-# helps estimate an arbitrarily accurate loss over either split using many batches
-@torch.no_grad()
-def estimate_loss():
-    out = {}
-    model.eval()
-    for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split)
-            with ctx:
-                logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train()
-    return out
+    # Logger
+    pl_logger = None
+    if config.wandb_log:
+        pl_logger = WandbLogger(
+            project=config.wandb_project,
+            name=config.wandb_run_name,
+            save_dir=config.out_dir,
+        )
 
-# learning rate decay scheduler (cosine with warmup)
-def get_lr(it):
-    # 1) linear warmup for warmup_iters steps
-    if it < warmup_iters:
-        return learning_rate * (it + 1) / (warmup_iters + 1)
-    # 2) if it > lr_decay_iters, return min learning rate
-    if it > lr_decay_iters:
-        return min_lr
-    # 3) in between, use cosine decay down to min learning rate
-    decay_ratio = (it - warmup_iters) / (lr_decay_iters - warmup_iters)
-    assert 0 <= decay_ratio <= 1
-    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
-    return min_lr + coeff * (learning_rate - min_lr)
+    # Trainer
+    trainer = pl.Trainer(
+        max_steps=config.max_iters,
+        accelerator="auto",
+        devices=config.devices,
+        precision=config.precision,
+        gradient_clip_val=config.grad_clip,
+        accumulate_grad_batches=config.gradient_accumulation_steps,
+        callbacks=callbacks,
+        logger=pl_logger,
+        default_root_dir=config.out_dir,
+        enable_progress_bar=True,
+        log_every_n_steps=config.log_interval,
+        val_check_interval=config.eval_interval,
+        limit_val_batches=config.eval_iters,
+        enable_checkpointing=config.save_checkpoints,
+    )
 
-# logging
-if wandb_log and master_process:
-    import wandb
-    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
+    # Train
+    logger.info(f"Starting training: {config.model_type} on {config.dataset}")
+    logger.info(f"Output dir: {config.out_dir}")
+    trainer.fit(lit_module, data_module)
 
-# training loop
-X, Y = get_batch('train') # fetch the very first batch
-t0 = time.time()
-local_iter_num = 0 # number of iterations in the lifetime of this process
-raw_model = model.module if ddp else model # unwrap DDP container if needed
-running_mfu = -1.0
-while True:
+    # Final sample generation
+    if data_module.itos:
+        logger.info("\n=== Final Sample ===")
+        device = lit_module.device
+        start_idx = data_module.stoi.get("\n", 0) if data_module.stoi else 0
+        start = torch.tensor([[start_idx]], device=device, dtype=torch.long)
 
-    # determine and set the learning rate for this iteration
-    lr = get_lr(iter_num) if decay_lr else learning_rate
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        try:
+            out_idx = lit_module.generate(
+                start,
+                max_new_tokens=400,
+                temperature=config.sample_temperature,
+                top_k=config.sample_top_k,
+            )
+            text = "".join([data_module.itos[i] for i in out_idx[0].tolist()])
+            logger.info(f"\n{text}")
+        except Exception as e:
+            logger.warning(f"Final sample generation failed: {e}")
 
-    # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0 and master_process:
-        losses = estimate_loss()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        if wandb_log:
-            wandb.log({
-                "iter": iter_num,
-                "train/loss": losses['train'],
-                "val/loss": losses['val'],
-                "lr": lr,
-                "mfu": running_mfu*100, # convert to percentage
-            })
-        if losses['val'] < best_val_loss or always_save_checkpoint:
-            best_val_loss = losses['val']
-            if iter_num > 0:
-                checkpoint = {
-                    'model': raw_model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'model_args': model_args,
-                    'iter_num': iter_num,
-                    'best_val_loss': best_val_loss,
-                    'config': config,
-                }
-                print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
-    if iter_num == 0 and eval_only:
-        break
 
-    # forward backward update, with optional gradient accumulation to simulate larger batch size
-    # and using the GradScaler if data type is float16
-    for micro_step in range(gradient_accumulation_steps):
-        if ddp:
-            # in DDP training we only need to sync gradients at the last micro step.
-            # the official way to do this is with model.no_sync() context manager, but
-            # I really dislike that this bloats the code and forces us to repeat code
-            # looking at the source of that context manager, it just toggles this variable
-            model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
-        with ctx:
-            logits, loss = model(X, Y)
-            loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
-        # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train')
-        # backward pass, with gradient scaling if training in fp16
-        scaler.scale(loss).backward()
-    # clip the gradient
-    if grad_clip != 0.0:
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-    # step the optimizer and scaler if training in fp16
-    scaler.step(optimizer)
-    scaler.update()
-    # flush the gradients as soon as we can, no need for this memory anymore
-    optimizer.zero_grad(set_to_none=True)
+# -----------------------------------------------------------------------------
+# Entry Point
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    import argparse
 
-    # timing and logging
-    t1 = time.time()
-    dt = t1 - t0
-    t0 = t1
-    if iter_num % log_interval == 0 and master_process:
-        # get loss as float. note: this is a CPU-GPU sync point
-        # scale up to undo the division above, approximating the true total loss (exact would have been a sum)
-        lossf = loss.item() * gradient_accumulation_steps
-        if local_iter_num >= 5: # let the training loop settle a bit
-            mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
-            running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
-    iter_num += 1
-    local_iter_num += 1
+    parser = argparse.ArgumentParser(description="Train NeuroManifoldGPT")
+    parser.add_argument("--config", type=str, help="Path to config file")
 
-    # termination conditions
-    if iter_num > max_iters:
-        break
+    # Allow overriding any config value - defaults to None so config file takes precedence
+    for f in TrainConfig.__dataclass_fields__:
+        field_type = TrainConfig.__dataclass_fields__[f].type
+        if field_type == bool:
+            parser.add_argument(f"--{f}", type=lambda x: x.lower() == "true", default=None)
+        elif field_type == int:
+            parser.add_argument(f"--{f}", type=int, default=None)
+        elif field_type == float:
+            parser.add_argument(f"--{f}", type=float, default=None)
+        elif field_type == str:
+            parser.add_argument(f"--{f}", type=str, default=None)
 
-if ddp:
-    destroy_process_group()
+    args = parser.parse_args()
+
+    # Start with defaults
+    config = TrainConfig()
+
+    # Load config file if provided (overrides defaults)
+    if args.config:
+        config_globals = {}
+        exec(open(args.config).read(), config_globals)
+        for k, v in config_globals.items():
+            if hasattr(config, k):
+                setattr(config, k, v)
+
+    # CLI args override config file (only if explicitly provided)
+    for k, v in vars(args).items():
+        if k != "config" and v is not None and hasattr(config, k):
+            setattr(config, k, v)
+
+    # Run training
+    train(config)

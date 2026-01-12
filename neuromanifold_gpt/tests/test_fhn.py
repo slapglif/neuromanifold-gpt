@@ -1,13 +1,13 @@
-# neuromanifold_gpt/tests/test_soliton.py
-"""Tests for Soliton Attention mechanism."""
+# neuromanifold_gpt/tests/test_fhn.py
+"""Tests for FHN Excitable Attention mechanism."""
 import pytest
 import torch
-from neuromanifold_gpt.model.attention.soliton import SolitonAttention
+from neuromanifold_gpt.model.attention.fhn import FHNAttention
 
 
-def test_soliton_output_shape():
+def test_fhn_output_shape():
     """Output should match input dimensions."""
-    attn = SolitonAttention(embed_dim=384, n_heads=8)
+    attn = FHNAttention(embed_dim=384, n_heads=8)
     x = torch.randn(2, 20, 384)
     spectral_basis = torch.randn(2, 20, 32)
 
@@ -15,12 +15,12 @@ def test_soliton_output_shape():
 
     assert out.shape == (2, 20, 384)
     assert 'pulse_widths' in info
-    assert 'soliton_state' in info
+    assert 'fhn_state' in info
 
 
-def test_soliton_pulse_width_positive():
+def test_fhn_pulse_width_positive():
     """Pulse widths should be positive."""
-    attn = SolitonAttention(embed_dim=384, n_heads=8)
+    attn = FHNAttention(embed_dim=384, n_heads=8)
     x = torch.randn(2, 20, 384)
     spectral_basis = torch.randn(2, 20, 32)
 
@@ -29,9 +29,9 @@ def test_soliton_pulse_width_positive():
     assert (info['pulse_widths'] > 0).all()
 
 
-def test_soliton_threshold_behavior():
+def test_fhn_threshold_behavior():
     """Sub-threshold inputs should produce weaker response."""
-    attn = SolitonAttention(embed_dim=384, n_heads=8, threshold=0.5)
+    attn = FHNAttention(embed_dim=384, n_heads=8, threshold=0.5)
 
     # Small input
     x_small = torch.randn(1, 10, 384) * 0.1

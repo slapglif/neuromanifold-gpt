@@ -52,30 +52,82 @@ class SDREngramMemory(nn.Module):
         self.register_buffer("write_ptr", torch.tensor(0, dtype=torch.long))
         self.register_buffer("count", torch.tensor(0, dtype=torch.long))
 
+    def get_size(self) -> torch.Tensor:
+        """Return number of stored memories (as Tensor to avoid graph break)."""
+        return torch.min(self.count, torch.tensor(self.capacity, device=self.count.device))
+
     def __len__(self) -> int:
-        """Return number of stored memories."""
-        return min(self.count.item(), self.capacity)
+        """Return number of stored memories (Python int, causes graph break)."""
+        return int(min(self.count.item(), self.capacity))
 
     def store(self, sdr: torch.Tensor, content: torch.Tensor) -> None:
         """
-        Store SDR-content pair.
-
-        Uses circular buffer with FIFO eviction when at capacity.
-
-        Args:
-            sdr: (sdr_size,) binary SDR marker
-            content: (content_dim,) associated content vector
+        Store SDR-content pair using graph-safe operations (scatter_).
+        Inputs are detached to prevent autograd history from complicating the storage.
         """
-        ptr = self.write_ptr.item()
+        # Detach inputs to prevent autograd issues with in-place buffer updates
+        sdr = sdr.detach()
+        content = content.detach()
+        
+        # Use tensor indexing
+        ptr = self.write_ptr.view(1)  # (1,)
+        
+        # Ensure inputs are on correct device
+        sdr = sdr.to(self.sdr_bank.device).unsqueeze(0)  # (1, sdr_size)
+        content = content.to(self.content_bank.device).unsqueeze(0) # (1, content_dim)
 
-        # Store at current write position
-        self.sdr_bank[ptr] = sdr.to(self.sdr_bank.device)
-        self.content_bank[ptr] = content.to(self.content_bank.device)
-        self.valid_mask[ptr] = True
+        # In-place update using index_copy_
+        self.sdr_bank.index_copy_(0, ptr, sdr)
+        self.content_bank.index_copy_(0, ptr, content)
+        self.valid_mask.index_fill_(0, ptr, torch.tensor(True, device=self.valid_mask.device))
 
         # Advance write pointer (circular)
-        self.write_ptr = (self.write_ptr + 1) % self.capacity
-        self.count = torch.clamp(self.count + 1, max=self.capacity)
+        next_ptr = (self.write_ptr + 1) % self.capacity
+        self.write_ptr.copy_(next_ptr)
+        
+        next_count = torch.clamp(self.count + 1, max=self.capacity)
+        self.count.copy_(next_count)
+
+    def store_batch(self, sdrs: torch.Tensor, contents: torch.Tensor) -> None:
+        """
+        Store multiple SDR-content pairs efficiently (vectorized).
+        
+        Args:
+            sdrs: (N, sdr_size) batch of SDRs
+            contents: (N, content_dim) batch of content vectors
+        """
+        # Detach inputs
+        sdrs = sdrs.detach()
+        contents = contents.detach()
+        
+        N = sdrs.shape[0]
+        if N == 0:
+            return
+            
+        # If batch is larger than capacity, keep only the most recent ones
+        # that fit in the memory.
+        if N > self.capacity:
+            sdrs = sdrs[-self.capacity:]
+            contents = contents[-self.capacity:]
+            N = self.capacity
+            
+        # Calculate indices for circular buffer (fully tensorized)
+        indices = (self.write_ptr + torch.arange(N, device=self.sdr_bank.device)) % self.capacity
+        
+        # Store
+        # index_copy_ works well
+        self.sdr_bank.index_copy_(0, indices, sdrs.to(self.sdr_bank.device))
+        self.content_bank.index_copy_(0, indices, contents.to(self.content_bank.device))
+        self.valid_mask.index_fill_(0, indices, True)
+        
+        # Update pointer
+        # We add N to pointer and mod capacity
+        new_ptr = (self.write_ptr + N) % self.capacity
+        self.write_ptr.copy_(new_ptr)
+        
+        # Update count (saturate at capacity)
+        new_count = torch.clamp(self.count + N, max=self.capacity)
+        self.count.copy_(new_count)
 
     def retrieve(
         self,

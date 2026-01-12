@@ -20,7 +20,7 @@ class NeuroManifoldConfig:
     - Token embedding via Semantic Folding (SDR)
     - Manifold projection with learned Riemannian metric
     - Spectral attention via eigendecomposition
-    - Soliton-based attention propagation (Kaufmann-Heimburg model)
+    - FHN-based attention propagation (Fitzhugh-Nagumo)
     - SDR Engram memory for infinite context
     - Forced DAG planning for System 2 thinking
     - Consistency model imagination module
@@ -65,9 +65,9 @@ class NeuroManifoldConfig:
     vocab_size: int = 50304
     block_size: int = 1024
 
-    # SDR (Sparse Distributed Representation) configuration
+    use_sdr: bool = False  # Dense embeddings (faster, less memory) - SDR disabled
     sdr_size: int = 2048
-    sdr_sparsity: float = 0.02
+    sdr_sparsity: float = 0.02 # Restored to 2% sparsity for stability
     sdr_n_active: int = field(init=False)  # Computed in __post_init__
     sdr_embed_dim: int = 256
     sdr_context_size: int = 5
@@ -81,11 +81,52 @@ class NeuroManifoldConfig:
     # Attention configuration
     n_heads: int = 8
 
-    # Soliton dynamics (Kaufmann-Heimburg model)
-    soliton_threshold: float = 0.5
-    soliton_tau: float = 0.1
-    soliton_velocity: float = 1.0
+    # FHN dynamics (Fitzhugh-Nagumo)
+    fhn_threshold: float = 0.5  # Restored: stable excitability threshold
+    fhn_tau: float = 12.5  # Fixed: proper slow-fast separation (was 0.1)
+    fhn_velocity: float = 1.0
     pulse_width_base: int = 4
+    n_fhn_steps: int = 2  # Restored to 2 steps (IMEX), better dynamics
+    use_fhn_imex: bool = True  # Use semi-implicit IMEX scheme
+    use_fhn_partitioning: bool = True  # Enable energy balancing for stability
+    use_fhn_fused: bool = False  # Disabled (Using JIT instead)
+    use_fhn_parallel: bool = True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
+    
+    # Spectral regularization
+    ortho_weight: float = 0.01
+
+    # Speed optimization
+    skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
+
+    # mHC (Manifold-Constrained Hyper-Connections) from DeepSeek
+    # Reference: https://arxiv.org/abs/2512.24880
+    # Architecture: x_{l+1} = H_res @ x_l + H_post^T @ F(H_pre @ x_l)
+    # - H_res: Doubly stochastic via Sinkhorn-Knopp (Birkhoff polytope)
+    # - H_pre/H_post: Softmax over streams for routing
+    use_mhc: bool = True  # Enable mHC for training stability
+    use_full_mhc: bool = True  # Use full multi-stream mHC (vs simplified)
+    mhc_n_streams: int = 2  # Number of parallel streams for full mHC (2 for efficiency)
+    mhc_residual_weight: float = 0.9  # Initial identity mapping bias
+
+    # Attention configuration
+    use_knot_attention: bool = False  # Enable Knot-Theoretic attention
+    use_kaufmann_attention: bool = False  # Enable Kaufmann Trifecta Attention (The Endgame)
+
+    # KAN configuration
+    # FFN/MLP uses FasterKAN (RSWAF basis) for speed
+    # Wave-based embedding aligns with FHN soliton attention conceptually
+    use_kan: bool = True
+    kan_type: str = "faster"  # "faster" (RSWAF for FFN), "wave", or "cheby"
+    kan_degree: int = 4  # For ChebyKAN
+    kan_wavelet: str = "dog"  # "dog" is fastest (linear) and stable
+    use_fast_wavekan: bool = True  # Use efficient WaveKAN (shared scale/trans)
+    kan_num_centers: int = 3  # For FasterKAN RSWAF basis centers (3 for efficiency)
+
+    # Replace ALL nn.Linear MLP layers with FasterKAN (not just FFN)
+    # Applies to: manifold projection, spectral decomposition, attention projections
+    # Skips: lm_head (vocab output), embeddings
+    # WARNING: This causes parameter bloat - disable for efficiency
+    use_kan_everywhere: bool = False  # Keep Linear for projections, FasterKAN only for FFN
 
     # Model architecture
     n_layer: int = 6
@@ -105,15 +146,31 @@ class NeuroManifoldConfig:
     imagination_steps: int = 4
     imagination_dim: int = 256
 
+    # Fast mode for performance optimization
+    fast_mode: bool = False  # Enable all fast-path optimizations
+    skip_context_encoder: bool = False  # Skip local attention in SDR encoder
+    skip_semantic_retina: bool = False  # Skip Gaussian smoothing
+    skip_metric_tensor: bool = False  # Skip manifold metric computation
+
     # Training configuration
     learning_rate: float = 3e-4
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95
     grad_clip: float = 1.0
+    early_stopping_patience: int = 5
+    use_perplexity_stopping: bool = True
 
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""
+        # Fast mode enables all fast-path optimizations
+        if self.fast_mode:
+            self.skip_context_encoder = True
+            self.skip_semantic_retina = True
+            self.skip_metric_tensor = True
+            self.n_fhn_steps = 1  # Reduce FHN steps
+            self.sdr_size = min(self.sdr_size, 512)  # Cap SDR size
+
         # Compute number of active SDR bits
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
 

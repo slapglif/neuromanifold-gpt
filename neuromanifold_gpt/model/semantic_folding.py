@@ -10,12 +10,14 @@ Full pipeline:
 The "folding" refers to collapsing rich semantic space into
 compressed SDR while preserving similarity structure.
 """
+
 from __future__ import annotations
 
 import math
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from neuromanifold_gpt.model.sdr_ops import SDROperations
 from neuromanifold_gpt.model.semantic_retina import SemanticRetina
@@ -96,9 +98,114 @@ class SemanticFoldingEncoder(nn.Module):
         self.register_buffer("bit_duty_cycle", torch.ones(sdr_size) / sdr_size)
         self.boost_strength = 0.1
 
+    def token_discrimination_loss(
+        self, tokens: torch.Tensor, sdr: torch.Tensor, n_samples: int = 64
+    ) -> torch.Tensor:
+        """Ensure different tokens produce sufficiently different SDRs.
+
+        This prevents mode collapse where all tokens map to similar SDRs.
+
+        Args:
+            tokens: (B, T) token indices
+            sdr: (B, T, sdr_size) SDR representations
+            n_samples: Number of pairs to sample for efficiency
+
+        Returns:
+            Scalar loss penalizing SDR collapse
+        """
+        B, T = tokens.shape
+        device = tokens.device
+
+        # Flatten for sampling
+        tokens_flat = tokens.view(-1)  # (B*T,)
+        sdr_flat = sdr.view(-1, sdr.size(-1))  # (B*T, sdr_size)
+        N = tokens_flat.size(0)
+
+        if N < 2:
+            return torch.tensor(0.0, device=device)
+
+        # Sample random pairs
+        n_pairs = min(n_samples, N * (N - 1) // 2)
+        idx1 = torch.randint(N, (n_pairs,), device=device)
+        idx2 = torch.randint(N, (n_pairs,), device=device)
+
+        # Get tokens and SDRs for pairs
+        tok1 = tokens_flat[idx1]
+        tok2 = tokens_flat[idx2]
+        sdr1 = sdr_flat[idx1]
+        sdr2 = sdr_flat[idx2]
+
+        # Compute SDR overlap (similarity)
+        overlap = (sdr1 * sdr2).sum(dim=-1) / self.n_active  # [0, 1]
+
+        # Different tokens should have low overlap
+        # Same tokens can have high overlap (context variation)
+        different_tokens = (tok1 != tok2).float()
+
+        # Loss: penalize high overlap for different tokens
+        # Target overlap for different tokens: ~0.1 (some overlap is OK for semantically similar)
+        target_overlap = 0.1
+        loss = different_tokens * F.relu(overlap - target_overlap)
+
+        return loss.mean()
+
+    def topographic_loss(self, embeds: torch.Tensor, grid_activations: torch.Tensor) -> torch.Tensor:
+        """Compute O(N) topographic loss using temporal neighbors.
+        
+        Instead of all-to-all O(N^2), we enforce that:
+        Similarity(t, t+1) in embedding space ~= Similarity(t, t+1) in grid space.
+        This ensures the 'path' of thought is continuous on the manifold.
+        """
+        B, T = embeds.shape[:2]
+        if T < 2:
+            return torch.tensor(0.0, device=embeds.device)
+            
+        # 1. Compute grid centroids per token (Same as before)
+        # grid_activations: (B, T, sdr_size)
+        H, W = self.grid_h, self.grid_w
+        used_size = H * W
+        scores_grid = grid_activations[..., :used_size].view(B, T, H, W)
+        
+        # Centroids
+        y_coords = torch.arange(H, device=embeds.device).float()
+        x_coords = torch.arange(W, device=embeds.device).float()
+        
+        scores_flat = scores_grid.flatten(start_dim=-2)
+        weights_flat = F.softmax(scores_flat, dim=-1)
+        weights = weights_flat.view(B, T, H, W)
+        
+        cy = (weights.sum(dim=-1) * y_coords.view(1, 1, -1)).sum(dim=-1) # (B, T)
+        cx = (weights.sum(dim=-2) * x_coords.view(1, 1, -1)).sum(dim=-1) # (B, T)
+        
+        # Normalize
+        cy = cy / (H - 1)
+        cx = cx / (W - 1)
+        
+        # 2. Compute Temporal Differences (t vs t+1)
+        # Embeddings
+        embeds_norm = F.normalize(embeds, p=2, dim=-1) # (B, T, D)
+        # Cosine sim between t and t+1
+        # (B, T-1, D) * (B, T-1, D) -> sum -> (B, T-1)
+        sim_sem = (embeds_norm[:, :-1] * embeds_norm[:, 1:]).sum(dim=-1)
+        sim_sem = (sim_sem + 1.0) / 2.0 # [0, 1]
+        
+        # Spatial Distance between t and t+1
+        dy = cy[:, 1:] - cy[:, :-1]
+        dx = cx[:, 1:] - cx[:, :-1]
+        dist_spatial = (dy**2 + dx**2 + 1e-8).sqrt() # (B, T-1) - eps prevents NaN grad at sqrt(0)
+        
+        # RBF Similarity
+        sigma = 0.2
+        sim_spatial = torch.exp(-(dist_spatial**2) / (2 * sigma**2))
+        
+        # Loss: Match transition probabilities
+        loss = (sim_sem - sim_spatial)**2
+        
+        return loss.mean()
+
     def forward(
         self, tokens: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Encode tokens to SDRs.
 
         Args:
@@ -107,6 +214,8 @@ class SemanticFoldingEncoder(nn.Module):
         Returns:
             sdr: (B, T, sdr_size) binary SDR
             scores: (B, T, sdr_size) raw scores for gradients
+            topographic_loss: Scalar loss for topographic organization
+            discrimination_loss: Scalar loss preventing SDR collapse
         """
         B, T = tokens.shape
 
@@ -133,18 +242,23 @@ class SemanticFoldingEncoder(nn.Module):
 
         # Sparsify to create SDR
         if self.training:
-            sdr = SDROperations.soft_topk(
-                scores, self.n_active, self.temperature.abs()
-            )
+            sdr = SDROperations.soft_topk(scores, self.n_active, self.temperature.abs())
             # Update duty cycle exponential moving average
             with torch.no_grad():
-                self.bit_duty_cycle = (
-                    0.99 * self.bit_duty_cycle + 0.01 * sdr.mean(dim=(0, 1))
+                self.bit_duty_cycle = 0.99 * self.bit_duty_cycle + 0.01 * sdr.mean(
+                    dim=(0, 1)
                 )
         else:
             sdr = SDROperations.hard_topk(scores, self.n_active)
 
-        return sdr, scores
+        # Compute losses during training
+        topo_loss = torch.tensor(0.0, device=tokens.device)
+        discrim_loss = torch.tensor(0.0, device=tokens.device)
+        if self.training:
+            topo_loss = self.topographic_loss(context_embeds, scores)
+            discrim_loss = self.token_discrimination_loss(tokens, sdr)
+
+        return sdr, scores, topo_loss, discrim_loss
 
     def semantic_similarity(
         self, sdr_a: torch.Tensor, sdr_b: torch.Tensor
