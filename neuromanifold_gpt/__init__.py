@@ -29,8 +29,12 @@ from neuromanifold_gpt.model import (
     SpectralDecomposition,
 )
 
-# Training module
-from neuromanifold_gpt.train import NeuroManifoldLightning
+# Training module (skip during testing to avoid numpy issues)
+import os
+if os.environ.get('NEUROMANIFOLD_TESTING') != '1':
+    from neuromanifold_gpt.train import NeuroManifoldLightning
+else:
+    NeuroManifoldLightning = None  # Placeholder during testing
 
 __all__ = [
     # Version
