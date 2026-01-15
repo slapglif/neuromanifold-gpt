@@ -165,9 +165,7 @@ class HierarchicalEngramMemory(nn.Module):
 
         # Find least accessed valid item in L1
         access_counts = self.l1_access_count.clone()
-        access_counts[~self.l1_valid_mask] = torch.tensor(
-            float("inf"), device=access_counts.device, dtype=access_counts.dtype
-        )
+        access_counts[~self.l1_valid_mask] = torch.iinfo(torch.long).max
         victim_idx = torch.argmin(access_counts)
 
         # If L2 is full, demote its least accessed item to L3
@@ -201,9 +199,7 @@ class HierarchicalEngramMemory(nn.Module):
 
         # Find least accessed valid item in L2
         access_counts = self.l2_access_count.clone()
-        access_counts[~self.l2_valid_mask] = torch.tensor(
-            float("inf"), device=access_counts.device, dtype=access_counts.dtype
-        )
+        access_counts[~self.l2_valid_mask] = torch.iinfo(torch.long).max
         victim_idx = torch.argmin(access_counts)
 
         # Move victim from L2 to L3 (L3 is circular buffer, overwrites oldest)
