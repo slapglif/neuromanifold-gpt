@@ -6,10 +6,17 @@ def benchmark_fhn_flash_fusion():
     """Benchmark Flash Attention + FHN Fusion vs Manual Attention + FHN."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device != "cuda":
-        print("Skipping Flash fusion benchmark (CUDA not available)")
-        return
+        print("Running on CPU (CUDA not available)")
+        print("Note: Flash Attention speedup is only significant on GPU")
+        print("This run verifies functional correctness only\n")
 
-    B, T, D = 32, 512, 384
+    # Adjust for CPU vs GPU
+    if device == "cpu":
+        B, T, D = 4, 64, 384  # Smaller for CPU
+        n_iters = 10
+    else:
+        B, T, D = 32, 512, 384  # Full size for GPU
+        n_iters = 100
     H = 8
 
     # Input tensors
@@ -31,42 +38,46 @@ def benchmark_fhn_flash_fusion():
         out_manual, _ = attn_manual(x.clone(), spec)
         out_flash, _ = attn_flash(x.clone(), spec)
 
-    torch.cuda.synchronize()
+    if device == "cuda":
+        torch.cuda.synchronize()
 
     # Benchmark Baseline (Flash only, no FHN)
     start = time.time()
-    for _ in range(100):
+    for _ in range(n_iters):
         x_baseline = x.clone()
         x_baseline.grad = None
         out_baseline, _ = attn_baseline(x_baseline, spec)
         loss = out_baseline.sum()
         loss.backward()
-    torch.cuda.synchronize()
-    time_baseline = (time.time() - start) * 1000 / 100
+    if device == "cuda":
+        torch.cuda.synchronize()
+    time_baseline = (time.time() - start) * 1000 / n_iters
 
     # Benchmark Manual Attention + FHN (old path)
     start = time.time()
-    for _ in range(100):
+    for _ in range(n_iters):
         x_manual = x.clone()
         x_manual.grad = None
         out_manual, _ = attn_manual(x_manual, spec)
         loss = out_manual.sum()
         loss.backward()
-    torch.cuda.synchronize()
-    time_manual = (time.time() - start) * 1000 / 100
+    if device == "cuda":
+        torch.cuda.synchronize()
+    time_manual = (time.time() - start) * 1000 / n_iters
 
     # Benchmark Flash Attention + Output Modulation (new path)
     start = time.time()
-    for _ in range(100):
+    for _ in range(n_iters):
         x_flash = x.clone()
         x_flash.grad = None
         out_flash, _ = attn_flash(x_flash, spec)
         loss = out_flash.sum()
         loss.backward()
-    torch.cuda.synchronize()
-    time_flash = (time.time() - start) * 1000 / 100
+    if device == "cuda":
+        torch.cuda.synchronize()
+    time_flash = (time.time() - start) * 1000 / n_iters
 
-    print(f"\nFHN Flash Fusion Benchmark (B={B}, T={T}, D={D}, H={H})")
+    print(f"\nFHN Flash Fusion Benchmark (B={B}, T={T}, D={D}, H={H}, device={device})")
     print(f"{'='*60}")
     print(f"Baseline (Flash only, no FHN):     {time_baseline:.3f} ms")
     print(f"Manual Attention + FHN (old):      {time_manual:.3f} ms")
