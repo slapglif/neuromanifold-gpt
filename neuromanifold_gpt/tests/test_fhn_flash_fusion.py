@@ -253,9 +253,9 @@ def test_pulse_widths_positive_both_paths():
 
 
 def test_backward_compatibility_flag_default():
-    """Default should be use_flash_fhn_fusion=False for backward compatibility."""
+    """Default should be use_flash_fhn_fusion=True after migration to Flash fusion."""
     attn = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2)
-    assert attn.use_flash_fhn_fusion == False
+    assert attn.use_flash_fhn_fusion == True
 
 
 def test_new_path_attn_probs_is_none():
