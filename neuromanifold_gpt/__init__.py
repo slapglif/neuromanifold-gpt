@@ -29,8 +29,11 @@ from neuromanifold_gpt.model import (
     SpectralDecomposition,
 )
 
-# Training module
-from neuromanifold_gpt.train import NeuroManifoldLightning
+# Training module (optional import)
+try:
+    from neuromanifold_gpt.train import NeuroManifoldLightning
+except ImportError:
+    NeuroManifoldLightning = None  # Lightning not available
 
 __all__ = [
     # Version

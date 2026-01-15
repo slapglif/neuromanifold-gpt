@@ -18,14 +18,29 @@ from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
-from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
+try:
+    from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
+except ImportError:
+    HierarchicalEngramMemory = None  # Module not yet implemented
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
-from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
-from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
-from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
-from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
+try:
+    from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+except ImportError:
+    HybridReasoningModule = None  # Module not yet implemented
+try:
+    from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+except ImportError:
+    ForcedDAGPlanner = None  # Module not yet implemented
+try:
+    from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+except ImportError:
+    ConsistencyImaginationModule = None  # Module not yet implemented
+try:
+    from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
+except ImportError:
+    RMSNorm = nn.LayerNorm  # Fallback to standard LayerNorm
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -193,6 +208,8 @@ class NeuroManifoldGPT(nn.Module):
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
         self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
         if self.use_hybrid_reasoning:
+            if HybridReasoningModule is None:
+                raise ImportError("HybridReasoningModule is not available. Module not yet implemented.")
             self.hybrid_reasoning = HybridReasoningModule(
                 embed_dim=config.n_embd,
                 n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
@@ -209,6 +226,8 @@ class NeuroManifoldGPT(nn.Module):
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
         self.use_dag_planner = getattr(config, 'use_dag_planner', False)
         if self.use_dag_planner:
+            if ForcedDAGPlanner is None:
+                raise ImportError("ForcedDAGPlanner is not available. Module not yet implemented.")
             self.dag_planner = ForcedDAGPlanner(
                 embed_dim=config.n_embd,
                 manifold_dim=config.manifold_dim,
@@ -219,6 +238,8 @@ class NeuroManifoldGPT(nn.Module):
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
         self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
         if self.use_hierarchical_memory:
+            if HierarchicalEngramMemory is None:
+                raise ImportError("HierarchicalEngramMemory is not available. Module not yet implemented.")
             self.hierarchical_memory = HierarchicalEngramMemory(
                 sdr_size=config.sdr_size,
                 n_active=config.sdr_n_active,
@@ -231,6 +252,8 @@ class NeuroManifoldGPT(nn.Module):
         # ConsistencyImaginationModule - Counterfactual exploration
         self.use_imagination = getattr(config, 'use_imagination', False)
         if self.use_imagination:
+            if ConsistencyImaginationModule is None:
+                raise ImportError("ConsistencyImaginationModule is not available. Module not yet implemented.")
             self.imagination = ConsistencyImaginationModule(
                 embed_dim=config.n_embd,
                 manifold_dim=config.manifold_dim,
