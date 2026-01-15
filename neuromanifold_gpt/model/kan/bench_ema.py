@@ -12,6 +12,14 @@ import torch
 import time
 from neuromanifold_gpt.model.kan.ema import ema_fft
 
+# -----------------------------------------------------------------------------
+# Configuration with defaults (can be overridden via command line)
+profile_memory = False  # enable memory profiling
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+dtype = 'float32'
+exec(open('configurator.py').read())  # overrides from command line or config file
+# -----------------------------------------------------------------------------
+
 
 def ema_naive(x: torch.Tensor, alpha: float) -> torch.Tensor:
     """
@@ -45,11 +53,11 @@ def ema_naive(x: torch.Tensor, alpha: float) -> torch.Tensor:
 
 def benchmark_ema_implementations():
     """Benchmark FFT-based parallel scan vs naive sequential EMA."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float32
+    dev = device
+    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[dtype]
 
     print(f"EMA Implementation Benchmark")
-    print(f"Device: {device}")
+    print(f"Device: {dev}")
     print(f"=" * 70)
 
     # Test configurations: varying sequence lengths
@@ -69,16 +77,16 @@ def benchmark_ema_implementations():
         print(f"\nConfig: B={B}, T={T}, D={D}")
 
         # Generate random input
-        x = torch.randn(B, T, D, device=device, dtype=dtype)
+        x = torch.randn(B, T, D, device=dev, dtype=dt)
 
         # Warmup runs
         warmup_iters = 5
         for _ in range(warmup_iters):
             _ = ema_fft(x, alpha)
-            if device == "cpu" or T <= 256:  # Skip naive for large T on GPU (too slow)
+            if dev == "cpu" or T <= 256:  # Skip naive for large T on GPU (too slow)
                 _ = ema_naive(x, alpha)
 
-        if device == "cuda":
+        if dev == "cuda":
             torch.cuda.synchronize()
 
         # Benchmark FFT-based parallel scan
@@ -86,16 +94,16 @@ def benchmark_ema_implementations():
         start = time.time()
         for _ in range(num_iters):
             h_fft = ema_fft(x, alpha)
-        if device == "cuda":
+        if dev == "cuda":
             torch.cuda.synchronize()
         time_fft = (time.time() - start) * 1000 / num_iters
 
         # Benchmark naive sequential (skip for very large T)
-        if T <= 256 or device == "cpu":
+        if T <= 256 or dev == "cpu":
             start = time.time()
             for _ in range(num_iters):
                 h_naive = ema_naive(x, alpha)
-            if device == "cuda":
+            if dev == "cuda":
                 torch.cuda.synchronize()
             time_naive = (time.time() - start) * 1000 / num_iters
 
@@ -115,14 +123,67 @@ def benchmark_ema_implementations():
             print(f"  Naive Sequential:   (skipped - too slow for T={T})")
 
 
-def benchmark_scaling():
-    """Benchmark complexity scaling with sequence length."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float32
+def benchmark_memory_usage():
+    """Benchmark memory usage: O(T) parallel scan vs O(T²) matrix approach."""
+    dev = device
+    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[dtype]
 
     print(f"\n{'=' * 70}")
-    print(f"Complexity Scaling Analysis")
-    print(f"Device: {device}")
+    print(f"Memory Complexity Analysis")
+    print(f"Device: {dev}")
+    print(f"=" * 70)
+
+    # Test memory scaling with sequence length
+    B, D = 4, 64
+    alpha = 0.9
+    T_values = [64, 128, 256, 512, 1024, 2048]
+
+    print(f"\nFixed: B={B}, D={D}")
+    print(f"Memory comparison: O(T) parallel scan vs O(T²) matrix")
+    print(f"")
+    print(f"{'T':>6}  {'O(T) Scan (MB)':>15}  {'O(T²) Matrix (MB)':>18}  {'Ratio':>8}")
+    print(f"{'-' * 60}")
+
+    for T in T_values:
+        # Calculate memory for O(T) parallel scan
+        # Memory: input (B,T,D) + output (B,T,D) + FFT buffers ~O(BTD)
+        bytes_per_element = 4 if dtype == 'float32' else 2
+        mem_scan = (2 * B * T * D * bytes_per_element) / (1024 ** 2)  # MB
+
+        # Calculate memory for O(T²) matrix approach (theoretical)
+        # Would need: (T,T) matrix for each batch/dim or similar O(T²) structure
+        mem_matrix = (T * T * bytes_per_element) / (1024 ** 2)  # MB per matrix
+        mem_matrix_total = mem_matrix * B * D  # Total if per batch/dim
+
+        ratio = mem_matrix_total / mem_scan if mem_scan > 0 else float('inf')
+
+        print(f"{T:6d}  {mem_scan:15.3f}  {mem_matrix_total:18.3f}  {ratio:8.1f}x")
+
+        # On CUDA, measure actual memory usage
+        if dev == "cuda" and torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+            x = torch.randn(B, T, D, device=dev, dtype=dt)
+            _ = ema_fft(x, alpha)
+            torch.cuda.synchronize()
+            actual_mem = torch.cuda.max_memory_allocated() / (1024 ** 2)
+            print(f"       Actual GPU memory used: {actual_mem:.3f} MB")
+
+    print(f"\n{'=' * 70}")
+    print("Memory Complexity Summary:")
+    print("  - Parallel scan (FFT): O(BTD) = O(T) memory")
+    print("  - Matrix approach:     O(BT²D) = O(T²) memory")
+    print("  - Memory savings:      O(T) factor reduction")
+    print(f"{'=' * 70}")
+
+
+def benchmark_scaling():
+    """Benchmark complexity scaling with sequence length."""
+    dev = device
+    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[dtype]
+
+    print(f"\n{'=' * 70}")
+    print(f"Time Complexity Scaling Analysis")
+    print(f"Device: {dev}")
     print(f"=" * 70)
 
     # Fixed B and D, vary T to show O(T log T) vs O(T) scaling
@@ -135,7 +196,7 @@ def benchmark_scaling():
     print(f"{'-' * 50}")
 
     for T in T_values:
-        x = torch.randn(B, T, D, device=device, dtype=dtype)
+        x = torch.randn(B, T, D, device=dev, dtype=dt)
 
         # Warmup
         for _ in range(3):
@@ -143,7 +204,7 @@ def benchmark_scaling():
             if T <= 512:  # Only warmup naive for reasonable T
                 _ = ema_naive(x, alpha)
 
-        if device == "cuda":
+        if dev == "cuda":
             torch.cuda.synchronize()
 
         # Benchmark FFT
@@ -151,7 +212,7 @@ def benchmark_scaling():
         start = time.time()
         for _ in range(num_iters):
             _ = ema_fft(x, alpha)
-        if device == "cuda":
+        if dev == "cuda":
             torch.cuda.synchronize()
         time_fft = (time.time() - start) * 1000 / num_iters
 
@@ -160,7 +221,7 @@ def benchmark_scaling():
             start = time.time()
             for _ in range(num_iters):
                 _ = ema_naive(x, alpha)
-            if device == "cuda":
+            if dev == "cuda":
                 torch.cuda.synchronize()
             time_naive = (time.time() - start) * 1000 / num_iters
             speedup = time_naive / time_fft
@@ -176,14 +237,20 @@ def main():
     print("EMA Benchmark: Parallel Scan (FFT) vs Naive Sequential")
     print("=" * 70)
 
-    benchmark_ema_implementations()
-    benchmark_scaling()
+    if profile_memory:
+        print("\n[Memory Profiling Mode]")
+        benchmark_memory_usage()
+    else:
+        benchmark_ema_implementations()
+        benchmark_scaling()
 
     print(f"\n{'=' * 70}")
     print("Summary:")
-    print("  - FFT-based parallel scan: O(T log T) complexity")
-    print("  - Naive sequential: O(T) complexity but not parallelizable")
+    print("  - FFT-based parallel scan: O(T log T) time, O(T) memory")
+    print("  - Naive sequential: O(T) time but not parallelizable, O(T) memory")
+    print("  - Matrix approach (old): O(T²) time and O(T²) memory")
     print("  - Expected: FFT faster for T > 128 due to parallelization")
+    print("  - Memory: Parallel scan uses O(T) less memory than matrix approach")
     print("=" * 70)
 
 
