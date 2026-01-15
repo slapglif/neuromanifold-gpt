@@ -3402,7 +3402,437 @@ config = NeuroManifoldConfig(
 
 **Category:** Learning rate, optimizer, and training configuration.
 
-*(This section will be expanded in subsequent subtasks)*
+This section covers parameters that control the optimization process, including:
+- AdamW optimizer settings
+- Learning rate schedules (WSD vs Cosine)
+- Gradient clipping and numerical stability
+- Early stopping and convergence criteria
+- Weight initialization strategies
+
+These parameters directly impact:
+- Training stability and convergence speed
+- Final model performance
+- Numerical precision and gradient health
+- Memory usage during training
+
+### learning_rate
+- **Type:** `float`
+- **Default:** `3e-4` (0.0003)
+- **Range:** 1e-5 to 1e-3 (typical)
+- **Description:** Peak learning rate for the optimizer
+- **Details:**
+  - Controls the step size of weight updates during training
+  - Too high: unstable training, loss divergence, NaN gradients
+  - Too low: slow convergence, getting stuck in local minima
+  - Default 3e-4 is a safe baseline from GPT-2/GPT-3
+  - MiniMax and DeepSeek use 1e-4 to 3e-4 for large models
+- **Interdependencies:**
+  - Works with `lr_schedule` to determine actual LR at each step
+  - Scaled by `warmup_ratio`, `stable_ratio`, `decay_ratio` in WSD schedule
+  - Higher batch sizes typically need higher learning rates (√batch_size scaling)
+- **Tuning Tips:**
+  - Start with 3e-4 for models up to 1B parameters
+  - Use 1e-4 for larger models (1B+)
+  - If loss diverges early: reduce by 3-10×
+  - If training is very slow: increase by 2-3×
+  - Monitor gradient norms: should be 0.1-10.0 range
+  - Use learning rate finder: try range 1e-6 to 1e-2
+
+### weight_decay
+- **Type:** `float`
+- **Default:** `0.1`
+- **Range:** 0.0 to 0.3 (typical)
+- **Description:** L2 regularization strength for AdamW
+- **Details:**
+  - Prevents overfitting by penalizing large weights
+  - AdamW decouples weight decay from gradient updates (better than L2 in Adam)
+  - Applied to all parameters except: biases, layer norms, embeddings
+  - Formula: `w = w * (1 - lr * weight_decay)`
+  - Higher values = more regularization = simpler models
+- **Interdependencies:**
+  - Interacts with `learning_rate`: effective regularization = lr × weight_decay
+  - Not applied to parameters with `.requires_grad = False`
+  - Skipped for LayerNorm/RMSNorm parameters automatically
+- **Tuning Tips:**
+  - Default 0.1 works well for most cases
+  - Increase to 0.2-0.3 if overfitting (train loss << val loss)
+  - Decrease to 0.01-0.05 for small datasets
+  - Set to 0.0 for pure supervised learning (no generalization needed)
+  - Large models (1B+) can use lower values (0.01-0.05)
+
+### beta1
+- **Type:** `float`
+- **Default:** `0.9`
+- **Range:** 0.8 to 0.95 (typical)
+- **Description:** AdamW exponential moving average coefficient for gradients
+- **Details:**
+  - Controls momentum in the optimizer
+  - Higher values = more momentum = smoother optimization
+  - Formula: `m_t = beta1 * m_{t-1} + (1 - beta1) * grad_t`
+  - Effective window size: ~1/(1 - beta1) steps (0.9 → 10 steps)
+  - Standard value across most modern optimizers
+- **Interdependencies:**
+  - Works with `beta2` to balance first/second moment estimates
+  - Lower `beta1` + higher `beta2` = more adaptive to recent gradients
+- **Tuning Tips:**
+  - Default 0.9 is robust, rarely needs tuning
+  - Use 0.8 for very noisy gradients (small batches)
+  - Use 0.95 for very stable gradients (large batches)
+  - If training oscillates: try reducing to 0.85
+
+### beta2
+- **Type:** `float`
+- **Default:** `0.95`
+- **Range:** 0.9 to 0.999 (typical)
+- **Description:** AdamW exponential moving average coefficient for squared gradients
+- **Details:**
+  - Controls adaptive learning rate per parameter
+  - Higher values = longer memory of gradient variance = more stable
+  - Formula: `v_t = beta2 * v_{t-1} + (1 - beta2) * grad_t^2`
+  - **IMPORTANT:** Default 0.95 (from MiniMax) is lower than typical 0.999
+  - Lower beta2 = faster adaptation to changing gradient scales
+  - MiniMax found 0.95 crucial for fast convergence in their experiments
+- **Interdependencies:**
+  - Must be > `beta1` for numerical stability
+  - Interacts with `optimizer_eps` for numerical stability
+- **Tuning Tips:**
+  - Use 0.95 (MiniMax/DeepSeek recommendation) for fastest convergence
+  - Use 0.98-0.99 for more stable but slower convergence
+  - Use 0.999 (Adam default) for maximum stability (but slower)
+  - If loss has high-frequency oscillations: increase to 0.99
+  - If convergence is slow: decrease to 0.9-0.95
+
+### optimizer_eps
+- **Type:** `float`
+- **Default:** `1e-15`
+- **Range:** 1e-20 to 1e-8 (typical)
+- **Description:** Epsilon for numerical stability in AdamW denominator
+- **Details:**
+  - Prevents division by zero in adaptive learning rate computation
+  - Formula: `w_update = lr * m_t / (sqrt(v_t) + eps)`
+  - **CRITICAL:** Default 1e-15 is 1 million times smaller than Adam default (1e-8)
+  - MiniMax discovered this is crucial for handling tiny gradients in large models
+  - Standard 1e-8 can mask small but important gradients
+  - Extremely small values (1e-15) allow optimizer to use full gradient information
+- **Interdependencies:**
+  - Critical for `lm_head_fp32=True` with large vocabularies
+  - Works with `grad_clip` to prevent gradient overflow
+  - Required for numerical stability with `beta2=0.95`
+- **Tuning Tips:**
+  - Use 1e-15 (default) for large models and vocabularies
+  - Use 1e-8 (Adam default) only for small models or if training is unstable
+  - If gradients vanish early (dead neurons): use 1e-15
+  - If NaN gradients appear: increase to 1e-10 or 1e-8
+  - Monitor gradient statistics: most should be > 1e-10
+
+### grad_clip
+- **Type:** `float`
+- **Default:** `1.0`
+- **Range:** 0.5 to 5.0 (typical)
+- **Description:** Maximum gradient norm for clipping
+- **Details:**
+  - Prevents exploding gradients by clipping gradient norm
+  - Method: `torch.nn.utils.clip_grad_norm_(parameters, max_norm=grad_clip)`
+  - Clips gradients if `||grad|| > grad_clip` by scaling: `grad = grad * grad_clip / ||grad||`
+  - Essential for training stability, especially with FHN dynamics
+  - Too aggressive clipping (< 0.5) slows learning
+  - Too loose clipping (> 5.0) allows instability
+- **Interdependencies:**
+  - Critical when using `use_fhn_parallel=True` (soliton waves can amplify gradients)
+  - Works with `optimizer_eps` to bracket gradient magnitudes
+  - Interacts with `learning_rate`: higher LR needs tighter clipping
+- **Tuning Tips:**
+  - Default 1.0 is safe for most cases
+  - If loss spikes occur: reduce to 0.5
+  - If training is very slow: increase to 2.0-3.0
+  - Monitor gradient norms: should be < grad_clip most of the time
+  - For large models (1B+): use 0.5-1.0
+  - For small models: can use 2.0-5.0
+
+### early_stopping_patience
+- **Type:** `int`
+- **Default:** `5`
+- **Range:** 3 to 20 (typical)
+- **Description:** Number of epochs without improvement before stopping
+- **Details:**
+  - Stops training if validation loss doesn't improve for N epochs
+  - Prevents overfitting and saves compute
+  - Tracks best validation loss and compares each epoch
+  - Works in conjunction with `use_perplexity_stopping`
+- **Interdependencies:**
+  - Only active if validation data is provided
+  - Interacts with `use_perplexity_stopping` for convergence criteria
+- **Tuning Tips:**
+  - Use 3-5 for fast iteration during development
+  - Use 10-20 for production training
+  - Disable (set to large value like 1000) for fixed-length training
+  - If model is still improving slowly: increase patience
+
+### use_perplexity_stopping
+- **Type:** `bool`
+- **Default:** `True`
+- **Description:** Whether to use perplexity-based early stopping criterion
+- **Details:**
+  - Uses perplexity (exp(loss)) instead of raw loss for stopping
+  - Perplexity is more interpretable: measures "confusion" of the model
+  - Stopping criterion: stop if perplexity doesn't improve for `early_stopping_patience` epochs
+  - More stable than raw loss for convergence detection
+- **Interdependencies:**
+  - Works with `early_stopping_patience` parameter
+  - Requires validation data to compute perplexity
+- **Tuning Tips:**
+  - Keep enabled (True) for most cases
+  - Disable if using custom loss functions
+  - Monitor both loss and perplexity curves during training
+
+### lr_schedule
+- **Type:** `str`
+- **Default:** `"wsd"`
+- **Range:** `"wsd"` or `"cosine"`
+- **Description:** Learning rate schedule type
+- **Details:**
+  - **WSD (Warmup-Stable-Decay):** MiniMax/DeepSeek style
+    - Phase 1: Linear warmup from 0 to peak LR (warmup_ratio)
+    - Phase 2: Stable at peak LR (stable_ratio)
+    - Phase 3: Linear decay to min_lr (decay_ratio)
+    - Better final loss than cosine in MiniMax experiments
+    - More stable training, easier to tune
+  - **Cosine:** Standard cosine annealing
+    - Warmup then smooth cosine decay to min_lr
+    - Used in GPT-3, most open-source models
+    - Can oscillate near end of training
+  - **Comparison:**
+    - WSD: Better final loss, more predictable
+    - Cosine: Smoother, widely used
+- **Interdependencies:**
+  - For WSD: requires `warmup_ratio`, `stable_ratio`, `decay_ratio`
+  - For Cosine: only uses `warmup_ratio`
+  - Determines actual LR from `learning_rate` parameter
+- **Tuning Tips:**
+  - Use "wsd" (default) for best results (MiniMax/DeepSeek recommendation)
+  - Use "cosine" for compatibility with existing codebases
+  - WSD ratios: warmup=0.05, stable=0.65, decay=0.30 (proven defaults)
+
+### warmup_ratio
+- **Type:** `float`
+- **Default:** `0.05` (5% of training)
+- **Range:** 0.01 to 0.15 (typical)
+- **Description:** Fraction of training steps for LR warmup
+- **Details:**
+  - Learning rate increases linearly from 0 to peak during warmup
+  - Prevents early instability from large gradient updates
+  - Critical for large models and large batch sizes
+  - Formula: `lr_t = learning_rate * (t / warmup_steps)` for t < warmup_steps
+  - 5% is a good default (e.g., 500 steps for 10K total steps)
+- **Interdependencies:**
+  - Used by both "wsd" and "cosine" schedules
+  - For WSD: must satisfy `warmup_ratio + stable_ratio + decay_ratio ≈ 1.0`
+- **Tuning Tips:**
+  - Use 0.05 (5%) for most cases
+  - Use 0.10 (10%) for very large models (10B+) or large batches
+  - Use 0.01 (1%) for small models or small datasets
+  - If loss explodes early: increase warmup
+  - If training is slow early: decrease warmup
+
+### stable_ratio
+- **Type:** `float`
+- **Default:** `0.65` (65% of training)
+- **Range:** 0.5 to 0.8 (typical)
+- **Description:** Fraction of training steps at peak LR (WSD schedule only)
+- **Details:**
+  - Only used with `lr_schedule="wsd"`
+  - LR stays constant at peak after warmup
+  - Allows model to converge at optimal learning rate
+  - MiniMax found 65% stable phase gives best results
+  - Longer stable phase = more training at peak LR
+- **Interdependencies:**
+  - Must satisfy: `warmup_ratio + stable_ratio + decay_ratio ≈ 1.0`
+  - Only relevant for WSD schedule
+- **Tuning Tips:**
+  - Use 0.65 (default) for balanced training
+  - Use 0.70-0.80 for more training at peak LR
+  - Use 0.50-0.60 for longer decay phase
+  - MiniMax recommendation: 65% is optimal
+
+### decay_ratio
+- **Type:** `float`
+- **Default:** `0.30` (30% of training)
+- **Range:** 0.2 to 0.4 (typical)
+- **Description:** Fraction of training steps for LR decay (WSD schedule only)
+- **Details:**
+  - Only used with `lr_schedule="wsd"`
+  - LR decays linearly from peak to min_lr (typically peak / 10)
+  - Allows fine-tuning at lower learning rates
+  - Improves final convergence
+  - Formula: `lr_t = learning_rate * (1 - (t - stable_end) / decay_steps * 0.9)` (decays to 0.1× peak)
+- **Interdependencies:**
+  - Must satisfy: `warmup_ratio + stable_ratio + decay_ratio ≈ 1.0`
+  - Only relevant for WSD schedule
+- **Tuning Tips:**
+  - Use 0.30 (default) for balanced training
+  - Use 0.40 for longer fine-tuning phase
+  - Use 0.20 for shorter decay
+  - Total should be ~1.0: e.g., 0.05 + 0.65 + 0.30 = 1.00
+
+### label_smoothing
+- **Type:** `float`
+- **Default:** `0.0` (disabled)
+- **Range:** 0.0 to 0.2 (typical)
+- **Description:** Label smoothing factor for cross-entropy loss
+- **Details:**
+  - Softens one-hot targets to prevent overconfident predictions
+  - Formula: `target_smooth = target * (1 - smoothing) + smoothing / vocab_size`
+  - Improves generalization by preventing extreme confidence
+  - **Critical for large vocabularies (100K+):**
+    - Qwen3 (151K vocab) requires smoothing=0.15-0.2
+    - Without it: model becomes overconfident, poor calibration
+  - Small smoothing (0.1): 90% on correct token, 10% distributed
+  - Zero smoothing: 100% on correct token (standard one-hot)
+- **Interdependencies:**
+  - **CRITICAL:** Use with `lm_head_fp32=True` for large vocab
+  - More important as `vocab_size` increases
+  - Interacts with model confidence and calibration
+- **Tuning Tips:**
+  - Use 0.0 for small vocab (< 50K) unless overfitting
+  - Use 0.1 for medium vocab (50K-100K)
+  - Use 0.15-0.2 for large vocab (150K+) like Qwen3
+  - If validation perplexity >> train perplexity: increase smoothing
+  - If model outputs are too uniform: decrease smoothing
+
+### lm_head_fp32
+- **Type:** `bool`
+- **Default:** `True`
+- **Description:** Keep language model head (final projection) in FP32 precision
+- **Details:**
+  - Forces `lm_head` (vocab projection layer) to use FP32 even if model is in FP16/BF16
+  - **Critical for numerical stability with large vocabularies:**
+    - Prevents gradient underflow/overflow in final layer
+    - vocab_size × n_embd matrix is largest in model
+    - FP16 range: ±65504, can overflow with 151K vocab
+    - FP32 range: ±3.4e38, safe for any vocab size
+  - MiniMax and DeepSeek both use FP32 lm_head
+  - Minimal performance impact (only one layer)
+  - Essential for Qwen3-style 151K vocabulary
+- **Interdependencies:**
+  - **CRITICAL:** Enable for `vocab_size > 100K`
+  - Works with `label_smoothing` for stable training
+  - Required when using mixed precision (AMP) with large vocab
+- **Tuning Tips:**
+  - Keep enabled (True) by default - safety first
+  - Only disable for small vocab (< 50K) on memory-constrained devices
+  - If you see NaN loss with large vocab: ensure this is True
+  - If lm_head gradients are NaN: must be True
+
+### init_std
+- **Type:** `float`
+- **Default:** `0.006`
+- **Range:** 0.002 to 0.02 (typical)
+- **Description:** Standard deviation for weight initialization
+- **Details:**
+  - Controls the scale of random weight initialization
+  - DeepSeek-V3 style: uses 0.006 instead of typical 0.02
+  - Smaller init = faster early convergence = less wandering
+  - Formula: `nn.init.normal_(weight, mean=0.0, std=init_std)`
+  - Applied to all Linear/Conv layers at initialization
+  - **Theory:** Smaller weights → smaller initial activations → more stable gradients
+- **Interdependencies:**
+  - Interacts with `learning_rate`: smaller init may need higher LR initially
+  - Works with `weight_decay`: smaller init = less regularization needed
+- **Tuning Tips:**
+  - Use 0.006 (default) for DeepSeek-style fast convergence
+  - Use 0.02 for traditional GPT-style initialization
+  - Use 0.010 for compromise between the two
+  - If loss is unstable early: decrease to 0.004
+  - If convergence is slow early: increase to 0.010-0.02
+  - Monitor early loss curve: should decrease steadily from step 1
+
+### Summary Table: Training Parameters
+
+| Parameter | Default | Purpose | Key Consideration |
+|-----------|---------|---------|-------------------|
+| `learning_rate` | 3e-4 | Peak LR | Scale with model size |
+| `weight_decay` | 0.1 | Regularization | Lower for large models |
+| `beta1` | 0.9 | Momentum | Rarely needs tuning |
+| `beta2` | 0.95 | Adaptive LR | MiniMax: lower than standard |
+| `optimizer_eps` | 1e-15 | Numerical stability | MiniMax: much smaller |
+| `grad_clip` | 1.0 | Gradient clipping | Critical for FHN dynamics |
+| `lr_schedule` | "wsd" | LR schedule | WSD > cosine (MiniMax) |
+| `warmup_ratio` | 0.05 | Warmup phase | 5% of training |
+| `stable_ratio` | 0.65 | Stable phase (WSD) | 65% at peak LR |
+| `decay_ratio` | 0.30 | Decay phase (WSD) | 30% decay to min |
+| `label_smoothing` | 0.0 | Confidence regularization | 0.15-0.2 for 150K+ vocab |
+| `lm_head_fp32` | True | Numerical precision | Critical for large vocab |
+| `init_std` | 0.006 | Weight initialization | DeepSeek: smaller = faster |
+
+### WSD Schedule Visualization
+
+```
+Learning Rate vs Training Progress (WSD Schedule)
+
+learning_rate (3e-4) ┤         ╭─────────────────────────────╮
+                     │        ╱                               ╲
+                     │       ╱                                 ╲
+                     │      ╱                                   ╲
+                     │     ╱                                     ╲
+                     │    ╱                                       ╲
+                     │   ╱                                         ╲
+min_lr (3e-5)        ┤  ╱                                           ╲___
+                     └──┴─────────────────────────────────────────────┴──>
+                     0%  5%                                   70%    100%
+                        ←→   ←──────────────────────────────→  ←────→
+                      Warmup        Stable (65%)              Decay (30%)
+                       (5%)
+```
+
+### Common Training Configurations
+
+**Stable Training (Default):**
+```python
+config = NeuroManifoldConfig(
+    learning_rate=3e-4,
+    weight_decay=0.1,
+    beta2=0.95,           # MiniMax: fast adaptation
+    optimizer_eps=1e-15,  # MiniMax: tiny gradient handling
+    grad_clip=1.0,
+    lr_schedule="wsd",    # MiniMax: better than cosine
+    warmup_ratio=0.05,
+    stable_ratio=0.65,
+    decay_ratio=0.30,
+)
+```
+
+**Fast Convergence:**
+```python
+config = NeuroManifoldConfig(
+    learning_rate=6e-4,   # 2× higher
+    weight_decay=0.05,    # Lower regularization
+    beta2=0.9,            # Faster adaptation
+    grad_clip=0.5,        # Tighter clipping
+    init_std=0.004,       # Smaller init
+)
+```
+
+**Large Vocabulary (Qwen3-style):**
+```python
+config = NeuroManifoldConfig(
+    vocab_size=151936,
+    label_smoothing=0.15,     # Critical for large vocab
+    lm_head_fp32=True,        # Critical for stability
+    learning_rate=1e-4,       # Lower LR for stability
+    optimizer_eps=1e-15,      # Handle tiny gradients
+)
+```
+
+**Maximum Stability:**
+```python
+config = NeuroManifoldConfig(
+    learning_rate=1e-4,   # Lower LR
+    weight_decay=0.2,     # More regularization
+    beta2=0.99,           # More stable
+    grad_clip=0.5,        # Aggressive clipping
+    optimizer_eps=1e-8,   # Standard epsilon
+)
+```
 
 ---
 
