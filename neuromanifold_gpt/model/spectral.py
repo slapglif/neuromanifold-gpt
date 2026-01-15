@@ -149,11 +149,12 @@ class FastSpectralAttention(nn.Module):
     computes attention there, and projects back. Total: O(n·k + k²).
     """
 
-    def __init__(self, embed_dim: int, n_eigenvectors: int = 32, n_heads: int = 8):
+    def __init__(self, embed_dim: int, n_eigenvectors: int = 32, n_heads: int = 8, chunk_size: int = 256):
         super().__init__()
         self.n_heads = n_heads
         self.head_dim = embed_dim // n_heads
         self.n_eig = n_eigenvectors
+        self.chunk_size = chunk_size
 
         # Project to spectral query/key/value
         self.to_qkv = nn.Linear(embed_dim, 3 * n_eigenvectors * n_heads, bias=False)
