@@ -8,7 +8,7 @@ Based on the insight that EMA is a discrete convolution: h[t] = Σ_k x[k]·α·(
 Classes:
     - DampedEMA: Base single-channel EMA using parallel scan
     - MultiHeadDampedEMA: Multi-head variant with vectorized head processing
-    - CEMA: Causal EMA wrapper (coming in subtask-2-3)
+    - CEMA: Causal EMA wrapper with explicit dimension parameter
 
 Example:
     >>> ema = DampedEMA(alpha=0.9)
@@ -387,3 +387,90 @@ class MultiHeadDampedEMA(nn.Module):
             f'num_heads={self.num_heads}, head_dim={self.head_dim}, '
             f'alpha={alpha_str}, eps={self.eps}'
         )
+
+
+class CEMA(nn.Module):
+    """
+    Causal Exponential Moving Average (CEMA) using parallel scan.
+
+    A simplified wrapper around DampedEMA with explicit dimension parameter.
+    Ensures causality: each timestep only depends on current and previous inputs.
+
+    Uses FFT-based parallel scan for O(T log T) complexity instead of O(T²).
+
+    Args:
+        dim: Feature dimension (D)
+        alpha: Smoothing factor (0 < alpha <= 1). Can be:
+            - float: Fixed damping (stored as buffer)
+            - 'learnable': Trainable parameter initialized to 0.9
+        eps: Numerical stability epsilon (default: 1e-6)
+
+    Input:
+        x: (B, T, D) - Batch, Time, Channels
+
+    Output:
+        h: (B, T, D) - Causal EMA smoothed sequence
+
+    Example:
+        >>> cema = CEMA(dim=64, alpha=0.9)
+        >>> x = torch.randn(2, 10, 64)
+        >>> h = cema(x)
+        >>> h.shape
+        torch.Size([2, 10, 64])
+
+        >>> # Learnable alpha
+        >>> cema = CEMA(dim=64, alpha='learnable')
+        >>> h = cema(x)
+        >>> # cema.ema.alpha_logit is a trainable parameter
+
+    Complexity:
+        Time: O(T log T * D)
+        Space: O(T * D)
+
+    Note:
+        The underlying ema_fft implementation is inherently causal - the
+        exponential kernel only looks backward in time (τ ≥ 0).
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        alpha: Union[float, str] = 0.9,
+        eps: float = 1e-6
+    ):
+        super().__init__()
+        self.dim = dim
+        self.eps = eps
+
+        # Delegate to DampedEMA for the actual computation
+        self.ema = DampedEMA(alpha=alpha, eps=eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Apply causal EMA.
+
+        Args:
+            x: (B, T, D) input sequence
+
+        Returns:
+            h: (B, T, D) causally smoothed sequence
+
+        Raises:
+            ValueError: If input dimension doesn't match expected dim
+        """
+        B, T, D = x.shape
+
+        # Validate input dimension
+        if D != self.dim:
+            raise ValueError(
+                f"Input dimension {D} doesn't match expected dim {self.dim}"
+            )
+
+        # Apply causal EMA
+        h = self.ema(x)
+
+        return h
+
+    def extra_repr(self) -> str:
+        """String representation for print(module)."""
+        return f'dim={self.dim}, alpha={self.ema.extra_repr()}'
