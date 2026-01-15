@@ -414,7 +414,282 @@ config = NeuroManifoldConfig(
 
 **Category:** Learned Riemannian geometry and spectral decomposition.
 
-*(This section will be expanded in subsequent subtasks)*
+The manifold projection module learns a low-dimensional Riemannian manifold from token embeddings, enabling geometric semantic relationships. Spectral decomposition via eigendecomposition provides attention with global structural information about the data geometry.
+
+**Key Concepts:**
+- **Manifold Projection:** Maps high-dimensional embeddings to a learned manifold structure
+- **Spectral Decomposition:** Eigendecomposition of the Laplacian for global geometric features
+- **E7 Subgroup Chain:** Multi-scale hierarchical manifold (E7 → E6 → D5) for coarse-to-fine processing
+- **Riemannian Metric:** Learned distance metric that captures semantic geometry
+
+**Mathematical Background:**
+- Manifold learning techniques (Isomap, Laplacian Eigenmaps)
+- Spectral graph theory for attention kernels
+- E7 exceptional Lie group and its subgroup decomposition
+- Riemannian geometry for semantic space
+
+### manifold_dim
+- **Type:** `int`
+- **Default:** `64`
+- **Range:** 8-256 (typical: 32-128)
+- **Description:** Dimension of the learned manifold space
+- **Details:**
+  - Target dimensionality for manifold projection (typically much lower than `n_embd`)
+  - Determines the geometric complexity the model can capture
+  - Larger manifold = more expressive geometry but higher computation
+  - Acts as a geometric bottleneck that encourages semantic structure
+  - Used in single-scale mode (when `use_multiscale_manifold=False`)
+- **Interdependencies:**
+  - Should be ≤ `n_embd` (typically `n_embd // 4` to `n_embd // 2`)
+  - In multi-scale mode, replaced by `multiscale_fine_dim` (E7 level)
+  - Affects memory and computation in manifold projection layers
+  - Larger values require more neighbors (`n_neighbors`) for proper manifold structure
+- **Tuning Tips:**
+  - Use 32-64 for small models (n_embd=384)
+  - Use 64-128 for medium/large models (n_embd=768+)
+  - Too small (<16): Loses semantic information
+  - Too large (>256): Loses geometric benefits, approaches full embedding
+  - Balance: `manifold_dim ≈ n_embd // 4` to `n_embd // 2`
+
+### n_neighbors
+- **Type:** `int`
+- **Default:** `15`
+- **Range:** 5-50 (typical: 10-30)
+- **Description:** Number of neighbors for manifold construction
+- **Details:**
+  - k-nearest neighbors used to build the manifold graph structure
+  - Determines local vs global manifold geometry
+  - Small k: Local structure, disconnected manifold regions
+  - Large k: Global structure, over-smoothed manifold
+  - Used in graph Laplacian construction for spectral decomposition
+- **Interdependencies:**
+  - Must be < batch_size (or sequence length in online setting)
+  - Larger `manifold_dim` benefits from more neighbors
+  - Affects computational cost: O(n_neighbors × manifold_dim)
+  - Interacts with `spectral_sigma` for kernel bandwidth
+- **Tuning Tips:**
+  - Use 10-15 for small manifolds (dim 32-64)
+  - Use 20-30 for large manifolds (dim 128+)
+  - Increase if manifold appears disconnected (multiple components)
+  - Decrease if training is slow or manifold is over-smoothed
+  - Typical sweet spot: 15-20 for most configurations
+
+### n_eigenvectors
+- **Type:** `int`
+- **Default:** `32`
+- **Range:** 4-128 (typical: 16-64)
+- **Description:** Number of eigenvectors for spectral attention
+- **Details:**
+  - Number of smallest eigenvectors of the graph Laplacian to compute
+  - These eigenvectors form a spectral basis capturing global manifold geometry
+  - Used as positional/structural features in attention mechanism
+  - More eigenvectors = richer geometric information but higher cost
+  - Eigendecomposition is O(manifold_dim³), cached and reused
+- **Interdependencies:**
+  - Must be ≤ `manifold_dim` (cannot exceed manifold dimensionality)
+  - Typically `n_eigenvectors ≈ manifold_dim // 2` to `manifold_dim`
+  - Affects attention computation: each head uses spectral features
+  - Larger values provide more geometric detail but diminishing returns
+- **Tuning Tips:**
+  - Use `manifold_dim // 2` as a starting point
+  - Use `manifold_dim` for maximum geometric information
+  - Reduce to 8-16 if eigendecomposition is a bottleneck
+  - Minimum 4-8 eigenvectors needed for meaningful spectral features
+  - Beyond 64 eigenvectors: minimal gains, higher memory
+
+### spectral_sigma
+- **Type:** `float`
+- **Default:** `1.0`
+- **Range:** 0.1-10.0 (typical: 0.5-2.0)
+- **Description:** Bandwidth parameter for spectral kernel
+- **Details:**
+  - Controls the heat kernel bandwidth in spectral decomposition
+  - Larger σ: Smoother manifold, global structure emphasized
+  - Smaller σ: Sharper manifold, local structure emphasized
+  - Used in Gaussian kernel: exp(-||x_i - x_j||² / (2σ²))
+  - Affects the scale of geometric relationships in the manifold
+- **Interdependencies:**
+  - Interacts with `n_neighbors` (both control locality)
+  - Should be tuned relative to embedding scale/variance
+  - Affects gradient flow through manifold layers
+  - Larger `manifold_dim` may require larger σ
+- **Tuning Tips:**
+  - Start with 1.0 (default)
+  - Increase to 1.5-2.0 if manifold is too noisy/disconnected
+  - Decrease to 0.5-0.7 if manifold is too smooth/loses detail
+  - Monitor manifold visualization if available
+  - Typical range: 0.8-1.5 for most configurations
+
+### use_multiscale_manifold
+- **Type:** `bool`
+- **Default:** `True`
+- **Description:** Enable multi-scale manifold hierarchy (E7 subgroup chain)
+- **Details:**
+  - When `True`: Uses 3-level manifold hierarchy (E7 → E6 → D5)
+  - When `False`: Uses single-scale manifold with `manifold_dim`
+  - Multi-scale enables coarse-to-fine geometric processing
+  - Inspired by E7 exceptional Lie group subgroup decomposition
+  - Each scale captures different levels of semantic structure
+- **Interdependencies:**
+  - When `True`, uses `multiscale_coarse_dim`, `multiscale_medium_dim`, `multiscale_fine_dim`
+  - When `False`, uses `manifold_dim` only
+  - Increases parameter count (3 projection layers instead of 1)
+  - Affects memory and computation proportionally
+- **Tuning Tips:**
+  - Enable for richer geometric representations (recommended)
+  - Disable for faster training or if memory is tight
+  - Multi-scale shows benefits on complex semantic tasks
+  - Single-scale is simpler and faster for baseline experiments
+
+### multiscale_coarse_dim
+- **Type:** `int`
+- **Default:** `16`
+- **Range:** 4-64 (typical: 8-32)
+- **Description:** Coarse-scale manifold dimension (D5 level - global patterns)
+- **Details:**
+  - Lowest resolution in the E7 → E6 → D5 hierarchy
+  - Captures global, document-level semantic patterns
+  - Smallest dimensionality: strongest geometric compression
+  - D5 refers to the Lie algebra subgroup in the E7 chain
+  - Only active when `use_multiscale_manifold=True`
+- **Interdependencies:**
+  - Should be: `multiscale_coarse_dim < multiscale_medium_dim < multiscale_fine_dim`
+  - Typical ratio: `1:2:4` (e.g., 16:32:64)
+  - All must be ≤ `n_embd`
+- **Tuning Tips:**
+  - Use 8-16 for small models
+  - Use 16-32 for medium/large models
+  - Larger values: more global capacity, less compression
+  - Minimum 4-8 to capture meaningful global structure
+
+### multiscale_medium_dim
+- **Type:** `int`
+- **Default:** `32`
+- **Range:** 8-128 (typical: 16-64)
+- **Description:** Medium-scale manifold dimension (E6 level - phrase patterns)
+- **Details:**
+  - Middle resolution in the E7 → E6 → D5 hierarchy
+  - Captures phrase-level and sentence-level semantic patterns
+  - E6 refers to the exceptional Lie group in the subgroup chain
+  - Balances global and local geometric information
+  - Only active when `use_multiscale_manifold=True`
+- **Interdependencies:**
+  - Should be: `multiscale_coarse_dim < multiscale_medium_dim < multiscale_fine_dim`
+  - Typically 2× `multiscale_coarse_dim`
+  - Affects mid-level representation capacity
+- **Tuning Tips:**
+  - Use 16-32 for small models
+  - Use 32-64 for medium/large models
+  - Should be roughly halfway between coarse and fine dimensions
+  - Common pattern: 16 (coarse), 32 (medium), 64 (fine)
+
+### multiscale_fine_dim
+- **Type:** `int`
+- **Default:** `64`
+- **Range:** 16-256 (typical: 32-128)
+- **Description:** Fine-scale manifold dimension (E7 level - token patterns)
+- **Details:**
+  - Highest resolution in the E7 → E6 → D5 hierarchy
+  - Captures token-level and word-level semantic patterns
+  - E7 refers to the exceptional Lie group (top of the chain)
+  - Most detailed geometric representation
+  - Replaces `manifold_dim` when `use_multiscale_manifold=True`
+  - Only active when `use_multiscale_manifold=True`
+- **Interdependencies:**
+  - Should be: `multiscale_coarse_dim < multiscale_medium_dim < multiscale_fine_dim`
+  - Typically 4× `multiscale_coarse_dim` and 2× `multiscale_medium_dim`
+  - Should be ≤ `n_embd` (typically `n_embd // 4` to `n_embd // 2`)
+- **Tuning Tips:**
+  - Use 32-64 for small models (n_embd=384)
+  - Use 64-128 for medium/large models (n_embd=768+)
+  - Largest of the three scales: most expressive
+  - Common pattern: 16 (coarse), 32 (medium), 64 (fine)
+
+### ortho_weight
+- **Type:** `float`
+- **Default:** `0.01`
+- **Range:** 0.0-0.1 (typical: 0.001-0.05)
+- **Description:** Spectral regularization weight for orthogonality
+- **Details:**
+  - Regularizes eigenvector orthogonality during training
+  - Prevents eigenvector collapse (multiple eigenvectors converging to same direction)
+  - Adds penalty: `ortho_weight * ||V^T V - I||²` where V is eigenvector matrix
+  - Essential for stable spectral decomposition
+  - Too high: Over-constrains learning, limits flexibility
+  - Too low: Eigenvectors may collapse, losing spectral diversity
+- **Interdependencies:**
+  - Only active when manifold/spectral layers are enabled
+  - Disabled if `skip_manifold_spectral=True`
+  - Interacts with overall learning rate
+  - Should scale inversely with `n_eigenvectors`
+- **Tuning Tips:**
+  - Start with 0.01 (default)
+  - Increase to 0.02-0.05 if eigenvectors collapse (check via logging)
+  - Decrease to 0.001-0.005 if training is too constrained
+  - Set to 0.0 to disable (not recommended)
+  - Monitor eigenvalue spectrum for diversity
+
+### skip_manifold_spectral
+- **Type:** `bool`
+- **Default:** `False`
+- **Description:** Skip manifold/spectral projection for faster training
+- **Details:**
+  - When `True`: Completely bypasses manifold and spectral computations
+  - When `False`: Full manifold projection and spectral attention enabled
+  - Useful for ablation studies or fast baseline comparisons
+  - Reduces model to closer-to-standard transformer architecture
+  - Disables: manifold projection, spectral decomposition, geometric attention
+- **Interdependencies:**
+  - When `True`, all manifold/spectral parameters become inactive
+  - Significantly reduces computation and memory usage
+  - Part of `fast_mode` optimization suite
+- **Tuning Tips:**
+  - Enable for fast iteration during debugging
+  - Disable for full NeuroManifold capabilities (recommended)
+  - Use for A/B testing: manifold vs standard architecture
+  - Speed improvement: 20-30% depending on manifold dimensions
+
+---
+
+**Example Multi-Scale Manifold Configuration:**
+
+```python
+# E7 subgroup chain: coarse-to-fine geometric hierarchy
+config = NeuroManifoldConfig(
+    use_multiscale_manifold=True,
+    multiscale_coarse_dim=16,    # D5: Global patterns
+    multiscale_medium_dim=32,    # E6: Phrase patterns
+    multiscale_fine_dim=64,      # E7: Token patterns
+    n_neighbors=20,              # Sufficient for multi-scale
+    n_eigenvectors=32,           # Rich spectral features
+    spectral_sigma=1.0,          # Balanced kernel bandwidth
+    ortho_weight=0.01,           # Prevent eigenvector collapse
+)
+```
+
+**Example Single-Scale Manifold Configuration:**
+
+```python
+# Simpler, faster single-scale manifold
+config = NeuroManifoldConfig(
+    use_multiscale_manifold=False,
+    manifold_dim=64,             # Single geometric scale
+    n_neighbors=15,              # Standard k-NN
+    n_eigenvectors=32,           # Standard spectral features
+    spectral_sigma=1.0,          # Default bandwidth
+    ortho_weight=0.01,           # Standard regularization
+)
+```
+
+**Example Fast Mode (Skip Manifold):**
+
+```python
+# Disable manifold/spectral for maximum speed
+config = NeuroManifoldConfig(
+    skip_manifold_spectral=True,  # Bypass all manifold computation
+    # All manifold parameters ignored
+)
+```
 
 ---
 
