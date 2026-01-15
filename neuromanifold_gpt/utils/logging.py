@@ -1,0 +1,216 @@
+"""
+Unified logging module with rich-formatted output.
+
+Integrates loguru's structured logging with rich's formatting capabilities
+for consistent, beautiful console output across all scripts.
+
+Usage:
+    from neuromanifold_gpt.utils.logging import get_logger
+
+    logger = get_logger(__name__)
+    logger.info("Starting training")
+    logger.metric("loss", 0.42)
+    logger.progress("Training", 50, 100)
+    logger.section("Evaluation Results")
+"""
+
+import sys
+from typing import Optional, Any
+from loguru import logger as loguru_logger
+from rich.console import Console
+from rich.theme import Theme
+
+
+# Initialize rich console with custom theme
+_console = Console(
+    theme=Theme({
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "bold red",
+        "metric": "bold green",
+        "progress": "yellow",
+        "section": "bold blue",
+    })
+)
+
+
+class RichLogger:
+    """
+    Logger that combines loguru with rich formatting.
+
+    Provides standard logging methods (info, warning, error, debug) plus
+    specialized methods for metrics, progress tracking, and section headers.
+    """
+
+    def __init__(self, name: str):
+        """
+        Initialize logger with a name.
+
+        Args:
+            name: Logger name (typically __name__ or module name)
+        """
+        self.name = name
+        self._logger = loguru_logger
+
+    def info(self, message: str, **kwargs: Any) -> None:
+        """
+        Log info message.
+
+        Args:
+            message: Log message
+            **kwargs: Additional context to include
+        """
+        self._logger.info(f"[{self.name}] {message}", **kwargs)
+
+    def warning(self, message: str, **kwargs: Any) -> None:
+        """
+        Log warning message.
+
+        Args:
+            message: Log message
+            **kwargs: Additional context to include
+        """
+        self._logger.warning(f"[{self.name}] {message}", **kwargs)
+
+    def error(self, message: str, **kwargs: Any) -> None:
+        """
+        Log error message.
+
+        Args:
+            message: Log message
+            **kwargs: Additional context to include
+        """
+        self._logger.error(f"[{self.name}] {message}", **kwargs)
+
+    def debug(self, message: str, **kwargs: Any) -> None:
+        """
+        Log debug message.
+
+        Args:
+            message: Log message
+            **kwargs: Additional context to include
+        """
+        self._logger.debug(f"[{self.name}] {message}", **kwargs)
+
+    def metric(self, name: str, value: float, unit: str = "", **kwargs: Any) -> None:
+        """
+        Log a metric with structured output and rich formatting.
+
+        Args:
+            name: Metric name
+            value: Metric value
+            unit: Optional unit string (e.g., "ms", "%", "tokens/s")
+            **kwargs: Additional metadata
+        """
+        unit_str = f" {unit}" if unit else ""
+        formatted_value = f"{value:.4f}" if isinstance(value, float) else str(value)
+
+        _console.print(
+            f"[metric]METRIC[/metric] {name}: [bold green]{formatted_value}{unit_str}[/bold green]"
+        )
+
+        # Also log to loguru for file/structured logging
+        self._logger.info(f"METRIC {name}={formatted_value}{unit_str}", **kwargs)
+
+    def progress(self, task: str, current: int, total: int) -> None:
+        """
+        Log progress information with percentage.
+
+        Args:
+            task: Task name/description
+            current: Current step/iteration
+            total: Total steps/iterations
+        """
+        percentage = (current / total) * 100 if total > 0 else 0
+
+        _console.print(
+            f"[progress]PROGRESS[/progress] {task}: "
+            f"[bold]{current}/{total}[/bold] ([bold cyan]{percentage:.1f}%[/bold cyan])"
+        )
+
+        # Also log to loguru
+        self._logger.info(f"PROGRESS {task} {current}/{total} ({percentage:.1f}%)")
+
+    def section(self, title: str) -> None:
+        """
+        Print a visual section break with title.
+
+        Args:
+            title: Section title
+        """
+        _console.rule(f"[section]{title}[/section]")
+
+        # Also log to loguru for file output
+        self._logger.info(f"=== {title} ===")
+
+    def bind(self, **kwargs: Any) -> "RichLogger":
+        """
+        Bind context to logger (for structured logging).
+
+        Args:
+            **kwargs: Context key-value pairs
+
+        Returns:
+            Self for chaining
+        """
+        self._logger = self._logger.bind(**kwargs)
+        return self
+
+
+def get_logger(name: str) -> RichLogger:
+    """
+    Get a configured logger instance.
+
+    Args:
+        name: Logger name (typically __name__ or module name)
+
+    Returns:
+        Configured RichLogger instance with rich formatting
+
+    Example:
+        >>> logger = get_logger(__name__)
+        >>> logger.info("Starting process")
+        >>> logger.metric("accuracy", 0.95, unit="%")
+    """
+    return RichLogger(name)
+
+
+def configure_logging(
+    level: str = "INFO",
+    format: Optional[str] = None,
+    sink: Any = sys.stderr,
+) -> None:
+    """
+    Configure global logging settings.
+
+    Args:
+        level: Log level (DEBUG, INFO, WARNING, ERROR)
+        format: Optional custom format string for loguru
+        sink: Output sink (default: stderr)
+
+    Example:
+        >>> configure_logging(level="DEBUG")
+        >>> logger = get_logger(__name__)
+    """
+    # Remove default loguru handler
+    loguru_logger.remove()
+
+    # Add configured handler
+    if format is None:
+        # Default format with time, level, and message
+        format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+            "<level>{level: <8}</level> | "
+            "<level>{message}</level>"
+        )
+
+    loguru_logger.add(
+        sink,
+        format=format,
+        level=level,
+        colorize=True,
+    )
+
+
+# Configure default logging on module import
+configure_logging()
