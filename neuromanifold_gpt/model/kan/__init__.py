@@ -34,6 +34,9 @@ from .faster import (
     replace_linear_with_fasterkan,
 )
 
+# EMA (Exponential Moving Average)
+from .ema import MultiHeadDampedEMA, CEMA
+
 __all__ = [
     # FasterKAN (default)
     "FasterKANLayer",
@@ -47,4 +50,7 @@ __all__ = [
     # Chebyshev KAN
     "ChebyKANLinear",
     "ChebyKANFFN",
+    # EMA
+    "MultiHeadDampedEMA",
+    "CEMA",
 ]
