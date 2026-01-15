@@ -175,7 +175,7 @@ pip install -e .
 
 ## Quick Start
 
-### Training on Shakespeare (Character-Level)
+### 1. Training on Shakespeare (Character-Level)
 
 The fastest way to see NeuroManifoldGPT in action is to train on the Shakespeare character dataset:
 
@@ -183,99 +183,222 @@ The fastest way to see NeuroManifoldGPT in action is to train on the Shakespeare
 # Prepare data
 python data/shakespeare_char/prepare.py
 
-# Train NeuroManifoldGPT
-python train.py --config neuromanifold_gpt/config/training/train_neuromanifold_shakespeare.py
+# Train with Shakespeare preset
+python train.py --config neuromanifold_gpt/config/presets/shakespeare_char.py
 ```
 
-This trains a small NeuroManifoldGPT (4 layers, 4 heads, 128 dims) with:
-- SDR encoding (1024-dim sparse space)
-- FHN Attention (2 integration steps)
-- WaveKAN with DoG wavelets
-- Manifold projections (32-dim)
+This preset (`neuromanifold_gpt/config/presets/shakespeare_char.py`) trains a compact NeuroManifoldGPT with:
+- **Model**: 6 layers, 6 heads, 384 embedding dim
+- **NeuroManifold features**: SDR encoding (1024-dim), FHN Attention, WaveKAN, Manifold projections (64-dim)
+- **Training**: 5,000 iterations, batch size 64
+- **Time**: ~10-20 minutes on a single GPU
 
-On a single GPU, this takes about 10-20 minutes and achieves competitive loss with standard GPT.
+**Expected output:**
+```
+Epoch 0: 100%|████████| 5000/5000 [15:30<00:00, 5.38it/s, loss=1.2, v_num=0]
+```
 
-### Sampling from Trained Model
+### 2. Sampling from a Trained Model
+
+Generate text using a trained model:
 
 ```bash
-python sample.py --out_dir=out-neuromanifold-shakespeare --num_samples=5 --max_new_tokens=500
+python sample.py \
+  --out_dir=out-neuromanifold-shakespeare \
+  --start="\n" \
+  --num_samples=5 \
+  --max_new_tokens=500 \
+  --temperature=0.8 \
+  --top_k=200
 ```
 
-Example output:
+**Example output:**
 ```
 DUKE VINCENTIO:
-The manifold streams of thought converge upon
-The topological linking of our fates, dear friend,
-As soliton waves through neural manifolds propagate...
+What say you to this part of this night?
+
+First Citizen:
+The king hath cause to think of us,
+And yet the manifold ways of thought converge
+Upon the great decision of our time...
+---------------
 ```
 
-### Training Configurations
+**Sampling Parameters:**
+- `--out_dir`: Directory containing the trained model checkpoint
+- `--start`: Starting text prompt (use `"\n"` for character-level models, or `"FILE:prompt.txt"` to load from file)
+- `--num_samples`: Number of samples to generate
+- `--max_new_tokens`: Length of generated text (in tokens)
+- `--temperature`: Sampling temperature (0.8 = more focused, 1.2 = more creative)
+- `--top_k`: Top-k sampling filter (200 = balanced, 40 = more focused)
 
-**Nano (Debug/Fast):**
+### 3. Training with Different Model Sizes
+
+NeuroManifoldGPT includes four preset configurations (located in `neuromanifold_gpt/config/presets/`):
+
+#### Nano (Fast Experimentation)
 ```bash
 python train.py --config neuromanifold_gpt/config/presets/nano.py
 ```
-- 4 layers, 4 heads, 128 embedding dim
-- ~1M parameters
-- Trains in minutes on CPU/GPU
+- **Size**: 4 layers, 4 heads, 128 dims (~1M parameters)
+- **Use case**: Quick tests, debugging, CPU training
+- **Training time**: ~5-10 minutes on single GPU
+- **Memory**: ~2GB VRAM
 
-**Small (Standard):**
+#### Shakespeare (Character-Level)
+```bash
+python train.py --config neuromanifold_gpt/config/presets/shakespeare_char.py
+```
+- **Size**: 6 layers, 6 heads, 384 dims (~10M parameters)
+- **Use case**: Character-level language modeling, quick validation
+- **Training time**: ~15-20 minutes on single GPU
+- **Memory**: ~4GB VRAM
+
+#### Small (Standard Training)
 ```bash
 python train.py --config neuromanifold_gpt/config/presets/small.py
 ```
-- 6 layers, 6 heads, 384 embedding dim
-- ~10M parameters
-- Comparable to GPT-2 Small
+- **Size**: 12 layers, 12 heads, 768 dims (~85M parameters, similar to GPT-2 small)
+- **Use case**: Full-scale experiments on consumer GPUs
+- **Training time**: ~1-2 days for 600k iterations
+- **Memory**: ~12GB VRAM with gradient accumulation
 
-**Medium (Research):**
+#### Medium (Research Scale)
 ```bash
 python train.py --config neuromanifold_gpt/config/presets/medium.py
 ```
-- 12 layers, 12 heads, 768 embedding dim
-- ~85M parameters
-- Comparable to GPT-2 Medium
+- **Size**: 24 layers, 16 heads, 1024 dims (~350M parameters, similar to GPT-2 medium)
+- **Use case**: Large-scale research experiments
+- **Training time**: ~3-5 days for 600k iterations
+- **Memory**: ~24GB VRAM with gradient accumulation
 
-### Multi-GPU Training
+### 4. Multi-GPU Training
 
-PyTorch Lightning handles DDP automatically:
+PyTorch Lightning automatically handles distributed training:
 
 ```bash
-# 4 GPUs
-python train.py --config neuromanifold_gpt/config/training/train_gpt2.py --devices 4
+# Train on 4 GPUs with DDP
+python train.py --config neuromanifold_gpt/config/presets/small.py --devices 4
+
+# Train on 8 GPUs with mixed precision
+python train.py --config neuromanifold_gpt/config/presets/medium.py --devices 8 --precision bf16-mixed
 ```
 
-### Key Configuration Options
+### 5. Customizing Training
+
+Override any config parameter via command line:
+
+```bash
+python train.py \
+  --config neuromanifold_gpt/config/presets/small.py \
+  --max_iters 10000 \
+  --learning_rate 6e-4 \
+  --batch_size 16 \
+  --wandb_log true \
+  --wandb_run_name my-experiment
+```
+
+**Common command-line overrides:**
+- `--max_iters`: Total training iterations
+- `--learning_rate`: Peak learning rate
+- `--batch_size`: Batch size per GPU
+- `--gradient_accumulation_steps`: Accumulation steps (effective batch = batch_size × accum × devices)
+- `--devices`: Number of GPUs
+- `--precision`: Mixed precision (`bf16-mixed`, `fp16-mixed`, or `fp32`)
+- `--wandb_log`: Enable Weights & Biases logging
+- `--out_dir`: Output directory for checkpoints
+
+### 6. Configuration File Anatomy
+
+All preset configs follow this structure (see `neuromanifold_gpt/config/presets/*.py`):
 
 ```python
-# NeuroManifold Architecture
-use_sdr = True              # Enable SDR encoding
-sdr_size = 2048             # SDR dimensionality
-manifold_dim = 64           # Manifold projection dimension
-n_eigenvectors = 32         # Spectral decomposition eigenvectors
+# Model architecture
+n_layer = 12              # Number of transformer layers
+n_head = 12               # Number of attention heads
+n_embd = 768              # Embedding dimension
+block_size = 1024         # Context window size
 
-# FHN Attention
-fhn_threshold = 0.1         # Firing threshold (lower = more sensitive)
-fhn_tau = 12.5              # Time constant (higher = longer memory)
-n_fhn_steps = 2             # Integration steps (higher = more accurate)
-use_fhn_imex = True         # IMEX solver (recommended)
-use_fhn_partitioning = True # Karmarkar-Karp partitioning (recommended)
-use_fhn_fused = False       # Triton fused kernels (experimental)
+# NeuroManifold specific
+sdr_size = 2048           # SDR dimensionality (high-dim sparse space)
+manifold_dim = 128        # Manifold projection dimension
+n_eigenvectors = 64       # Spectral decomposition eigenvectors
 
-# WaveKAN
-use_kan = True              # Enable WaveKAN instead of MLP
-kan_type = "wave"           # "wave" or "faster"
-kan_wavelet = "dog"         # "dog" (Difference of Gaussians) or "mex" (Mexican Hat)
-use_fast_wavekan = True     # Optimized implementation
+# Training hyperparameters
+batch_size = 12
+gradient_accumulation_steps = 40  # Effective batch = 12 × 40 = 480
+max_iters = 600000
+learning_rate = 6e-4
+min_lr = 6e-5
 
-# Kaufmann Attention (unified)
-use_kaufmann_attention = False  # Use full Kaufmann (FHN + Knot + WaveKAN)
-                                # Set to True for complete Trifecta
+# Optimization
+warmup_iters = 2000       # LR warmup steps
+lr_decay_iters = 600000   # Cosine decay schedule
 
-# Manifold Hyper-Connections
-use_mhc = True              # Enable mHC
-use_full_mhc = True         # Full manifold-constrained routing
-mhc_n_streams = 2           # Number of parallel streams
+# Evaluation
+eval_interval = 2000      # Validation frequency
+eval_iters = 200          # Validation iterations
+
+# Output
+out_dir = "out-neuromanifold-small"
+wandb_run_name = "neuromanifold-small"
 ```
+
+**Key NeuroManifold Parameters:**
+- `use_sdr`: Enable SDR encoding (default: False, memory intensive)
+- `use_kan`: Enable WaveKAN FFN (default: True)
+- `kan_wavelet`: Wavelet type (`"dog"` = Difference of Gaussians, `"mex"` = Mexican Hat)
+- `use_fhn_imex`: Use IMEX solver for FHN (default: True, recommended for stability)
+- `use_fhn_partitioning`: Use Karmarkar-Karp partitioning (default: True, enables larger timesteps)
+- `use_kaufmann_attention`: Enable full Kaufmann Trifecta (FHN + Knot + WaveKAN, default: False, experimental)
+- `use_mhc`: Enable manifold hyper-connections (default: True)
+- `skip_manifold_spectral`: Skip manifold/spectral processing for faster training (default: False)
+
+### 7. Complete Training Example
+
+Here's a full workflow from data preparation to text generation:
+
+```bash
+# 1. Prepare dataset
+python data/shakespeare_char/prepare.py
+
+# 2. Train model (with WandB logging)
+python train.py \
+  --config neuromanifold_gpt/config/presets/shakespeare_char.py \
+  --wandb_log true \
+  --wandb_project neuromanifold-experiments \
+  --wandb_run_name shakespeare-test-1
+
+# 3. Generate samples during training (automatic with sample_interval in config)
+# Samples are logged every 500 steps by default
+
+# 4. After training, generate longer samples
+python sample.py \
+  --out_dir=out-neuromanifold-shakespeare \
+  --start="ROMEO:\n" \
+  --num_samples=3 \
+  --max_new_tokens=1000 \
+  --temperature=0.9
+
+# 5. Resume training from checkpoint
+python train.py \
+  --config neuromanifold_gpt/config/presets/shakespeare_char.py \
+  --out_dir out-neuromanifold-shakespeare
+  # Lightning automatically resumes from last.ckpt if present
+```
+
+### 8. Configuration Presets Reference
+
+All configuration presets are located in `neuromanifold_gpt/config/presets/`:
+
+| Preset | File | Parameters | Context | Use Case |
+|--------|------|------------|---------|----------|
+| **Nano** | `nano.py` | ~1M | 256 | Fast experimentation, debugging |
+| **Shakespeare** | `shakespeare_char.py` | ~10M | 256 | Character-level training, validation |
+| **Small** | `small.py` | ~85M | 1024 | GPT-2 small comparison, single-GPU |
+| **Medium** | `medium.py` | ~350M | 1024 | GPT-2 medium comparison, multi-GPU |
+
+**Creating custom presets:** Copy any preset file and modify the parameters. All `.py` files in the presets directory can be loaded with `--config`
 
 ---
 
