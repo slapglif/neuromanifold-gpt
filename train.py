@@ -559,30 +559,10 @@ def train(config: TrainConfig) -> None:
     if config.vocab_size > 0:
         data_module.vocab_size = config.vocab_size
 
-    # Build or use model config
-    if config.model_config is not None:
-        # Use provided model config, updating vocab_size and block_size
-        model_config = config.model_config
-        model_config.vocab_size = data_module.vocab_size
-        model_config.block_size = config.block_size
-    else:
-        # Create default model config based on model_type
-        if config.model_type == "neuromanifold":
-            model_config = NeuroManifoldConfig(
-                vocab_size=data_module.vocab_size,
-                block_size=config.block_size,
-                # Training parameters from train config
-                learning_rate=config.learning_rate,
-                weight_decay=config.weight_decay,
-                beta1=config.beta1,
-                beta2=config.beta2,
-                grad_clip=config.grad_clip,
-            )
-        else:
-            model_config = GPTConfig(
-                vocab_size=data_module.vocab_size,
-                block_size=config.block_size,
-            )
+    # Use model config directly, updating vocab_size and block_size from data
+    model_config = config.model_config
+    model_config.vocab_size = data_module.vocab_size
+    model_config.block_size = config.block_size
 
     # Build Lightning module
     lit_module = NeuroManifoldLitModule(
