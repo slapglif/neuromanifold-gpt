@@ -23,8 +23,10 @@ from neuromanifold_gpt.model.attention.fhn import FHNAttention, FHNDynamics
 from neuromanifold_gpt.model.block import NeuroManifoldBlock, SwiGLU
 from neuromanifold_gpt.model.kan.wave import WaveKANFFN
 from neuromanifold_gpt.model.kan.cheby import ChebyKANFFN
+from neuromanifold_gpt.utils.logging import get_logger
 
-console = Console()
+logger = get_logger(__name__)
+console = Console()  # Keep for table rendering
 
 # Profiling parameters - REDUCED to avoid OOM
 BATCH_SIZE = 16  # Reduced from 64
@@ -143,15 +145,13 @@ def profile_forward_backward(
 
 
 def main():
-    console.print(f"\n[bold cyan]NeuroManifoldGPT Profiler v2[/bold cyan]")
-    console.print(f"Device: {DEVICE}")
-    console.print(f"Batch Size: {BATCH_SIZE}, Seq Len: {SEQ_LEN}")
-    console.print(f"Warmup: {N_WARMUP}, Iterations: {N_ITERS}")
-
+    logger.section("NeuroManifoldGPT Profiler v2")
+    logger.info(f"Device: {DEVICE}")
     if DEVICE == "cuda":
-        console.print(f"GPU: {torch.cuda.get_device_name()}")
-        console.print(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    console.print()
+        logger.info(f"GPU: {torch.cuda.get_device_name()}")
+        logger.info(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    logger.info(f"Batch Size: {BATCH_SIZE}, Seq Len: {SEQ_LEN}")
+    logger.info(f"Warmup: {N_WARMUP}, Iterations: {N_ITERS}")
 
     # Build config
     config = NeuroManifoldConfig(
@@ -175,7 +175,7 @@ def main():
     # =========================================================================
     # 1. SemanticFoldingEncoder
     # =========================================================================
-    console.print("[bold]1. SemanticFoldingEncoder...[/bold]", end=" ")
+    logger.info("Profiling SemanticFoldingEncoder...")
     encoder = SemanticFoldingEncoder(
         vocab_size=config.vocab_size,
         sdr_size=config.sdr_size,
@@ -189,12 +189,12 @@ def main():
 
     result = profile_component("SemanticFoldingEncoder", encoder, encoder_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("SemanticFoldingEncoder", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 2. ManifoldProjection
     # =========================================================================
-    console.print("[bold]2. ManifoldProjection...[/bold]", end=" ")
+    logger.info("Profiling ManifoldProjection...")
     manifold = ManifoldProjection(
         sdr_size=config.sdr_size,
         manifold_dim=config.manifold_dim,
@@ -206,12 +206,12 @@ def main():
 
     result = profile_component("ManifoldProjection", manifold, manifold_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("ManifoldProjection", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 3. SpectralDecomposition
     # =========================================================================
-    console.print("[bold]3. SpectralDecomposition...[/bold]", end=" ")
+    logger.info("Profiling SpectralDecomposition...")
     spectral = SpectralDecomposition(
         manifold_dim=config.manifold_dim,
         n_eigenvectors=config.n_eigenvectors,
@@ -226,12 +226,12 @@ def main():
 
     result = profile_component("SpectralDecomposition", spectral, spectral_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("SpectralDecomposition", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 4. FHNDynamics - PROFILE SEPARATELY
     # =========================================================================
-    console.print("[bold]4. FHNDynamics...[/bold]", end=" ")
+    logger.info("Profiling FHNDynamics...")
     head_dim = config.n_embd // config.n_heads
     fhn_dynamics = FHNDynamics(
         dim=head_dim,
@@ -251,12 +251,12 @@ def main():
 
     result = profile_component("FHNDynamics", fhn_dynamics, fhn_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("FHNDynamics", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 5. FHNAttention
     # =========================================================================
-    console.print("[bold]5. FHNAttention...[/bold]", end=" ")
+    logger.info("Profiling FHNAttention...")
     fhn_attn = FHNAttention(
         embed_dim=config.n_embd,
         n_heads=config.n_heads,
@@ -274,12 +274,12 @@ def main():
 
     result = profile_component("FHNAttention", fhn_attn, fhn_attn_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("FHNAttention", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 6. WaveKAN FFN
     # =========================================================================
-    console.print("[bold]6. WaveKAN FFN...[/bold]", end=" ")
+    logger.info("Profiling WaveKAN FFN...")
     mlp_hidden = int(config.n_embd * 4.0)
     wavekan_ffn = WaveKANFFN(
         embed_dim=config.n_embd,
@@ -294,12 +294,12 @@ def main():
 
     result = profile_component("WaveKAN_FFN", wavekan_ffn, ffn_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("WaveKAN_FFN", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 7. SwiGLU FFN
     # =========================================================================
-    console.print("[bold]7. SwiGLU FFN...[/bold]", end=" ")
+    logger.info("Profiling SwiGLU FFN...")
     swiglu_hidden = int(config.n_embd * 4.0 * 2 / 3)
     swiglu_ffn = SwiGLU(
         dim=config.n_embd,
@@ -308,12 +308,12 @@ def main():
 
     result = profile_component("SwiGLU_FFN", swiglu_ffn, ffn_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("SwiGLU_FFN", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 8. ChebyKAN FFN
     # =========================================================================
-    console.print("[bold]8. ChebyKAN FFN...[/bold]", end=" ")
+    logger.info("Profiling ChebyKAN FFN...")
     chebykan_ffn = ChebyKANFFN(
         embed_dim=config.n_embd,
         hidden_dim=mlp_hidden,
@@ -322,12 +322,12 @@ def main():
 
     result = profile_component("ChebyKAN_FFN", chebykan_ffn, ffn_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("ChebyKAN_FFN", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 9. Full NeuroManifoldBlock
     # =========================================================================
-    console.print("[bold]9. NeuroManifoldBlock...[/bold]", end=" ")
+    logger.info("Profiling NeuroManifoldBlock...")
     block = NeuroManifoldBlock(
         sdr_size=config.sdr_size,
         embed_dim=config.n_embd,
@@ -351,12 +351,12 @@ def main():
 
     result = profile_component("NeuroManifoldBlock", block, block_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("NeuroManifoldBlock", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 10. Full Model Forward Pass
     # =========================================================================
-    console.print("[bold]10. Full Model Forward...[/bold]", end=" ")
+    logger.info("Profiling Full Model Forward...")
     model = NeuroManifoldGPT(config)
 
     def model_input():
@@ -365,12 +365,12 @@ def main():
 
     result = profile_component("FullModel_Forward", model, model_input)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("FullModel_Forward", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # 11. Full Model Forward + Backward
     # =========================================================================
-    console.print("[bold]11. Full Model FwdBwd...[/bold]", end=" ")
+    logger.info("Profiling Full Model FwdBwd...")
     model = NeuroManifoldGPT(config)
 
     def model_input_train():
@@ -384,12 +384,11 @@ def main():
 
     result = profile_forward_backward("FullModel_FwdBwd", model, model_input_train, loss_fn_model)
     results.append(result)
-    console.print(f"{result['mean_ms']:.2f} ms")
+    logger.metric("FullModel_FwdBwd", result['mean_ms'], unit="ms")
 
     # =========================================================================
     # Results Table
     # =========================================================================
-    console.print("\n")
     table = Table(title=f"Profiling Results (B={BATCH_SIZE}, T={SEQ_LEN})")
     table.add_column("Component", style="cyan")
     table.add_column("Mean (ms)", justify="right")
@@ -419,35 +418,35 @@ def main():
     # =========================================================================
     # Analysis
     # =========================================================================
-    console.print("\n[bold yellow]===== PERFORMANCE ANALYSIS =====[/bold yellow]")
+    logger.section("Performance Analysis")
 
     # Find the bottleneck
     component_results = [r for r in results if r["name"] not in ["FullModel_Forward", "FullModel_FwdBwd", "NeuroManifoldBlock"]]
     bottleneck = max(component_results, key=lambda x: x["mean_ms"])
 
-    console.print(f"\n[bold red]#1 BOTTLENECK: {bottleneck['name']}[/bold red]")
-    console.print(f"   Time: {bottleneck['mean_ms']:.2f} ms ({bottleneck['mean_ms']/block_time*100:.1f}% of block)")
+    logger.warning(f"#1 BOTTLENECK: {bottleneck['name']}")
+    logger.info(f"   Time: {bottleneck['mean_ms']:.2f} ms ({bottleneck['mean_ms']/block_time*100:.1f}% of block)")
 
     # Estimate time for batch=64
     fwd_bwd_time = next(r["mean_ms"] for r in results if r["name"] == "FullModel_FwdBwd")
     est_fwd_bwd_64 = fwd_bwd_time * scale
     time_per_1000_iter_64 = est_fwd_bwd_64  # seconds for 1000 iters at batch=64
 
-    console.print(f"\n[bold]Measured (B={BATCH_SIZE}):[/bold] {fwd_bwd_time:.2f} ms/iter")
-    console.print(f"[bold]Estimated (B=64):[/bold] {est_fwd_bwd_64:.2f} ms/iter")
-    console.print(f"[bold]Est. time per 1000 iters (B=64):[/bold] {time_per_1000_iter_64:.1f} seconds")
+    logger.info(f"Measured (B={BATCH_SIZE}): {fwd_bwd_time:.2f} ms/iter")
+    logger.info(f"Estimated (B=64): {est_fwd_bwd_64:.2f} ms/iter")
+    logger.info(f"Est. time per 1000 iters (B=64): {time_per_1000_iter_64:.1f} seconds")
 
     # Target: <120s for 1000 iters
     target_time = 120.0
     current_time = time_per_1000_iter_64
     if current_time > target_time:
         speedup_needed = current_time / target_time
-        console.print(f"[bold]Speedup needed for <120s:[/bold] {speedup_needed:.2f}x")
+        logger.info(f"Speedup needed for <120s: {speedup_needed:.2f}x")
     else:
-        console.print(f"[bold green]Already under 120s target![/bold green]")
+        logger.success("Already under 120s target!")
 
     # Component breakdown
-    console.print("\n[bold]Block Component Breakdown:[/bold]")
+    logger.info("Block Component Breakdown:")
     block_components = ["ManifoldProjection", "SpectralDecomposition", "FHNAttention", "WaveKAN_FFN"]
     total_accounted = 0.0
     for name in block_components:
@@ -456,49 +455,49 @@ def main():
             pct = r["mean_ms"] / block_time * 100
             total_accounted += r["mean_ms"]
             bar = "#" * int(pct / 3)
-            console.print(f"   {name:24s}: {r['mean_ms']:7.2f} ms ({pct:5.1f}%) {bar}")
+            logger.info(f"   {name:24s}: {r['mean_ms']:7.2f} ms ({pct:5.1f}%) {bar}")
 
     overhead = block_time - total_accounted
     pct = overhead / block_time * 100
     bar = "#" * int(pct / 3)
-    console.print(f"   {'SDR proj/Norms/etc':24s}: {overhead:7.2f} ms ({pct:5.1f}%) {bar}")
+    logger.info(f"   {'SDR proj/Norms/etc':24s}: {overhead:7.2f} ms ({pct:5.1f}%) {bar}")
 
     # FFN comparison
-    console.print("\n[bold]FFN Comparison:[/bold]")
+    logger.info("FFN Comparison:")
     wavekan = next(r for r in results if r["name"] == "WaveKAN_FFN")
     swiglu = next(r for r in results if r["name"] == "SwiGLU_FFN")
     chebykan = next(r for r in results if r["name"] == "ChebyKAN_FFN")
 
-    console.print(f"   SwiGLU:   {swiglu['mean_ms']:6.2f} ms (1.00x baseline)")
-    console.print(f"   WaveKAN:  {wavekan['mean_ms']:6.2f} ms ({wavekan['mean_ms']/swiglu['mean_ms']:.2f}x)")
-    console.print(f"   ChebyKAN: {chebykan['mean_ms']:6.2f} ms ({chebykan['mean_ms']/swiglu['mean_ms']:.2f}x)")
+    logger.info(f"   SwiGLU:   {swiglu['mean_ms']:6.2f} ms (1.00x baseline)")
+    logger.info(f"   WaveKAN:  {wavekan['mean_ms']:6.2f} ms ({wavekan['mean_ms']/swiglu['mean_ms']:.2f}x)")
+    logger.info(f"   ChebyKAN: {chebykan['mean_ms']:6.2f} ms ({chebykan['mean_ms']/swiglu['mean_ms']:.2f}x)")
 
     # Full model breakdown
-    console.print(f"\n[bold]Full Model Breakdown (6 layers):[/bold]")
+    logger.info("Full Model Breakdown (6 layers):")
     encoder_time = next(r["mean_ms"] for r in results if r["name"] == "SemanticFoldingEncoder")
     full_fwd = next(r["mean_ms"] for r in results if r["name"] == "FullModel_Forward")
     layers_time = block_time * 6
     other_overhead = full_fwd - encoder_time - layers_time
 
-    console.print(f"   Encoder:      {encoder_time:.2f} ms ({encoder_time/full_fwd*100:.1f}%)")
-    console.print(f"   6 Blocks:     {layers_time:.2f} ms ({layers_time/full_fwd*100:.1f}%)")
-    console.print(f"   LM Head/etc:  {max(0, other_overhead):.2f} ms ({max(0, other_overhead)/full_fwd*100:.1f}%)")
+    logger.info(f"   Encoder:      {encoder_time:.2f} ms ({encoder_time/full_fwd*100:.1f}%)")
+    logger.info(f"   6 Blocks:     {layers_time:.2f} ms ({layers_time/full_fwd*100:.1f}%)")
+    logger.info(f"   LM Head/etc:  {max(0, other_overhead):.2f} ms ({max(0, other_overhead)/full_fwd*100:.1f}%)")
 
     # Optimization targets
-    console.print("\n[bold]OPTIMIZATION TARGETS (to achieve <120s):[/bold]")
     if current_time > target_time:
+        logger.info("OPTIMIZATION TARGETS (to achieve <120s):")
         speedup = current_time / target_time
         # Top 3 bottlenecks
         sorted_components = sorted(component_results, key=lambda x: x["mean_ms"], reverse=True)[:4]
         for r in sorted_components:
             target_ms = r["mean_ms"] / speedup
-            console.print(f"   {r['name']:24s}: {r['mean_ms']:.2f} ms -> {target_ms:.2f} ms (need {speedup:.2f}x)")
+            logger.info(f"   {r['name']:24s}: {r['mean_ms']:.2f} ms -> {target_ms:.2f} ms (need {speedup:.2f}x)")
 
     # Memory
     if DEVICE == "cuda":
-        console.print(f"\n[bold]GPU Memory:[/bold]")
-        console.print(f"   Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-        console.print(f"   Peak:      {torch.cuda.max_memory_allocated() / 1e9:.2f} GB")
+        logger.info("GPU Memory:")
+        logger.info(f"   Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+        logger.info(f"   Peak:      {torch.cuda.max_memory_allocated() / 1e9:.2f} GB")
 
 
 if __name__ == "__main__":
