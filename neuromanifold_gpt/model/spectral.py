@@ -148,8 +148,34 @@ class FastSpectralAttention(nn.Module):
     Instead of O(n²) full attention, projects to spectral space (k dims),
     computes attention there, and projects back. Total: O(n·k + k²).
 
+    Memory Optimization:
+    -------------------
     Uses chunked processing for causal cumsum to reduce memory complexity
     from O(T*k²) to O(chunk_size*k²) while maintaining causal masking.
+
+    The key optimization is in computing the causal cumulative sum of k^T @ v
+    outer products. Naive implementation would materialize a (B, H, T, k, k)
+    tensor all at once, requiring O(T*k²) memory. Instead, we:
+
+    1. Process the sequence in chunks of size `chunk_size`
+    2. Compute outer products only within each chunk: O(chunk_size*k²) memory
+    3. Maintain a running cumsum state (B, H, k, k) across chunk boundaries
+    4. Ensure causality by adding previous cumsum state to each new chunk
+
+    This allows handling arbitrarily long sequences with bounded memory usage,
+    controlled by the `chunk_size` parameter.
+
+    Memory-Speed Trade-off:
+    ----------------------
+    - Smaller chunk_size: Lower memory usage, potentially slower (more chunks)
+    - Larger chunk_size: Higher memory usage, potentially faster (fewer chunks)
+    - Default (256): Good balance for typical transformer sequences
+
+    Complexity:
+    ----------
+    - Time: O(T*k²) - same as naive implementation
+    - Memory: O(chunk_size*k²) - drastically reduced from O(T*k²)
+    - For T=8192, k=32, chunk_size=256: ~32x memory reduction
     """
 
     def __init__(self, embed_dim: int, n_eigenvectors: int = 32, n_heads: int = 8, chunk_size: int = 256):
