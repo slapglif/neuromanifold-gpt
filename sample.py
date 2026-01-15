@@ -113,4 +113,4 @@ with torch.no_grad():
         for k in range(num_samples):
             logger.section(f"Sample {k+1}/{num_samples}")
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-            print(decode(y[0].tolist()))
+            logger.info(decode(y[0].tolist()))

@@ -202,7 +202,7 @@ def main():
         est = r["mean_ms"] * scale
         table.add_row(r["name"], f"{r['mean_ms']:.2f}", f"{r['mem_mb']:.1f}", f"{est:.2f}")
 
-    console.print(table)
+    logger.table(table)
 
     # Analysis
     logger.section("Analysis")
