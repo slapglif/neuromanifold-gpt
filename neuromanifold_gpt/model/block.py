@@ -77,6 +77,17 @@ class NeuroManifoldBlock(nn.Module):
         use_full_mhc: bool = True,  # Use full multi-stream mHC (vs simplified)
         mhc_n_streams: int = 4,  # Number of streams for full mHC
         mhc_residual_weight: float = 0.9,  # Initial identity bias
+        mhc_sinkhorn_iters: int = 5,  # Sinkhorn iterations for optimal transport
+        # MLA (Multi-Head Latent Attention) - DeepSeek style
+        use_mla: bool = False,  # Multi-head latent attention
+        mla_latent_dim: int = 64,  # Latent dimension for MLA
+        mla_rope_dim: int = 32,  # RoPE dimension for MLA
+        # MoE (Mixture of Experts) - DeepSeek style
+        use_moe: bool = False,  # Mixture of experts
+        moe_n_experts: int = 8,  # Number of experts
+        moe_n_active: int = 2,  # Number of active experts per token
+        use_shared_expert: bool = True,  # Use shared expert
+        use_e7_routing: bool = False,  # E7 exceptional Lie group routing
         # KAN configuration
         use_kan: bool = True,  # Use KAN instead of SwiGLU
         kan_type: str = "faster",  # "faster", "cheby", or "wave"
