@@ -256,18 +256,12 @@ class FastSpectralAttention(nn.Module):
 
         # Spectral attention: O(n·k + k²)
         # CAUSAL IMPLEMENTATION for autoregressive modeling
-        
-        # 1. Compute outer product k^T @ v in spectral space for each time step
+
+        # 1-2. Compute causal cumsum of k^T @ v outer products using chunked processing
+        # This reduces memory from O(T*k^2) to O(chunk_size*k^2)
         # Dimensions: k=(B, H, T, n_eig), v=(B, H, T, n_eig)
-        # We need sum_{i<=t} k_i^T v_i
-        
-        # k.unsqueeze(-1): (B, H, T, n_eig, 1)
-        # v.unsqueeze(-2): (B, H, T, 1, n_eig)
-        # kv_prod: (B, H, T, n_eig, n_eig)
-        kv_prod = k.unsqueeze(-1) * v.unsqueeze(-2)
-        
-        # 2. Causal accumulation (prefix sum)
-        kv_causal = torch.cumsum(kv_prod, dim=2)  # (B, H, T, n_eig, n_eig)
+        # Output: kv_causal=(B, H, T, n_eig, n_eig) where kv_causal[t] = sum_{i<=t} k_i^T v_i
+        kv_causal = self._chunked_causal_cumsum(k, v)
         
         # 3. Apply query
         # q: (B, H, T, n_eig) -> (B, H, T, 1, n_eig)
