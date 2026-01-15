@@ -7,7 +7,7 @@ Based on the insight that EMA is a discrete convolution: h[t] = Σ_k x[k]·α·(
 
 Classes:
     - DampedEMA: Base single-channel EMA using parallel scan
-    - MultiHeadDampedEMA: Multi-head variant (coming in subtask-2-2)
+    - MultiHeadDampedEMA: Multi-head variant with vectorized head processing
     - CEMA: Causal EMA wrapper (coming in subtask-2-3)
 
 Example:
@@ -230,3 +230,160 @@ class DampedEMA(nn.Module):
             return f'alpha=learnable (current={alpha_val:.4f}), eps={self.eps}'
         else:
             return f'alpha={self.get_alpha().item():.4f}, eps={self.eps}'
+
+
+class MultiHeadDampedEMA(nn.Module):
+    """
+    Multi-Head Damped EMA using parallel FFT convolution.
+
+    Splits input into multiple heads and applies independent EMA to each head.
+    All heads are processed in parallel (no Python loops) using vectorized FFT.
+
+    This is the multi-head attention equivalent of DampedEMA:
+        - Input: (B, T, D) where D = num_heads * head_dim
+        - Reshape: (B, T, num_heads, head_dim)
+        - Apply EMA per head (vectorized across all heads)
+        - Reshape back: (B, T, D)
+
+    Args:
+        num_heads: Number of attention heads
+        head_dim: Dimension per head (D = num_heads * head_dim)
+        alpha: Smoothing factor (0 < alpha <= 1). Can be:
+            - float: Fixed damping (same for all heads/channels)
+            - 'learnable': Trainable parameter initialized to 0.9
+            - Tensor: Per-head or per-channel damping
+                - Shape (num_heads,): per-head damping
+                - Shape (num_heads, head_dim): per-channel damping
+        eps: Numerical stability epsilon (default: 1e-6)
+
+    Input:
+        x: (B, T, D) where D = num_heads * head_dim
+
+    Output:
+        h: (B, T, D) - EMA smoothed sequence
+
+    Example:
+        >>> # 4 heads, 16 dims each = 64 total
+        >>> ema = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha=0.9)
+        >>> x = torch.randn(2, 10, 64)
+        >>> h = ema(x)
+        >>> h.shape
+        torch.Size([2, 10, 64])
+
+        >>> # Learnable per-head alpha
+        >>> ema = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha='learnable')
+        >>> h = ema(x)
+        >>> # ema.alpha_logit is a trainable parameter
+
+    Complexity:
+        Time: O(T log T * num_heads * head_dim)
+        Space: O(T * num_heads * head_dim)
+
+    Note:
+        All heads are processed simultaneously via broadcasting - no sequential loops.
+        This is much more efficient than iterating over heads in Python.
+    """
+
+    def __init__(
+        self,
+        num_heads: int,
+        head_dim: int,
+        alpha: Union[float, str, torch.Tensor] = 0.9,
+        eps: float = 1e-6
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.dim = num_heads * head_dim
+        self.eps = eps
+
+        if isinstance(alpha, str) and alpha == 'learnable':
+            # Learnable parameter (logit space for stability)
+            # sigmoid(2.197) ≈ 0.9
+            self.alpha_logit = nn.Parameter(torch.tensor(2.197))
+            self.alpha_mode = 'learnable'
+        elif isinstance(alpha, float):
+            # Fixed scalar
+            self.register_buffer('alpha', torch.tensor(alpha))
+            self.alpha_mode = 'fixed'
+        elif isinstance(alpha, torch.Tensor):
+            # Fixed per-head or per-channel
+            # Validate shape
+            if alpha.shape == (num_heads,):
+                # Per-head: broadcast to (num_heads, 1) for compatibility
+                alpha = alpha.unsqueeze(-1)
+            elif alpha.shape != (num_heads, head_dim):
+                raise ValueError(
+                    f"alpha tensor must have shape ({num_heads},) or "
+                    f"({num_heads}, {head_dim}), got {alpha.shape}"
+                )
+            self.register_buffer('alpha', alpha)
+            self.alpha_mode = 'per_head'
+        else:
+            raise ValueError(
+                f"alpha must be float, 'learnable', or Tensor, got {type(alpha)}"
+            )
+
+    def get_alpha(self) -> torch.Tensor:
+        """
+        Get current alpha value.
+
+        Returns:
+            alpha: Smoothing factor (applies sigmoid if learnable)
+        """
+        if self.alpha_mode == 'learnable':
+            return torch.sigmoid(self.alpha_logit).clamp(self.eps, 1 - self.eps)
+        else:
+            return self.alpha
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Apply multi-head damped EMA.
+
+        Args:
+            x: (B, T, D) input sequence where D = num_heads * head_dim
+
+        Returns:
+            h: (B, T, D) smoothed sequence
+
+        Raises:
+            ValueError: If input dimension doesn't match num_heads * head_dim
+        """
+        B, T, D = x.shape
+
+        # Validate input dimension
+        if D != self.dim:
+            raise ValueError(
+                f"Input dimension {D} doesn't match num_heads * head_dim = "
+                f"{self.num_heads} * {self.head_dim} = {self.dim}"
+            )
+
+        # Reshape to multi-head format: (B, T, num_heads, head_dim)
+        x_heads = x.view(B, T, self.num_heads, self.head_dim)
+
+        # Apply EMA (vectorized across all heads)
+        # ema_fft handles multi-dimensional inputs with time at dim=1
+        alpha = self.get_alpha()
+        h_heads = ema_fft(x_heads, alpha, eps=self.eps)  # (B, T, num_heads, head_dim)
+
+        # Reshape back to flat format: (B, T, D)
+        h = h_heads.view(B, T, D)
+
+        return h
+
+    def extra_repr(self) -> str:
+        """String representation for print(module)."""
+        if self.alpha_mode == 'learnable':
+            alpha_val = self.get_alpha().item()
+            alpha_str = f'learnable (current={alpha_val:.4f})'
+        else:
+            alpha_val = self.get_alpha()
+            if alpha_val.numel() == 1:
+                alpha_str = f'{alpha_val.item():.4f}'
+            else:
+                alpha_str = f'per_head (shape={tuple(alpha_val.shape)})'
+
+        return (
+            f'num_heads={self.num_heads}, head_dim={self.head_dim}, '
+            f'alpha={alpha_str}, eps={self.eps}'
+        )
