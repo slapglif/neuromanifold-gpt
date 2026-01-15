@@ -13,6 +13,7 @@ Performance Note:
     (typical training batch size) and up to 226x speedup at B=16.
     This translates to ~1144 seconds saved per 5000-iteration training epoch.
 """
+
 import torch
 import torch.nn as nn
 
@@ -67,7 +68,9 @@ class SDREngramMemory(nn.Module):
 
     def get_size(self) -> torch.Tensor:
         """Return number of stored memories (as Tensor to avoid graph break)."""
-        return torch.min(self.count, torch.tensor(self.capacity, device=self.count.device))
+        return torch.min(
+            self.count, torch.tensor(self.capacity, device=self.count.device)
+        )
 
     def __len__(self) -> int:
         """Return number of stored memories (Python int, causes graph break)."""
@@ -81,30 +84,32 @@ class SDREngramMemory(nn.Module):
         # Detach inputs to prevent autograd issues with in-place buffer updates
         sdr = sdr.detach()
         content = content.detach()
-        
+
         # Use tensor indexing
         ptr = self.write_ptr.view(1)  # (1,)
-        
+
         # Ensure inputs are on correct device
         sdr = sdr.to(self.sdr_bank.device).unsqueeze(0)  # (1, sdr_size)
-        content = content.to(self.content_bank.device).unsqueeze(0) # (1, content_dim)
+        content = content.to(self.content_bank.device).unsqueeze(0)  # (1, content_dim)
 
         # In-place update using index_copy_
         self.sdr_bank.index_copy_(0, ptr, sdr)
         self.content_bank.index_copy_(0, ptr, content)
-        self.valid_mask.index_fill_(0, ptr, torch.tensor(True, device=self.valid_mask.device))
+        self.valid_mask.index_fill_(
+            0, ptr, torch.tensor(True, device=self.valid_mask.device)
+        )
 
         # Advance write pointer (circular)
         next_ptr = (self.write_ptr + 1) % self.capacity
         self.write_ptr.copy_(next_ptr)
-        
+
         next_count = torch.clamp(self.count + 1, max=self.capacity)
         self.count.copy_(next_count)
 
     def store_batch(self, sdrs: torch.Tensor, contents: torch.Tensor) -> None:
         """
         Store multiple SDR-content pairs efficiently (vectorized).
-        
+
         Args:
             sdrs: (N, sdr_size) batch of SDRs
             contents: (N, content_dim) batch of content vectors
@@ -112,32 +117,34 @@ class SDREngramMemory(nn.Module):
         # Detach inputs
         sdrs = sdrs.detach()
         contents = contents.detach()
-        
+
         N = sdrs.shape[0]
         if N == 0:
             return
-            
+
         # If batch is larger than capacity, keep only the most recent ones
         # that fit in the memory.
         if N > self.capacity:
-            sdrs = sdrs[-self.capacity:]
-            contents = contents[-self.capacity:]
+            sdrs = sdrs[-self.capacity :]
+            contents = contents[-self.capacity :]
             N = self.capacity
-            
+
         # Calculate indices for circular buffer (fully tensorized)
-        indices = (self.write_ptr + torch.arange(N, device=self.sdr_bank.device)) % self.capacity
-        
+        indices = (
+            self.write_ptr + torch.arange(N, device=self.sdr_bank.device)
+        ) % self.capacity
+
         # Store
         # index_copy_ works well
         self.sdr_bank.index_copy_(0, indices, sdrs.to(self.sdr_bank.device))
         self.content_bank.index_copy_(0, indices, contents.to(self.content_bank.device))
         self.valid_mask.index_fill_(0, indices, True)
-        
+
         # Update pointer
         # We add N to pointer and mod capacity
         new_ptr = (self.write_ptr + N) % self.capacity
         self.write_ptr.copy_(new_ptr)
-        
+
         # Update count (saturate at capacity)
         new_count = torch.clamp(self.count + N, max=self.capacity)
         self.count.copy_(new_count)
@@ -228,7 +235,9 @@ class SDREngramMemory(nn.Module):
 
         if self.count == 0 or B == 0:
             return (
-                torch.zeros(B, top_k, self.content_dim, device=self.content_bank.device),
+                torch.zeros(
+                    B, top_k, self.content_dim, device=self.content_bank.device
+                ),
                 torch.zeros(B, top_k, device=self.content_bank.device),
             )
 
@@ -271,14 +280,16 @@ class SDREngramMemory(nn.Module):
         # Pad to top_k if needed (handles case where k < top_k)
         if k < top_k:
             pad_size = top_k - k
-            contents = torch.cat([
-                contents,
-                torch.zeros(B, pad_size, self.content_dim, device=contents.device)
-            ], dim=1)
-            top_sim = torch.cat([
-                top_sim,
-                torch.zeros(B, pad_size, device=top_sim.device)
-            ], dim=1)
+            contents = torch.cat(
+                [
+                    contents,
+                    torch.zeros(B, pad_size, self.content_dim, device=contents.device),
+                ],
+                dim=1,
+            )
+            top_sim = torch.cat(
+                [top_sim, torch.zeros(B, pad_size, device=top_sim.device)], dim=1
+            )
 
         return contents, top_sim
 
