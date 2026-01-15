@@ -22,4 +22,21 @@ Aggregator:
     ComponentMetricsAggregator: Main class for computing all metrics from model info dict
 """
 
-__all__ = []
+# Component-specific metrics
+from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
+from neuromanifold_gpt.evaluation.fhn_metrics import FHNMetrics
+from neuromanifold_gpt.evaluation.mtp_metrics import MTPMetrics
+from neuromanifold_gpt.evaluation.memory_metrics import MemoryMetrics
+
+# Metrics aggregator
+from neuromanifold_gpt.evaluation.component_metrics import ComponentMetricsAggregator
+
+__all__ = [
+    # Component metrics
+    "SDRMetrics",
+    "FHNMetrics",
+    "MTPMetrics",
+    "MemoryMetrics",
+    # Aggregator
+    "ComponentMetricsAggregator",
+]
