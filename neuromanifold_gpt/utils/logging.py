@@ -14,8 +14,9 @@ Usage:
     logger.section("Evaluation Results")
 """
 
+import os
 import sys
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from loguru import logger as loguru_logger
 from rich.console import Console
 from rich.theme import Theme
@@ -176,34 +177,80 @@ def get_logger(name: str) -> RichLogger:
 
 
 def configure_logging(
-    level: str = "INFO",
+    level: Optional[str] = None,
     format: Optional[str] = None,
     sink: Any = sys.stderr,
+    theme: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Configure global logging settings.
 
+    Supports environment variables for easy configuration:
+    - LOG_LEVEL: Set log level (DEBUG, INFO, WARNING, ERROR)
+    - LOG_FORMAT: Set custom format template
+
     Args:
-        level: Log level (DEBUG, INFO, WARNING, ERROR)
-        format: Optional custom format string for loguru
+        level: Log level (DEBUG, INFO, WARNING, ERROR).
+               Defaults to LOG_LEVEL env var or "INFO"
+        format: Optional custom format string for loguru.
+                Defaults to LOG_FORMAT env var or default template
         sink: Output sink (default: stderr)
+        theme: Optional custom theme dict for rich console.
+               Keys: info, warning, error, metric, progress, section
 
     Example:
+        >>> # Use defaults
+        >>> configure_logging()
+
+        >>> # Set custom level
         >>> configure_logging(level="DEBUG")
-        >>> logger = get_logger(__name__)
+
+        >>> # Use environment variable
+        >>> import os
+        >>> os.environ['LOG_LEVEL'] = 'DEBUG'
+        >>> configure_logging()
+
+        >>> # Custom theme
+        >>> configure_logging(theme={
+        ...     "metric": "bold magenta",
+        ...     "progress": "cyan"
+        ... })
     """
+    global _console
+
+    # Get level from parameter, env var, or default
+    if level is None:
+        level = os.environ.get("LOG_LEVEL", "INFO")
+
+    # Get format from parameter, env var, or default
+    if format is None:
+        format = os.environ.get("LOG_FORMAT")
+        if format is None:
+            # Default format with time, level, and message
+            format = (
+                "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+                "<level>{level: <8}</level> | "
+                "<level>{message}</level>"
+            )
+
+    # Configure rich theme
+    if theme is not None:
+        # Merge with defaults
+        default_theme = {
+            "info": "cyan",
+            "warning": "yellow",
+            "error": "bold red",
+            "metric": "bold green",
+            "progress": "yellow",
+            "section": "bold blue",
+        }
+        default_theme.update(theme)
+        _console = Console(theme=Theme(default_theme))
+
     # Remove default loguru handler
     loguru_logger.remove()
 
     # Add configured handler
-    if format is None:
-        # Default format with time, level, and message
-        format = (
-            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
-            "<level>{message}</level>"
-        )
-
     loguru_logger.add(
         sink,
         format=format,
