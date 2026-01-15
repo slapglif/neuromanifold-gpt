@@ -22,6 +22,7 @@ maintaining the memory efficiency and kernel fusion benefits of Flash Attention.
 Reference: https://www.nbi.ku.dk/membranes/Kaufmann/publications.html
 """
 
+import warnings
 import torch
 import torch.nn as nn
 from einops import rearrange, einsum
@@ -302,6 +303,16 @@ class FHNAttention(nn.Module):
         self.n_fhn_steps = n_fhn_steps
         self.use_partitioning = use_partitioning
         self.use_flash_fhn_fusion = use_flash_fhn_fusion
+
+        # Warn users about deprecated manual attention path
+        if not use_flash_fhn_fusion:
+            warnings.warn(
+                "The manual attention path (use_flash_fhn_fusion=False) is deprecated "
+                "and will be removed in a future version. Please use the default Flash "
+                "Attention fusion path (use_flash_fhn_fusion=True) for 2-4x better performance.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         assert embed_dim % n_heads == 0
 
