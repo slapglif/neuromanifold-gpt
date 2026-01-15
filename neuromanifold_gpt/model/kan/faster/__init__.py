@@ -9,5 +9,6 @@ Based on: https://github.com/AthanasiosDelis/faster-kan
 from .basis import RSWAFBasis
 from .layer import FasterKANLayer
 from .ffn import FasterKANFFN
+from .linear import FasterKANLinear
 
-__all__ = ['RSWAFBasis', 'FasterKANLayer', 'FasterKANFFN']
+__all__ = ['RSWAFBasis', 'FasterKANLayer', 'FasterKANFFN', 'FasterKANLinear']
