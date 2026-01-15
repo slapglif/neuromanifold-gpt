@@ -4044,7 +4044,755 @@ config = NeuroManifoldConfig(
 
 **Category:** Critical constraints and validation rules.
 
-*(This section will be expanded in subsequent subtasks)*
+Understanding parameter interdependencies is crucial for creating valid and effective configurations. This section documents all constraints, validation rules, and semantic dependencies in the NeuroManifold architecture.
+
+### 12.1 Critical Constraints (Hard Requirements)
+
+These constraints are **enforced by assertions** in `__post_init__` and will cause immediate failure if violated:
+
+#### **C1: n_embd Divisibility by n_heads**
+
+```python
+assert n_embd % n_heads == 0
+```
+
+- **Constraint:** `n_embd` must be evenly divisible by `n_heads`
+- **Reason:** Multi-head attention splits embeddings across heads: `head_dim = n_embd // n_heads`
+- **Example:** `n_embd=384` requires `n_heads` to be 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, or 384
+- **Common Error:** Setting `n_embd=100` and `n_heads=8` → **FAILS** (100 is not divisible by 8)
+- **Fix:** Use multiples of common head counts
+  - For 4 heads: 128, 256, 384, 512, 768, 1024
+  - For 8 heads: 128, 256, 384, 512, 768, 1024
+  - For 12 heads: 192, 384, 768, 1152
+  - For 16 heads: 256, 512, 768, 1024, 1536
+
+#### **C2: Memory Active Retrieval Requires SDR**
+
+```python
+if memory_active_retrieval and not use_sdr:
+    raise ValueError("memory_active_retrieval=True requires use_sdr=True")
+```
+
+- **Constraint:** `memory_active_retrieval=True` requires `use_sdr=True`
+- **Reason:** Memory retrieval uses SDR overlap for semantic similarity matching
+- **Fix:** Either enable `use_sdr=True` or disable `memory_active_retrieval=False`
+
+#### **C3: SDR Active Bits Must Be Positive**
+
+```python
+sdr_n_active = int(sdr_size * sdr_sparsity)  # Must be > 0
+```
+
+- **Constraint:** `sdr_size * sdr_sparsity` must yield at least 1 active bit
+- **Example:** `sdr_size=100, sdr_sparsity=0.001` → `sdr_n_active=0` → **INVALID**
+- **Minimum:** For `sdr_size=2048`, minimum `sdr_sparsity ≈ 0.0005` (1 bit)
+- **Recommended:** `sdr_sparsity ≥ 0.01` (1-2%) for robust semantic representations
+
+### 12.2 Automatic Cascading Dependencies
+
+These parameters **automatically trigger other settings** when enabled:
+
+#### **D1: fast_mode Cascade**
+
+When `fast_mode=True`, the following are **automatically set**:
+
+```python
+skip_context_encoder = True      # Disable local attention in SDR
+skip_semantic_retina = True      # Disable Gaussian smoothing
+skip_metric_tensor = True        # Disable manifold metric computation
+n_fhn_steps = 1                  # Reduce FHN integration steps
+sdr_size = min(sdr_size, 512)    # Cap SDR size at 512
+```
+
+- **Purpose:** Maximize training speed at cost of accuracy
+- **Use Case:** Quick prototyping, smoke tests, resource-constrained experiments
+- **Warning:** Disables core architecture features; results not representative of full model
+
+#### **D2: use_moe Implications**
+
+When `use_moe=True`, additional parameters become active:
+
+- `moe_n_experts`: Total number of experts (default 8)
+- `moe_n_active`: Active experts per token (default 2)
+- `use_shared_expert`: Always-active shared expert (default True)
+- `use_e7_routing`: E7-based curriculum routing (default False)
+
+**Parameter Count Impact:**
+```python
+# Each expert adds a full FFN layer
+params_per_expert = 4 * n_embd * intermediate_dim  # ~4x n_embd²
+total_moe_params = moe_n_experts * params_per_expert * n_layer
+```
+
+**Memory Impact:** Increases parameters by `~(moe_n_experts / moe_n_active - 1) × 100%`
+- Example: 8 experts, 2 active → 4× parameter increase (but only 2/8 active per token)
+
+#### **D3: use_mla Implications**
+
+When `use_mla=True`, KV cache compression is activated:
+
+- `mla_latent_dim`: Compression dimension (default 64)
+- `mla_rope_dim`: Separate RoPE dimension (default 32)
+
+**Memory Savings:**
+```python
+# Standard attention KV cache
+standard_kv_size = 2 * n_layer * n_heads * head_dim * block_size
+# MLA compressed KV cache
+mla_kv_size = 2 * n_layer * mla_latent_dim * block_size
+# Compression ratio
+ratio = mla_kv_size / standard_kv_size  # ~8x reduction with mla_latent_dim=64
+```
+
+### 12.3 Semantic Dependencies (Effectiveness Requirements)
+
+These are not enforced but are **required for features to work effectively**:
+
+#### **S1: SDR Configuration for Effective Sparse Encoding**
+
+For SDR to provide semantic benefits:
+
+```python
+# Minimum capacity constraint
+sdr_n_active << sdr_size  # Active bits should be < 5% of total
+sdr_sparsity ≤ 0.05       # Typical range: 0.01-0.03 (1-3%)
+
+# Semantic resolution constraint
+sdr_size ≥ 1024           # Minimum for low collision probability
+sdr_n_active ≥ 20         # Minimum for robust overlap detection
+
+# Context window constraint
+sdr_context_size ≤ block_size  # Cannot exceed sequence length
+```
+
+**Example Valid Configurations:**
+- **Minimal:** `sdr_size=1024, sdr_sparsity=0.02` → 20 active bits
+- **Standard:** `sdr_size=2048, sdr_sparsity=0.02` → 41 active bits
+- **High-res:** `sdr_size=4096, sdr_sparsity=0.02` → 82 active bits
+
+**Common Pitfall:**
+```python
+# BAD: Too few active bits
+config = NeuroManifoldConfig(sdr_size=512, sdr_sparsity=0.01)  # Only 5 active bits!
+
+# GOOD: Sufficient capacity
+config = NeuroManifoldConfig(sdr_size=2048, sdr_sparsity=0.02)  # 41 active bits
+```
+
+#### **S2: Manifold Dimensionality Constraints**
+
+For manifold projection to be meaningful:
+
+```python
+# Dimensionality ordering
+manifold_dim < n_embd  # Project to lower-dimensional space
+n_eigenvectors ≤ manifold_dim  # Cannot have more eigenvectors than dimensions
+n_neighbors < block_size  # Need enough neighbors for graph construction
+
+# Typical ratios
+manifold_dim ≈ n_embd / 4 to n_embd / 2  # Compression ratio
+n_eigenvectors ≈ manifold_dim / 2  # Use ~50% of spectrum
+```
+
+**Example Valid Configurations:**
+```python
+# Nano: n_embd=128
+manifold_dim=32, n_eigenvectors=16, n_neighbors=10
+
+# Small: n_embd=384
+manifold_dim=64, n_eigenvectors=32, n_neighbors=15
+
+# Medium: n_embd=768
+manifold_dim=128, n_eigenvectors=64, n_neighbors=20
+```
+
+#### **S3: Multi-scale Manifold Dimensionality**
+
+When `use_multiscale_manifold=True`:
+
+```python
+# Dimension ordering (coarse to fine)
+multiscale_coarse_dim < multiscale_medium_dim < multiscale_fine_dim ≤ manifold_dim
+
+# Typical ratios (follows E7 → E6 → D5 subgroup chain)
+multiscale_coarse_dim = manifold_dim / 4    # Global patterns (D5)
+multiscale_medium_dim = manifold_dim / 2    # Phrase patterns (E6)
+multiscale_fine_dim = manifold_dim          # Token patterns (E7)
+```
+
+**Default Configuration:**
+```python
+manifold_dim=64
+multiscale_coarse_dim=16   # D5 level
+multiscale_medium_dim=32   # E6 level
+multiscale_fine_dim=64     # E7 level
+```
+
+#### **S4: FHN Dynamics Stability**
+
+For stable soliton propagation:
+
+```python
+# Slow-fast separation (critical for FitzHugh-Nagumo)
+fhn_tau > 10.0  # Recovery variable must be SLOW (default 12.5)
+
+# Threshold and velocity balance
+0.3 ≤ fhn_threshold ≤ 0.7  # Excitability range
+0.5 ≤ fhn_velocity ≤ 2.0   # Propagation speed
+
+# Integration steps
+n_fhn_steps ≥ 2 if use_fhn_imex else ≥ 4  # IMEX is more stable
+
+# WARNING: Common error from early versions
+fhn_tau = 0.1  # BAD: Too fast, no slow-fast separation!
+fhn_tau = 12.5  # GOOD: Proper slow dynamics
+```
+
+#### **S5: Attention Head Dimension**
+
+For effective attention:
+
+```python
+head_dim = n_embd // n_heads
+32 ≤ head_dim ≤ 128  # Optimal range
+
+# Too small: insufficient capacity per head
+head_dim < 32  # Warning: may degrade attention quality
+
+# Too large: inefficient parallelism
+head_dim > 128  # Warning: diminishing returns, use more heads instead
+```
+
+**Recommended Configurations:**
+```python
+# Optimal head_dim=64
+n_embd=256, n_heads=4   # head_dim=64
+n_embd=512, n_heads=8   # head_dim=64
+n_embd=1024, n_heads=16  # head_dim=64
+
+# Also acceptable head_dim=128
+n_embd=512, n_heads=4   # head_dim=128
+n_embd=1024, n_heads=8  # head_dim=128
+```
+
+#### **S6: Memory Hierarchy Capacity Ordering**
+
+For hierarchical memory to function:
+
+```python
+# Standard engram memory (older system)
+l1_capacity < l2_capacity < l3_capacity ≤ engram_capacity
+
+# Hierarchical memory (newer system)
+hierarchical_l1_capacity < hierarchical_l2_capacity < hierarchical_l3_capacity
+```
+
+**Typical Ratios:**
+```python
+# L1 (hot/working memory): ~10% of total
+# L2 (warm/short-term): ~30% of total
+# L3 (cold/long-term): ~100% of total
+
+# Example: 1000 total capacity
+l1_capacity = 100    # Hot: 10%
+l2_capacity = 500    # Warm: 50% (includes L1)
+l3_capacity = 1000   # Cold: 100%
+```
+
+#### **S7: MTP (Multi-Token Prediction) Configuration**
+
+For effective multi-token prediction:
+
+```python
+1 ≤ mtp_n_predict ≤ 8  # Number of future tokens
+mtp_n_predict = 1  # Standard autoregressive (no MTP)
+mtp_n_predict = 4  # Recommended (DeepSeek/Meta)
+
+0.05 ≤ mtp_loss_weight ≤ 0.3  # Auxiliary loss weighting
+mtp_loss_weight = 0.1  # Default: 10% weight for MTP, 100% for main loss
+```
+
+**Trade-off:** Higher `mtp_n_predict` improves representations but increases compute:
+- Memory: +`mtp_n_predict` LM heads
+- Compute: +`mtp_n_predict` loss calculations per token
+
+#### **S8: KAN Configuration**
+
+For Kolmogorov-Arnold Network layers:
+
+```python
+# KAN type selection
+kan_type = "faster"  # RSWAF basis (fastest, recommended for FFN)
+kan_type = "wave"    # Wavelet basis (experimental)
+kan_type = "cheby"   # Chebyshev polynomial (stable, slower)
+
+# FasterKAN: number of radial basis function centers
+kan_num_centers = 3  # Default: balance speed vs expressiveness
+2 ≤ kan_num_centers ≤ 5  # Valid range
+
+# ChebyKAN: polynomial degree
+kan_degree = 4  # Default
+2 ≤ kan_degree ≤ 8  # Higher = more expressive but slower
+```
+
+**Warning:** `use_kan_everywhere=True` causes **severe parameter bloat**:
+```python
+# Linear layer: n_embd² parameters
+# FasterKAN layer: kan_num_centers * n_embd² parameters
+
+# Example with n_embd=384, kan_num_centers=3
+linear_params = 384² = 147,456
+kan_params = 3 * 384² = 442,368  # 3x increase per layer!
+```
+
+**Recommendation:** Keep `use_kan_everywhere=False` (use KAN only for FFN, not all projections)
+
+### 12.4 Mutually Exclusive Configurations
+
+Certain features **cannot be enabled simultaneously**:
+
+#### **M1: Attention Mechanism Selection**
+
+```python
+# Only ONE attention mechanism should be True
+use_knot_attention = False     # Standard attention
+use_kaufmann_attention = False # Knot-theoretic attention (experimental)
+# use_standard_attention (implied when both are False)
+```
+
+**Rationale:** These are alternative attention mechanisms, not complementary features.
+
+#### **M2: Memory System Selection**
+
+```python
+# Choose ONE memory system
+use_hierarchical_memory = False  # Old: flat SDR engram memory
+use_hierarchical_memory = True   # New: tiered L1/L2/L3 hierarchy
+```
+
+When `use_hierarchical_memory=True`:
+- Use `hierarchical_l1_capacity`, `hierarchical_l2_capacity`, `hierarchical_l3_capacity`
+- Ignore `l1_capacity`, `l2_capacity`, `l3_capacity`, `engram_capacity`
+
+#### **M3: KAN Type Selection**
+
+```python
+kan_type = "faster"  # Only ONE kan_type can be active
+# kan_degree is used only when kan_type="cheby"
+# kan_wavelet is used only when kan_type="wave"
+```
+
+### 12.5 Performance vs Accuracy Trade-offs
+
+Understanding these trade-offs helps balance speed and model quality:
+
+#### **T1: SDR vs Dense Embeddings**
+
+```python
+use_sdr = False  # Dense: FAST, standard transformer
+use_sdr = True   # SDR: SLOW, biological plausibility + infinite context
+```
+
+**Performance Impact:**
+- Dense: 1.0× baseline (fastest)
+- SDR: ~1.3-1.5× slower (semantic folding overhead)
+
+**Use Cases:**
+- Dense: Rapid prototyping, baseline comparisons, production speed
+- SDR: Research on biological plausibility, infinite context experiments
+
+#### **T2: fast_mode Trade-off**
+
+```python
+fast_mode = False  # Full architecture: SLOW, accurate
+fast_mode = True   # Aggressive optimizations: FAST, reduced accuracy
+```
+
+**Speed Improvement:** ~2-3× faster training
+**Accuracy Loss:** ~5-10% higher final loss (disables core features)
+
+**What gets disabled:**
+- Context encoder (local attention in SDR)
+- Semantic retina (Gaussian smoothing)
+- Manifold metric tensor computation
+- FHN steps reduced to 1 (from 2)
+- SDR size capped at 512
+
+**Recommendation:** Use `fast_mode=True` only for:
+- Smoke tests and sanity checks
+- Quick architecture experiments
+- Resource-constrained debugging
+
+#### **T3: Manifold/Spectral Skip Flags**
+
+```python
+skip_manifold_spectral = False  # Full manifold: SLOW, geometric attention
+skip_manifold_spectral = True   # Skip manifold: FAST, standard attention
+```
+
+**Speed Improvement:** ~1.5× faster
+**Accuracy Loss:** Removes learned Riemannian geometry; becomes standard transformer
+
+#### **T4: MoE Active Experts**
+
+```python
+moe_n_active = 2  # Fewer active: FAST, less capacity per token
+moe_n_active = 4  # More active: SLOW, more capacity per token
+```
+
+**Compute Scaling:** Linear with `moe_n_active`
+**Capacity Trade-off:** More active experts = better representation but slower inference
+
+#### **T5: FHN Integration Methods**
+
+```python
+# Method 1: Parallel FFT-based (fastest)
+use_fhn_parallel = True
+# ~10× faster than naive integration, minimal accuracy loss
+
+# Method 2: IMEX semi-implicit (stable)
+use_fhn_imex = True, n_fhn_steps = 2
+# More stable than explicit, 2× faster than explicit with n_fhn_steps=4
+
+# Method 3: Explicit Euler (baseline)
+use_fhn_imex = False, n_fhn_steps = 4
+# Slowest, but most straightforward
+```
+
+**Recommendation:** Use `use_fhn_parallel=True` for production (default).
+
+### 12.6 Large Vocabulary Configurations
+
+Special considerations for vocabularies > 100K tokens:
+
+#### **V1: Large Vocab Requirements**
+
+For `vocab_size ≥ 100000` (e.g., Qwen3's 151,936):
+
+```python
+# REQUIRED configurations
+label_smoothing ≥ 0.1      # Softens targets, prevents overconfidence
+lm_head_fp32 = True         # FP32 lm_head prevents gradient underflow
+
+# Recommended
+label_smoothing = 0.15      # 15% smoothing for 150K vocab
+learning_rate = 3e-4        # Standard LR works fine
+grad_clip = 1.0             # Standard gradient clipping
+```
+
+**Why needed:**
+- Large vocab creates **extremely sparse gradients** (only 1 of 151K classes is correct)
+- FP16 underflows on tiny gradients for rare tokens
+- Label smoothing provides non-zero gradient to all classes
+
+#### **V2: Vocabulary Alignment**
+
+```python
+# Prefer multiples of 64/128 for GPU efficiency
+vocab_size = 50304  # GPT-2 (50257 + padding to 64)
+vocab_size = 151936  # Qwen3 (151,643 + padding to 128)
+
+# Alignment formula
+vocab_padded = ((vocab_actual + alignment - 1) // alignment) * alignment
+```
+
+### 12.7 Validation Checklist
+
+Before training, validate your configuration:
+
+**✓ Critical Constraints**
+- [ ] `n_embd % n_heads == 0`
+- [ ] `memory_active_retrieval=True` requires `use_sdr=True`
+- [ ] `sdr_n_active > 0` (if using SDR)
+
+**✓ Semantic Constraints**
+- [ ] `manifold_dim < n_embd`
+- [ ] `n_eigenvectors ≤ manifold_dim`
+- [ ] `sdr_n_active << sdr_size` (< 5%)
+- [ ] `32 ≤ head_dim ≤ 128`
+- [ ] `l1_capacity < l2_capacity < l3_capacity`
+
+**✓ Multi-scale Manifold**
+- [ ] `multiscale_coarse_dim < multiscale_medium_dim < multiscale_fine_dim`
+- [ ] `multiscale_fine_dim ≤ manifold_dim`
+
+**✓ Large Vocabulary** (if `vocab_size > 100K`)
+- [ ] `label_smoothing ≥ 0.1`
+- [ ] `lm_head_fp32 = True`
+
+**✓ Performance**
+- [ ] Choose ONE attention mechanism (knot, kaufmann, or standard)
+- [ ] Choose ONE memory system (hierarchical or engram)
+- [ ] Choose ONE KAN type (faster, wave, or cheby)
+
+**✓ Resource Limits**
+- [ ] Memory capacity: Check GPU VRAM for `batch_size * block_size * n_embd`
+- [ ] Parameter count: `use_kan_everywhere=True` causes 3× bloat
+- [ ] MoE explosion: `use_moe=True` adds `moe_n_experts × FFN_params`
+
+### 12.8 Common Configuration Pitfalls
+
+**Pitfall 1: Mismatched Dimensions**
+```python
+# BAD: n_embd not divisible by n_heads
+config = NeuroManifoldConfig(n_embd=100, n_heads=8)  # FAILS!
+
+# GOOD
+config = NeuroManifoldConfig(n_embd=128, n_heads=8)  # head_dim=16
+```
+
+**Pitfall 2: Invalid SDR Sparsity**
+```python
+# BAD: Too sparse, only 0 active bits
+config = NeuroManifoldConfig(sdr_size=512, sdr_sparsity=0.001)  # 0.5 bits → 0!
+
+# GOOD
+config = NeuroManifoldConfig(sdr_size=2048, sdr_sparsity=0.02)  # 41 bits
+```
+
+**Pitfall 3: Memory Retrieval Without SDR**
+```python
+# BAD: Retrieval needs SDR for overlap computation
+config = NeuroManifoldConfig(
+    use_sdr=False,
+    memory_active_retrieval=True  # FAILS!
+)
+
+# GOOD
+config = NeuroManifoldConfig(
+    use_sdr=True,
+    memory_active_retrieval=True
+)
+```
+
+**Pitfall 4: Incorrect FHN Tau**
+```python
+# BAD: Early bug - too fast, no slow-fast separation
+config = NeuroManifoldConfig(fhn_tau=0.1)  # System becomes unstable
+
+# GOOD: Proper slow dynamics
+config = NeuroManifoldConfig(fhn_tau=12.5)  # Default, stable
+```
+
+**Pitfall 5: Manifold Larger Than Embedding**
+```python
+# BAD: Manifold should compress, not expand
+config = NeuroManifoldConfig(n_embd=128, manifold_dim=256)  # Nonsensical
+
+# GOOD: Manifold projects to lower dimension
+config = NeuroManifoldConfig(n_embd=384, manifold_dim=64)  # Compression
+```
+
+**Pitfall 6: Extreme Head Dimensions**
+```python
+# BAD: head_dim too small (< 32)
+config = NeuroManifoldConfig(n_embd=128, n_heads=8)  # head_dim=16, too small
+
+# BAD: head_dim too large (> 128)
+config = NeuroManifoldConfig(n_embd=1024, n_heads=4)  # head_dim=256, too large
+
+# GOOD: head_dim in optimal range [32, 128]
+config = NeuroManifoldConfig(n_embd=512, n_heads=8)  # head_dim=64, optimal
+```
+
+**Pitfall 7: Large Vocab Without Safeguards**
+```python
+# BAD: 151K vocab without label smoothing or FP32 lm_head
+config = NeuroManifoldConfig(
+    vocab_size=151936,
+    label_smoothing=0.0,     # Gradients too sparse!
+    lm_head_fp32=False       # FP16 underflow!
+)
+
+# GOOD
+config = NeuroManifoldConfig(
+    vocab_size=151936,
+    label_smoothing=0.15,    # Smooth targets
+    lm_head_fp32=True        # Prevent underflow
+)
+```
+
+### 12.9 Configuration Examples with Rationale
+
+#### **Example 1: Fast Prototyping (Nano)**
+```python
+config = NeuroManifoldConfig(
+    # Minimal dimensions for speed
+    block_size=256,           # Small context
+    n_layer=4,                # Shallow
+    n_embd=128,               # Narrow
+    n_heads=4,                # head_dim=32 (acceptable for testing)
+
+    # Disable expensive features
+    use_sdr=False,            # Dense embeddings (faster)
+    fast_mode=True,           # All skip flags enabled
+    use_mhc=False,            # Simplify architecture
+    use_mtp=False,            # No auxiliary predictions
+
+    # Small manifold
+    manifold_dim=32,
+    n_eigenvectors=16,
+
+    # Rationale: Maximize iteration speed for rapid experimentation
+)
+```
+
+#### **Example 2: Full Features (Research)**
+```python
+config = NeuroManifoldConfig(
+    # Standard dimensions
+    block_size=1024,
+    n_layer=12,
+    n_embd=768,
+    n_heads=12,               # head_dim=64 (optimal)
+
+    # Enable all novel features
+    use_sdr=True,             # Biological plausibility
+    use_mhc=True,             # Training stability
+    use_mtp=True,             # Better representations
+    use_multiscale_manifold=True,  # E7 subgroup chain
+
+    # Full manifold projection
+    manifold_dim=128,
+    n_eigenvectors=64,
+
+    # SDR configuration for infinite context
+    sdr_size=2048,
+    sdr_sparsity=0.02,        # 41 active bits
+    memory_active_retrieval=True,
+
+    # No fast mode
+    fast_mode=False,
+
+    # Rationale: Full architecture for research on novel components
+)
+```
+
+#### **Example 3: Production Efficiency**
+```python
+config = NeuroManifoldConfig(
+    # Production scale
+    block_size=2048,          # Long context
+    n_layer=24,               # Deep
+    n_embd=1024,              # Wide
+    n_heads=16,               # head_dim=64
+
+    # Efficient features only
+    use_sdr=False,            # Dense (faster)
+    use_mhc=True,             # Stability without SDR overhead
+    use_mtp=True,             # Representation quality
+    use_mla=True,             # KV cache compression for long context
+
+    # Skip expensive manifold operations
+    skip_manifold_spectral=True,
+
+    # Fast FHN
+    use_fhn_parallel=True,
+
+    # Rationale: Balance performance and key architectural innovations
+)
+```
+
+#### **Example 4: Large Vocabulary (Qwen3)**
+```python
+config = NeuroManifoldConfig(
+    # Qwen3 vocabulary
+    vocab_size=151936,        # Padded to 128
+
+    # Large vocab safeguards (CRITICAL)
+    label_smoothing=0.15,     # Prevent overconfidence
+    lm_head_fp32=True,        # Prevent FP16 underflow
+
+    # Standard architecture
+    block_size=2048,
+    n_layer=24,
+    n_embd=1536,
+    n_heads=12,               # head_dim=128
+
+    # Dense mode for stability
+    use_sdr=False,
+
+    # Rationale: Large vocabularies require special numerical handling
+)
+```
+
+### 12.10 Debugging Configuration Issues
+
+**Issue 1: "n_embd must be divisible by n_heads"**
+```
+AssertionError: n_embd (100) must be divisible by n_heads (8)
+```
+**Solution:** Use `n_embd` that is a multiple of `n_heads`:
+- For 8 heads: 128, 256, 384, 512, 768, 1024
+- For 12 heads: 192, 384, 768, 1152
+
+**Issue 2: "memory_active_retrieval=True requires use_sdr=True"**
+```
+ValueError: memory_active_retrieval=True requires use_sdr=True
+```
+**Solution:** Either enable SDR or disable retrieval:
+```python
+config.use_sdr = True  # Option 1: Enable SDR
+config.memory_active_retrieval = False  # Option 2: Disable retrieval
+```
+
+**Issue 3: Poor Attention Quality (head_dim too small)**
+```
+Symptoms: Low accuracy, training plateau, attention collapse
+```
+**Diagnosis:** Check `head_dim = n_embd // n_heads`
+```python
+head_dim = config.n_embd // config.n_heads
+assert 32 <= head_dim <= 128, f"head_dim {head_dim} out of optimal range [32, 128]"
+```
+**Solution:** Reduce `n_heads` or increase `n_embd`
+
+**Issue 4: OOM (Out of Memory)**
+```
+RuntimeError: CUDA out of memory
+```
+**Common Causes:**
+1. `block_size` too large (memory grows quadratically)
+2. `batch_size` too large
+3. `use_moe=True` with high `moe_n_experts`
+4. `use_kan_everywhere=True` (3× parameter bloat)
+
+**Solutions:**
+```python
+# Reduce memory usage
+config.block_size = 512          # Halve context window
+config.use_mla = True             # Enable KV compression
+config.use_kan_everywhere = False # Disable KAN bloat
+# Or reduce batch size in training loop
+```
+
+**Issue 5: Training Instability**
+```
+Symptoms: Loss spikes, NaN losses, exploding gradients
+```
+**Checklist:**
+- [ ] `fhn_tau ≥ 10.0` (not 0.1!)
+- [ ] `grad_clip = 1.0` (enabled)
+- [ ] `use_mhc = True` (stability)
+- [ ] `label_smoothing > 0` (if large vocab)
+- [ ] `lm_head_fp32 = True` (if large vocab)
+- [ ] `use_qk_norm = True` (prevents attention explosion)
+
+**Issue 6: Slow Training**
+```
+Symptoms: Very slow iterations, low GPU utilization
+```
+**Performance Optimizations:**
+```python
+# Fast path
+config.use_sdr = False            # Dense embeddings
+config.skip_manifold_spectral = True  # Skip geometry
+config.use_fhn_parallel = True    # Parallel FHN
+config.use_kan_everywhere = False # No KAN bloat
+
+# Or nuclear option
+config.fast_mode = True           # All optimizations (but reduced accuracy)
+```
 
 ---
 
