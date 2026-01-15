@@ -147,9 +147,24 @@ class FastSpectralAttention(nn.Module):
 
     Instead of O(n²) full attention, projects to spectral space (k dims),
     computes attention there, and projects back. Total: O(n·k + k²).
+
+    Uses chunked processing for causal cumsum to reduce memory complexity
+    from O(T*k²) to O(chunk_size*k²) while maintaining causal masking.
     """
 
     def __init__(self, embed_dim: int, n_eigenvectors: int = 32, n_heads: int = 8, chunk_size: int = 256):
+        """
+        Initialize FastSpectralAttention.
+
+        Args:
+            embed_dim: Embedding dimension for input/output
+            n_eigenvectors: Number of spectral basis functions (k). Default: 32
+            n_heads: Number of attention heads. Default: 8
+            chunk_size: Sequence chunk size for memory-efficient causal cumsum.
+                       Reduces memory from O(T*k²) to O(chunk_size*k²).
+                       Smaller values use less memory but may be slower.
+                       Default: 256
+        """
         super().__init__()
         self.n_heads = n_heads
         self.head_dim = embed_dim // n_heads
