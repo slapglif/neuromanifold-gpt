@@ -334,7 +334,7 @@ pip install torch numpy transformers datasets tiktoken wandb tqdm pytorch-lightn
 ### Installation from Source
 
 ```bash
-git clone https://github.com/yourusername/neuromanifold-gpt.git
+git clone https://github.com/slapglif/neuromanifold-gpt.git
 cd neuromanifold-gpt
 pip install -e .
 ```
@@ -651,9 +651,9 @@ If you use NeuroManifoldGPT in your research, please cite:
 ```bibtex
 @software{neuromanifoldgpt2025,
   title={NeuroManifoldGPT: A Neuromorphic Manifold-Constrained Language Model},
-  author={Your Name},
+  author={SWE Agent},
   year={2025},
-  url={https://github.com/yourusername/neuromanifold-gpt}
+  url={https://github.com/slapglif/neuromanifold-gpt}
 }
 ```
 
