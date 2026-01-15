@@ -2865,7 +2865,536 @@ config = NeuroManifoldConfig(
 
 **Category:** Deliberative reasoning, planning, and imagination.
 
-*(This section will be expanded in subsequent subtasks)*
+These parameters enable "System 2" thinking - the slow, deliberative reasoning mode that complements fast pattern-matching (System 1). Inspired by Kahneman's dual-process theory, these modules add:
+
+- **Hybrid Reasoning:** Switch between fast and slow thinking modes
+- **DAG Planning:** Decompose complex tasks into structured graphs
+- **Hierarchical Memory:** Multi-tier memory system (hot/warm/cold)
+- **Imagination:** Counterfactual exploration via lightweight diffusion
+
+**Performance Impact:** System 2 components add significant compute overhead (2-10x slower) but enable qualitatively different capabilities like planning, reasoning, and exploration.
+
+**When to Enable:**
+- Reasoning tasks (math, logic, planning)
+- Multi-step problem solving
+- Exploration and creativity
+- Long-term memory requirements
+
+**When to Disable:**
+- Pure language modeling
+- Speed-critical applications
+- Limited compute budget
+- Short-context tasks
+
+---
+
+### 9.1 Hybrid Reasoning
+
+Qwen3-style dual-mode architecture that routes between fast (direct) and slow (thinking) paths.
+
+#### use_hybrid_reasoning
+- **Type:** `bool`
+- **Default:** `False` (disabled - single reasoning mode)
+- **Description:** Enable hybrid fast/slow reasoning modes
+- **Details:**
+  - Implements Qwen3-style "thinking" vs "non-thinking" mode routing
+  - Fast path: Standard transformer layers (low latency)
+  - Slow path: Additional "thinking layers" for complex inputs
+  - Mode selection based on learned complexity threshold
+  - Architecture: `if complexity > threshold: use_thinking_layers(x) else: direct(x)`
+  - Thinking layers are deeper (more parameters) but only activated when needed
+  - Provides adaptive compute: simple inputs get fast processing, hard inputs get more depth
+- **Interdependencies:**
+  - Adds `n_thinking_layers` extra layers (parameter overhead)
+  - Requires learned complexity estimator (small MLP)
+  - Compatible with all other features
+- **Parameter Impact:**
+  - Adds `n_thinking_layers × 4 × n_embd²` parameters (thinking path)
+  - Example (n_embd=768, 2 layers): +9.44M parameters
+  - Complexity estimator: negligible (~10K parameters)
+- **Compute Impact:**
+  - Fast path: Standard compute (no overhead)
+  - Slow path: `1 + (n_thinking_layers / n_layer)` relative compute
+  - Example (6 base + 2 thinking): 33% slower when thinking mode triggered
+  - Adaptive: Overhead only when complexity demands it
+- **Tuning Tips:**
+  - Start with `n_thinking_layers=2` (one extra layer depth)
+  - Tune `thinking_threshold` to balance speed vs quality:
+    - Lower (0.3): Thinking mode more often (higher quality, slower)
+    - Higher (0.7): Thinking mode rarely (faster, may miss hard cases)
+  - Monitor thinking mode activation rate during training
+  - Ideal: 10-30% activation (hard examples get thinking, easy get fast path)
+  - Best for: Question answering, reasoning benchmarks
+  - Not useful for: Pure generation, chat
+
+**Example:**
+```python
+# Hybrid reasoning for Q&A tasks
+config = NeuroManifoldConfig(
+    use_hybrid_reasoning=True,
+    n_thinking_layers=2,        # Add 2 extra layers for thinking
+    thinking_threshold=0.5,     # Balanced fast/slow routing
+    n_layer=12,                 # Base layers
+    # Total depth: 12 (fast) or 14 (slow) depending on input
+)
+
+# Fast-only mode (disabled hybrid)
+config = NeuroManifoldConfig(
+    use_hybrid_reasoning=False, # Single reasoning mode
+    n_layer=12,                 # Fixed depth
+)
+```
+
+---
+
+#### n_thinking_layers
+- **Type:** `int`
+- **Default:** `2`
+- **Range:** 1-8 (typical: 2-4)
+- **Description:** Number of extra layers for thinking mode
+- **Details:**
+  - Additional transformer layers activated only in slow thinking path
+  - Adds depth for complex reasoning without penalizing simple inputs
+  - Stacked on top of base `n_layer` layers
+  - Total depth in thinking mode: `n_layer + n_thinking_layers`
+  - Each layer is a standard transformer block (attention + FFN)
+- **Interdependencies:**
+  - Only used when `use_hybrid_reasoning=True`
+  - Parameter cost: `n_thinking_layers × 4 × n_embd²` per layer
+  - Higher values = better reasoning but more parameters
+- **Tuning Tips:**
+  - Start with 2 (minimal overhead, measurable benefit)
+  - Use 4 for hard reasoning tasks (math, logic)
+  - Diminishing returns beyond 4 layers
+  - Balance with base `n_layer`: don't make thinking path too deep
+
+---
+
+#### thinking_threshold
+- **Type:** `float`
+- **Default:** `0.5` (balanced)
+- **Range:** 0.0-1.0
+- **Description:** Complexity threshold for triggering thinking mode
+- **Details:**
+  - Learned complexity estimator outputs score in [0, 1]
+  - If score > `thinking_threshold`, use slow thinking path
+  - Lower threshold: More aggressive thinking (higher quality, slower)
+  - Higher threshold: Conservative thinking (faster, may miss hard cases)
+  - Threshold is tunable at inference time (no retraining needed)
+- **Tuning Tips:**
+  - Default 0.5 is a good starting point
+  - Monitor activation rate:
+    - <10%: Threshold too high, raising may help
+    - >50%: Threshold too low, lowering improves speed
+  - Tune per dataset:
+    - Math/logic: Lower (0.3-0.4) for more thinking
+    - Chat/generation: Higher (0.6-0.7) for speed
+  - Can be adjusted dynamically at inference
+
+---
+
+### 9.2 DAG Planning
+
+ForcedDAGPlanner decomposes complex tasks into directed acyclic graphs for systematic reasoning.
+
+#### use_dag_planner
+- **Type:** `bool`
+- **Default:** `False` (disabled - no task decomposition)
+- **Description:** Enable DAG-based task planning module
+- **Details:**
+  - Forces model to decompose complex tasks into structured DAGs before solving
+  - Prevents "System 1" pattern matching on tasks requiring deliberate reasoning
+  - Architecture:
+    1. Task Decomposer: Splits problem into subtasks (DAG nodes)
+    2. Dependency Resolver: Establishes ordering (DAG edges)
+    3. Sequential Executor: Solves subtasks in topological order
+  - Each node is a mini-task with input/output specification
+  - Enforces at least `dag_min_nodes` decomposition (prevents shortcuts)
+  - Caps at `dag_max_nodes` to avoid over-fragmentation
+  - Inspired by System 2 thinking in cognitive science
+- **Interdependencies:**
+  - Adds dedicated DAG planner module (parameter overhead)
+  - Can combine with `use_imagination=True` for plan exploration
+  - Compatible with hierarchical memory for cross-step context
+- **Parameter Impact:**
+  - DAG encoder: `~2 × n_embd²` parameters
+  - Node encoder: `~4 × n_embd² × dag_max_nodes` parameters
+  - Example (n_embd=768, 32 nodes): ~75M parameters
+  - Significant overhead - only enable when needed
+- **Compute Impact:**
+  - Adds one full forward pass per DAG node
+  - Total compute: `(1 + avg_nodes) × base_compute`
+  - Example (avg 8 nodes): 9× slower
+  - Critical: Only use for tasks that benefit from decomposition
+- **Tuning Tips:**
+  - **Start disabled** - only enable for reasoning tasks
+  - Best for: Multi-step math, coding, planning tasks
+  - Not useful for: Chat, generation, classification
+  - Requires training signal:
+    - Supervised: Provide ground-truth DAGs
+    - RL: Reward correct final answers (harder to train)
+  - Monitor DAG quality:
+    - Are nodes meaningful subtasks?
+    - Is ordering logical?
+    - Does decomposition help accuracy?
+  - Tune `dag_min_nodes` to force decomposition (prevent shortcut)
+  - Tune `dag_max_nodes` to avoid over-fragmentation
+
+**Example:**
+```python
+# DAG planning for multi-step reasoning
+config = NeuroManifoldConfig(
+    use_dag_planner=True,
+    dag_max_nodes=32,           # Up to 32 subtasks
+    dag_min_nodes=3,            # At least 3 (force decomposition)
+    # WARNING: 3-32× slower, only for tasks needing decomposition
+)
+
+# Standard mode (no decomposition)
+config = NeuroManifoldConfig(
+    use_dag_planner=False,      # Direct solution
+)
+```
+
+---
+
+#### dag_max_nodes
+- **Type:** `int`
+- **Default:** `32`
+- **Range:** 4-128 (typical: 16-64)
+- **Description:** Maximum nodes in task decomposition DAG
+- **Details:**
+  - Caps the number of subtasks in decomposition
+  - Prevents over-fragmentation (too many tiny steps)
+  - Each node is a coherent subtask with clear input/output
+  - Higher values = more fine-grained decomposition
+  - Lower values = coarser task breakdown
+- **Interdependencies:**
+  - Only used when `use_dag_planner=True`
+  - Must be > `dag_min_nodes` (enforced in validation)
+  - Higher values increase parameter and memory costs
+- **Tuning Tips:**
+  - Default 32 works for most tasks
+  - Increase (64) for very complex multi-step problems
+  - Decrease (16) for simpler reasoning tasks
+  - Monitor actual node usage: if always hitting max, increase limit
+
+---
+
+#### dag_min_nodes
+- **Type:** `int`
+- **Default:** `3`
+- **Range:** 2-16 (typical: 3-8)
+- **Description:** Minimum nodes required in DAG (forces decomposition)
+- **Details:**
+  - Enforces minimum decomposition depth
+  - Prevents model from "cheating" with single-node pass-through
+  - Critical for training: Model must learn to break down tasks
+  - Example: Math problem must have ≥3 steps (understand, plan, compute, verify)
+  - Lower values = less forced structure
+  - Higher values = more aggressive decomposition
+- **Interdependencies:**
+  - Only used when `use_dag_planner=True`
+  - Must be ≤ `dag_max_nodes` (enforced in validation)
+  - Higher values make training harder (model must learn decomposition)
+- **Tuning Tips:**
+  - Start with 3 (minimal forced decomposition)
+  - Increase to 5-8 for very complex tasks
+  - Monitor if model struggles: May be too restrictive
+  - Balance between forced structure and flexibility
+
+---
+
+### 9.3 Hierarchical Memory
+
+Three-tier memory system (L1/L2/L3) inspired by CPU caches - replaces flat SDREngramMemory.
+
+#### use_hierarchical_memory
+- **Type:** `bool`
+- **Default:** `False` (disabled - uses flat SDREngramMemory)
+- **Description:** Enable three-tier hierarchical memory system
+- **Details:**
+  - Replaces flat `SDREngramMemory` with hierarchical `HierarchicalEngramMemory`
+  - Three tiers inspired by CPU cache hierarchy:
+    - **L1 (Hot):** Small, fast, working memory (recent/important items)
+    - **L2 (Warm):** Medium, short-term memory (recent context)
+    - **L3 (Cold):** Large, compressed, long-term memory (archived)
+  - Automatic promotion/demotion based on access patterns
+  - LRU (Least Recently Used) eviction policy
+  - L3 uses compression (quantization/pruning) for efficiency
+  - Enables truly infinite context via memory hierarchy
+- **Interdependencies:**
+  - Mutually exclusive with flat engram memory
+  - Works with `memory_active_retrieval=True` for retrieval-augmented generation
+  - Compatible with DAG planner (memory persists across DAG nodes)
+- **Parameter Impact:**
+  - Negligible: Just metadata tracking (no learned parameters)
+  - Memory cost: `L1 + L2 + L3` capacities
+  - L3 compression reduces memory ~4× (quantization)
+- **Compute Impact:**
+  - L1 access: O(1) - hash lookup
+  - L2 access: O(log n) - binary search
+  - L3 access: O(n) - linear scan + decompression
+  - Promotion/demotion: Negligible overhead
+  - Overall: Minimal impact (<5% slowdown)
+- **Tuning Tips:**
+  - Enable for long-context tasks (books, codebases)
+  - L1 capacity: Working memory size (32-128)
+  - L2 capacity: Recent context (256-1024)
+  - L3 capacity: Archive size (1024-8192)
+  - Rule of thumb: L1:L2:L3 = 1:8:64 ratio
+  - Monitor hit rates:
+    - L1: Should be 60-80% (hot items)
+    - L2: Should be 15-30% (recent items)
+    - L3: Should be 5-10% (rarely needed)
+    - Misses: <5% (not in any tier)
+
+**Example:**
+```python
+# Hierarchical memory for long-context tasks
+config = NeuroManifoldConfig(
+    use_hierarchical_memory=True,
+    hierarchical_l1_capacity=64,    # Hot: 64 items
+    hierarchical_l2_capacity=512,   # Warm: 512 items
+    hierarchical_l3_capacity=4096,  # Cold: 4096 items (compressed)
+    memory_active_retrieval=True,   # Enable retrieval-augmented generation
+    # Total effective memory: ~5K items with minimal overhead
+)
+
+# Flat memory (default)
+config = NeuroManifoldConfig(
+    use_hierarchical_memory=False,
+    engram_capacity=1000,           # Single flat tier
+)
+```
+
+---
+
+#### hierarchical_l1_capacity
+- **Type:** `int`
+- **Default:** `64`
+- **Range:** 16-256 (typical: 32-128)
+- **Description:** L1 hot memory capacity (working memory)
+- **Details:**
+  - Smallest, fastest tier - stores most recently accessed items
+  - Hash-based O(1) lookup
+  - No compression - full fidelity
+  - Automatically promotes frequently accessed L2/L3 items
+  - LRU eviction to L2 when full
+- **Tuning Tips:**
+  - Smaller = faster but more L2 access
+  - Larger = higher hit rate but more memory
+  - Default 64 works for most tasks
+  - Increase to 128 for very dynamic workloads
+
+---
+
+#### hierarchical_l2_capacity
+- **Type:** `int`
+- **Default:** `512`
+- **Range:** 128-2048 (typical: 256-1024)
+- **Description:** L2 warm memory capacity (short-term memory)
+- **Details:**
+  - Medium-sized tier for recent context
+  - Sorted structure for O(log n) lookup
+  - No compression - full fidelity
+  - Receives evictions from L1
+  - LRU eviction to L3 when full
+- **Tuning Tips:**
+  - Balance between L1 and L3 sizes
+  - Default 512 = 8× L1 (good ratio)
+  - Increase for longer recent context
+
+---
+
+#### hierarchical_l3_capacity
+- **Type:** `int`
+- **Default:** `4096`
+- **Range:** 1024-16384 (typical: 2048-8192)
+- **Description:** L3 cold memory capacity (long-term archive)
+- **Details:**
+  - Largest tier for archived memories
+  - O(n) scan for retrieval (infrequent access)
+  - Uses compression (INT8 quantization + pruning) for 4× memory savings
+  - Receives evictions from L2
+  - Oldest items dropped when full
+- **Tuning Tips:**
+  - Default 4096 = 64× L1 (good ratio)
+  - Increase to 8192+ for very long documents
+  - Compression reduces quality slightly but enables massive capacity
+
+---
+
+### 9.4 Imagination Module
+
+ConsistencyImaginationModule enables counterfactual exploration via lightweight diffusion.
+
+#### use_imagination
+- **Type:** `bool`
+- **Default:** `False` (disabled - no counterfactual exploration)
+- **Description:** Enable imagination module for counterfactual reasoning
+- **Details:**
+  - Lightweight diffusion model for "mental whiteboard" exploration
+  - Generates alternative trajectories ("what if?") for reasoning tasks
+  - Architecture: Consistency model (2-4 step diffusion, much faster than DDPM)
+  - Use cases:
+    - Planning: Explore different action sequences
+    - Reasoning: Consider alternative hypotheses
+    - Creativity: Generate diverse solutions
+  - Generates `imagination_n_alternatives` counterfactual paths
+  - Model selects best path or ensembles across alternatives
+  - Inspired by mental simulation in human cognition
+- **Interdependencies:**
+  - Adds separate diffusion model (parameter overhead)
+  - Can combine with `use_dag_planner=True` to imagine DAG variations
+  - Compatible with hierarchical memory for storing explored paths
+- **Parameter Impact:**
+  - Consistency model: `~8 × imagination_dim²` parameters
+  - Example (imagination_dim=256): ~524K parameters
+  - Relatively lightweight (consistency model < full diffusion)
+- **Compute Impact:**
+  - Adds `imagination_steps × imagination_n_alternatives` forward passes
+  - Example (4 steps, 4 alternatives): 16× overhead
+  - Can run alternatives in parallel (batch over alternatives)
+  - Critical: Very slow - only use when counterfactuals are valuable
+- **Tuning Tips:**
+  - **Start disabled** - significant compute overhead
+  - Best for: Planning, exploration, creative tasks
+  - Not useful for: Standard language modeling, classification
+  - `imagination_steps`: 2-4 (consistency model needs few steps)
+  - `imagination_n_alternatives`: 4-8 (diversity vs compute tradeoff)
+  - Training: Requires counterfactual supervision or RL
+  - Consider running imagination asynchronously (background threads)
+
+**Example:**
+```python
+# Imagination for planning tasks
+config = NeuroManifoldConfig(
+    use_imagination=True,
+    imagination_steps=4,            # 4-step consistency model
+    imagination_n_alternatives=4,   # Generate 4 "what if" scenarios
+    imagination_dim=256,            # Latent space dimension
+    # WARNING: 16× slower (4 steps × 4 alternatives)
+    # Use for planning/exploration, not standard generation
+)
+
+# Standard mode (no imagination)
+config = NeuroManifoldConfig(
+    use_imagination=False,          # Direct reasoning
+)
+```
+
+---
+
+#### imagination_steps
+- **Type:** `int`
+- **Default:** `4`
+- **Range:** 2-8 (typical: 2-4)
+- **Description:** Number of denoising steps in consistency model
+- **Details:**
+  - Controls diffusion quality vs speed tradeoff
+  - Consistency models need far fewer steps than DDPM (50-1000 steps)
+  - 2 steps: Fastest, lower quality
+  - 4 steps: Balanced (recommended)
+  - 8 steps: Higher quality, slower
+  - Each step refines the counterfactual trajectory
+- **Interdependencies:**
+  - Only used when `use_imagination=True`
+  - Total compute: `imagination_steps × imagination_n_alternatives × base_compute`
+- **Tuning Tips:**
+  - Start with 4 (good quality/speed balance)
+  - Use 2 for fastest iteration during development
+  - Rarely need >4 (diminishing returns)
+
+---
+
+#### imagination_n_alternatives
+- **Type:** `int`
+- **Default:** `4`
+- **Range:** 2-16 (typical: 4-8)
+- **Description:** Number of counterfactual alternatives to generate
+- **Details:**
+  - How many "what if?" scenarios to explore
+  - Higher values = more diversity but more compute
+  - Model either:
+    - Selects best alternative (argmax over outcomes)
+    - Ensembles across alternatives (average logits)
+  - Alternatives generated in parallel (batch dimension)
+- **Interdependencies:**
+  - Only used when `use_imagination=True`
+  - Batch size must accommodate alternatives (memory consideration)
+- **Tuning Tips:**
+  - Default 4 is good balance
+  - Increase to 8 for very open-ended tasks (creativity)
+  - Decrease to 2 for speed
+  - Monitor diversity: Are alternatives meaningfully different?
+
+---
+
+### 9.5 Combining System 2 Components
+
+System 2 components can be combined for powerful reasoning capabilities:
+
+**Hybrid + DAG:**
+- Use hybrid reasoning to decide when to engage DAG planner
+- Fast path: Direct solution (simple tasks)
+- Slow path: DAG decomposition (complex tasks)
+- Adaptive compute based on complexity
+
+**DAG + Memory:**
+- Hierarchical memory persists across DAG nodes
+- Each subtask can retrieve relevant memories
+- Enables multi-step reasoning with long-term context
+
+**DAG + Imagination:**
+- Imagine alternative DAG structures before committing
+- Explore different decomposition strategies
+- Select best DAG based on imagined outcomes
+
+**Full System 2 (All Components):**
+- Maximum reasoning capability
+- Extreme compute cost (10-100× slower)
+- Only for hardest reasoning tasks
+
+**Example Configurations:**
+
+```python
+# Minimal System 2 (Hybrid only)
+config = NeuroManifoldConfig(
+    use_hybrid_reasoning=True,
+    n_thinking_layers=2,
+    # 1.3× slower (only when thinking triggered)
+)
+
+# Moderate System 2 (Hybrid + Memory)
+config = NeuroManifoldConfig(
+    use_hybrid_reasoning=True,
+    use_hierarchical_memory=True,
+    hierarchical_l3_capacity=4096,
+    # ~1.4× slower, infinite context capability
+)
+
+# Heavy System 2 (DAG + Memory)
+config = NeuroManifoldConfig(
+    use_dag_planner=True,
+    dag_max_nodes=32,
+    use_hierarchical_memory=True,
+    # 8× slower, structured multi-step reasoning
+)
+
+# Full System 2 (All components)
+config = NeuroManifoldConfig(
+    use_hybrid_reasoning=True,
+    use_dag_planner=True,
+    use_hierarchical_memory=True,
+    use_imagination=True,
+    imagination_n_alternatives=4,
+    # 30-100× slower, maximum reasoning capability
+    # Only for hardest tasks: math olympiad, complex planning
+)
+```
+
+---
 
 ---
 
