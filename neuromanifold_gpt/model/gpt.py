@@ -344,7 +344,10 @@ class NeuroManifoldGPT(nn.Module):
 
                 # Batch retrieval - vectorized for 10-50x speedup
                 if self.use_hierarchical_memory:
-                    # Hierarchical memory doesn't have batch retrieval yet - fallback to loop
+                    # TODO(vectorization): HierarchicalEngramMemory vectorization deferred to future work
+                    # Currently falls back to per-batch loop (slower). Requires implementing
+                    # retrieve_batch() for L1/L2/L3 tiered memory with proper cache-aware batching.
+                    # For now, use standard SDREngramMemory for maximum performance.
                     retrieved_contents_list = []
                     total_similarity = 0.0
                     total_retrieved = 0
@@ -518,7 +521,10 @@ class NeuroManifoldGPT(nn.Module):
 
             # Use hierarchical memory if enabled, otherwise use basic memory
             if self.use_hierarchical_memory:
-                # Batch store to hierarchical memory
+                # TODO(vectorization): HierarchicalEngramMemory vectorization deferred to future work
+                # Currently uses per-item loop (slower). Requires implementing store_batch() for
+                # L1/L2/L3 tiered memory with proper eviction policy and batch insertion.
+                # For now, use standard SDREngramMemory for maximum performance.
                 for i in range(min(flat_sdr.shape[0], 100)):  # Cap at 100 per step
                     self.hierarchical_memory.store(flat_sdr[i], flat_x[i].detach())
             else:
