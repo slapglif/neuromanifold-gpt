@@ -8,6 +8,10 @@ import torch
 import tiktoken
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.utils.logging import get_logger
+from model import GPT, GPTConfig
+
+logger = get_logger(__name__)
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
@@ -41,12 +45,12 @@ if init_from == 'resume':
     
     # Check if it's a NeuroManifold checkpoint (has 'config' object) or legacy nanoGPT
     if 'config' in checkpoint and isinstance(checkpoint['config'], (NeuroManifoldConfig, type(None))):
-        print("Loading NeuroManifoldGPT model...")
+        logger.info("Loading NeuroManifoldGPT model...")
         nm_config = checkpoint['config']
         model = NeuroManifoldGPT(nm_config)
     else:
         # Legacy/Standard GPT
-        print("Loading standard GPT model...")
+        logger.info("Loading standard GPT model...")
         gptconf = GPTConfig(**checkpoint['model_args'])
         model = GPT(gptconf)
         
@@ -82,7 +86,7 @@ if dataset_name:
     meta_path = os.path.join('data', dataset_name, 'meta.pkl')
     load_meta = os.path.exists(meta_path)
 if load_meta:
-    print(f"Loading meta from {meta_path}...")
+    logger.info(f"Loading meta from {meta_path}...")
     with open(meta_path, 'rb') as f:
         meta = pickle.load(f)
     # TODO want to make this more general to arbitrary encoder/decoder schemes
@@ -91,7 +95,7 @@ if load_meta:
     decode = lambda l: ''.join([itos[i] for i in l])
 else:
     # ok let's assume gpt-2 encodings by default
-    print("No meta.pkl found, assuming GPT-2 encodings...")
+    logger.info("No meta.pkl found, assuming GPT-2 encodings...")
     enc = tiktoken.get_encoding("gpt2")
     encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
     decode = lambda l: enc.decode(l)
@@ -107,6 +111,6 @@ x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
 with torch.no_grad():
     with ctx:
         for k in range(num_samples):
+            logger.section(f"Sample {k+1}/{num_samples}")
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
             print(decode(y[0].tolist()))
-            print('---------------')
