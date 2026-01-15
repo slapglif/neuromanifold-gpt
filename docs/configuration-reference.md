@@ -697,7 +697,376 @@ config = NeuroManifoldConfig(
 
 **Category:** FitzHugh-Nagumo neural dynamics for soliton-based attention.
 
-*(This section will be expanded in subsequent subtasks)*
+The FitzHugh-Nagumo (FHN) model describes **soliton propagation** in excitable media, inspired by nerve impulse transmission. In NeuroManifold, FHN dynamics replace standard softmax attention with **wave-based attention** that propagates information through the network like action potentials in biological neurons.
+
+**Key Concepts:**
+- **Solitons:** Self-sustaining waves that propagate without dispersion (lossless information transmission)
+- **Excitability:** Neurons fire when input exceeds a threshold, creating propagating pulses
+- **Slow-Fast Dynamics:** FHN equations have two timescales (fast voltage, slow recovery)
+- **Phase Transitions:** The membrane undergoes phase changes during soliton propagation (Konrad Kaufmann's thermodynamic theory)
+- **Linearized Parallel Scan:** FFT-based method for efficient parallel FHN integration
+
+**Mathematical Background:**
+
+The FHN equations model excitable dynamics:
+
+```
+dv/dt = v - v³/3 - w + I_ext     (fast variable: voltage)
+dw/dt = (v + a - b*w) / τ        (slow variable: recovery)
+```
+
+Where:
+- `v`: Voltage (excitation state)
+- `w`: Recovery variable (refractoriness)
+- `I_ext`: External input (attention queries)
+- `τ` (`fhn_tau`): Time constant (slow-fast separation)
+- Firing occurs when `v` exceeds `fhn_threshold`
+
+**Why FHN for Attention?**
+- **O(N) Complexity:** Solitons propagate along paths, not O(N²) all-to-all
+- **Long-Range:** Waves travel without dispersion (context length 10k+)
+- **Biological Plausibility:** Mimics neural action potentials
+- **Sparse Activation:** Only excited regions fire (efficient)
+
+**Integration Methods:**
+- **IMEX (Implicit-Explicit):** Semi-implicit scheme for stiff equations (recommended)
+- **Parallel Scan:** FFT-based linearized FHN for maximum parallelization
+
+### fhn_threshold
+- **Type:** `float`
+- **Default:** `0.5`
+- **Range:** 0.1-1.0 (typical: 0.3-0.7)
+- **Description:** Firing threshold for soliton activation (excitability threshold)
+- **Details:**
+  - Determines when a neuron/token becomes "excited" and fires a soliton
+  - Lower threshold: More excitable, easier to trigger waves (more active attention)
+  - Higher threshold: Less excitable, selective firing (sparser attention)
+  - Analogous to action potential threshold in biological neurons (~-55mV)
+  - 0.5 is a balanced default (50% of maximum excitation)
+  - Controls sparsity of attention patterns
+- **Interdependencies:**
+  - Interacts with `fhn_tau` (recovery speed after firing)
+  - Lower threshold with high `n_fhn_steps` can cause runaway excitation
+  - Should be tuned with `pulse_width_base` for stable wave propagation
+  - Affects gradient flow through attention layers
+- **Tuning Tips:**
+  - Start with 0.5 (default, balanced excitability)
+  - Decrease to 0.3-0.4 for more active/dense attention patterns
+  - Increase to 0.6-0.7 for sparser, more selective attention
+  - Too low (<0.2): Unstable, constant firing, gradient explosion
+  - Too high (>0.8): Dead neurons, no attention propagation
+  - Monitor attention entropy to validate sparsity
+
+### fhn_tau
+- **Type:** `float`
+- **Default:** `12.5`
+- **Range:** 1.0-50.0 (typical: 10.0-20.0)
+- **Description:** Time constant for FHN slow-fast dynamics (τ parameter)
+- **Details:**
+  - Controls the timescale separation between fast (voltage) and slow (recovery) variables
+  - Larger τ: Slower recovery, longer refractory period, sustained excitation
+  - Smaller τ: Faster recovery, shorter refractory period, rapid firing
+  - **CRITICAL:** Must be >> 1.0 for proper slow-fast separation (was incorrectly 0.1 in early versions)
+  - 12.5 provides biologically plausible separation (12.5× slower recovery than excitation)
+  - Affects soliton pulse width and propagation stability
+  - Essential for IMEX integration stability
+- **Interdependencies:**
+  - **CRITICAL:** Must be compatible with `n_fhn_steps` and integration timestep
+  - Larger `fhn_tau` requires more `n_fhn_steps` for accurate integration
+  - Affects `pulse_width_base` (wider pulses need longer recovery)
+  - Interacts with `use_fhn_imex` (implicit integration handles large τ)
+  - Too small: Loses slow-fast structure, unstable dynamics
+  - Too large: Slow convergence, may require more integration steps
+- **Tuning Tips:**
+  - Use 12.5 (default, proper slow-fast separation)
+  - Increase to 15.0-25.0 for longer memory/sustained attention
+  - Decrease to 8.0-10.0 for faster adaptation/shorter context
+  - **Never use τ < 1.0** (breaks slow-fast assumption)
+  - With `use_fhn_imex=True`, can safely use larger τ (20+)
+  - Monitor for NaN/inf during training (sign of τ mismatch)
+
+### fhn_velocity
+- **Type:** `float`
+- **Default:** `1.0`
+- **Range:** 0.1-5.0 (typical: 0.5-2.0)
+- **Description:** Propagation velocity of soliton waves
+- **Details:**
+  - Speed at which solitons travel through the attention space
+  - Determines how fast information propagates from query to keys
+  - Higher velocity: Faster propagation, wider attention receptive field per step
+  - Lower velocity: Slower propagation, more localized attention patterns
+  - Biological solitons travel at 1-100 m/s in nerves (normalized to 1.0)
+  - Affects the effective context length per FHN integration step
+  - Combined with `n_fhn_steps` determines total propagation distance
+- **Interdependencies:**
+  - Effective range = `fhn_velocity * n_fhn_steps * pulse_width_base`
+  - Larger velocity requires careful tuning with `fhn_threshold` for stability
+  - Affects gradient magnitude in FHN layers
+  - Should scale with sequence length (longer sequences may need higher velocity)
+- **Tuning Tips:**
+  - Use 1.0 (default, standard propagation)
+  - Increase to 1.5-2.0 for longer-range dependencies
+  - Decrease to 0.5-0.7 for more local attention
+  - Very fast (>3.0): May cause numerical instability
+  - Very slow (<0.3): Limited context, similar to local attention
+  - Balance with `n_fhn_steps` for desired effective context
+
+### pulse_width_base
+- **Type:** `int`
+- **Default:** `4`
+- **Range:** 1-16 (typical: 2-8)
+- **Description:** Base width of soliton pulses (spatial extent)
+- **Details:**
+  - Determines the spatial extent of each soliton pulse in token space
+  - Width 4 = each pulse affects ~4 neighboring tokens directly
+  - Wider pulses: More overlap, smoother attention, higher receptive field
+  - Narrower pulses: More localized, sharper attention, lower receptive field
+  - Similar to kernel size in convolution (but for wave propagation)
+  - Affects how much information each soliton carries
+  - Biological action potentials have width ~1-2ms (normalized to 4 tokens)
+- **Interdependencies:**
+  - Effective receptive field = `pulse_width_base * n_fhn_steps * fhn_velocity`
+  - Larger `pulse_width_base` with small `n_fhn_steps` = local-only attention
+  - Smaller `pulse_width_base` with large `n_fhn_steps` = sparse long-range
+  - Affects memory usage: wider pulses = more token interactions
+  - Should be ≤ `block_size // 4` for meaningful propagation
+- **Tuning Tips:**
+  - Use 4 (default, balanced local-global)
+  - Increase to 6-8 for smoother, more global attention
+  - Decrease to 2-3 for sharper, more localized attention
+  - Width 1: Extremely sparse, may miss important connections
+  - Width >12: Approaches dense attention (loses wave benefits)
+  - Common pattern: width 4, steps 2, velocity 1.0 = 8-token effective range
+
+### n_fhn_steps
+- **Type:** `int`
+- **Default:** `2`
+- **Range:** 1-10 (typical: 1-4)
+- **Description:** Number of FHN integration steps per forward pass
+- **Details:**
+  - How many times to iterate the FHN equations per attention computation
+  - More steps: Better dynamics, longer propagation range, higher accuracy
+  - Fewer steps: Faster computation, shorter range, less accurate
+  - 2 steps (default) with IMEX provides good accuracy/speed tradeoff
+  - Each step propagates the wave further through the sequence
+  - Total propagation = `n_fhn_steps * fhn_velocity * pulse_width_base`
+  - Integration accuracy improves with more steps (especially for large `fhn_tau`)
+- **Interdependencies:**
+  - **CRITICAL:** Must be compatible with `fhn_tau` for numerical stability
+  - Larger `fhn_tau` (>15) may require 3-4 steps for accuracy
+  - Computational cost scales linearly with `n_fhn_steps`
+  - With `use_fhn_imex=True`, 2 steps is usually sufficient
+  - With `use_fhn_parallel=True`, steps are parallelized (less overhead)
+  - Memory usage increases slightly with more steps
+- **Tuning Tips:**
+  - Use 2 (default, balanced accuracy/speed with IMEX)
+  - Use 1 for maximum speed (fast mode, acceptable with IMEX)
+  - Use 3-4 for high accuracy or large `fhn_tau` (>20)
+  - More than 5 steps: Diminishing returns, significant slowdown
+  - Ablation: Test 1 vs 2 steps to measure accuracy/speed tradeoff
+  - If seeing NaN: Increase steps or enable `use_fhn_imex`
+
+### use_fhn_imex
+- **Type:** `bool`
+- **Default:** `True`
+- **Description:** Use semi-implicit IMEX (Implicit-Explicit) integration scheme
+- **Details:**
+  - **IMEX:** Treats stiff terms implicitly, non-stiff terms explicitly
+  - Handles the slow-fast timescale separation in FHN equations robustly
+  - Implicit on slow variable (w), explicit on fast variable (v)
+  - **Essential for large `fhn_tau`** (>10) to prevent numerical instability
+  - More stable than explicit Euler, especially for stiff equations
+  - Slight computational overhead vs explicit, but much better stability
+  - Industry standard for stiff ODE systems
+  - Prevents gradient explosion in deep FHN attention layers
+- **Interdependencies:**
+  - **Strongly recommended** when `fhn_tau > 5.0`
+  - **Required** when `fhn_tau > 15.0` (explicit will diverge)
+  - Allows using fewer `n_fhn_steps` while maintaining accuracy
+  - Compatible with all other FHN optimization flags
+  - Slight memory increase (stores intermediate implicit states)
+- **Tuning Tips:**
+  - **Always use True** (default, highly recommended)
+  - Only disable for explicit integration experiments (not recommended)
+  - IMEX + 2 steps ≈ explicit + 4-6 steps in accuracy
+  - Critical for training stability with default `fhn_tau=12.5`
+  - If seeing NaN/inf: Ensure this is True
+
+### use_fhn_partitioning
+- **Type:** `bool`
+- **Default:** `True`
+- **Description:** Enable energy balancing via Karmarkar-Karp partitioning
+- **Details:**
+  - Balances the "energy" (activation magnitude) across FHN states
+  - Uses spectral partitioning to prevent energy concentration
+  - Keeps the membrane at the "phase transition" point (maximum susceptibility)
+  - Part of the Kaufmann Trifecta: balancing for optimal soliton propagation
+  - Improves training stability by preventing runaway excitation
+  - Adds small computational overhead for partitioning algorithm
+  - Based on number-theoretic load balancing (Karmarkar-Karp)
+  - Helps maintain consistent attention patterns across training
+- **Interdependencies:**
+  - Works best with `use_fhn_imex=True` (both improve stability)
+  - Interacts with `fhn_threshold` (balancing affects firing probability)
+  - Adds overhead: ~5-10% compute cost
+  - Disabled automatically when `fast_mode=True`
+  - Compatible with all attention variants
+- **Tuning Tips:**
+  - Enable for training stability (recommended, default True)
+  - Disable for maximum speed if stability is not an issue
+  - Particularly helpful for long sequences (1024+ tokens)
+  - Monitor attention entropy: partitioning should stabilize it
+  - Part of "full NeuroManifold" configuration
+
+### use_fhn_fused
+- **Type:** `bool`
+- **Default:** `False`
+- **Description:** Use fused CUDA kernels for FHN computation (currently disabled)
+- **Details:**
+  - **Deprecated:** Replaced by JIT compilation
+  - Would fuse multiple FHN operations into single GPU kernel
+  - Reduces memory bandwidth by avoiding intermediate tensors
+  - Disabled in favor of PyTorch JIT which provides similar benefits
+  - May be re-enabled in future with custom CUDA implementation
+  - Keep as False unless you have custom fused kernel implementation
+- **Interdependencies:**
+  - Mutually exclusive with `use_fhn_parallel` (parallel scan is preferred)
+  - Would require custom CUDA extension (not currently implemented)
+  - JIT compilation provides most benefits automatically
+- **Tuning Tips:**
+  - **Keep False** (default, JIT is sufficient)
+  - Only enable if you implement custom fused kernels
+  - For speed, use `use_fhn_parallel=True` instead
+
+### use_fhn_parallel
+- **Type:** `bool`
+- **Default:** `True`
+- **Description:** Use FFT-based Parallel Scan for linearized FHN integration
+- **Details:**
+  - **Maximum speed optimization** for FHN computation
+  - Linearizes FHN equations to enable parallel prefix scan
+  - Uses FFT (Fast Fourier Transform) for O(N log N) parallel integration
+  - Drastically faster than sequential integration on GPUs
+  - Slight approximation error vs full nonlinear FHN (negligible in practice)
+  - Enables efficient long-context FHN (tested on 10k+ tokens)
+  - Based on linear recurrent neural network optimization techniques
+  - Essential for production deployments
+- **Interdependencies:**
+  - Compatible with `use_fhn_imex=True` (both can be enabled)
+  - Mutually exclusive with `use_fhn_fused=False` (parallel scan is preferred)
+  - Larger `block_size` shows more benefit from parallelization
+  - Works with all `n_fhn_steps` settings
+  - Memory usage slightly higher due to FFT buffers
+- **Tuning Tips:**
+  - **Always use True** (default, major speedup)
+  - Only disable for debugging or exact nonlinear FHN comparison
+  - Speed improvement: 3-5× faster than sequential on sequences >256
+  - Enables scaling to long contexts (4k-32k tokens)
+  - Critical for real-time inference
+
+---
+
+**Example FHN Configurations:**
+
+### Standard Configuration (Balanced)
+```python
+# Balanced FHN with stability and efficiency
+config = NeuroManifoldConfig(
+    fhn_threshold=0.5,           # Balanced excitability
+    fhn_tau=12.5,                # Proper slow-fast separation
+    fhn_velocity=1.0,            # Standard propagation speed
+    pulse_width_base=4,          # Moderate pulse width
+    n_fhn_steps=2,               # Good accuracy with IMEX
+    use_fhn_imex=True,           # Stable integration (required)
+    use_fhn_partitioning=True,   # Energy balancing for stability
+    use_fhn_parallel=True,       # Maximum speed
+)
+```
+
+### Fast Mode (Maximum Speed)
+```python
+# Minimal FHN for fastest training
+config = NeuroManifoldConfig(
+    fhn_threshold=0.5,           # Keep balanced
+    fhn_tau=12.5,                # Keep proper τ
+    fhn_velocity=1.0,            # Standard
+    pulse_width_base=4,          # Standard
+    n_fhn_steps=1,               # Single step (faster)
+    use_fhn_imex=True,           # Still critical for stability
+    use_fhn_partitioning=False,  # Disable for speed
+    use_fhn_parallel=True,       # Keep parallelization
+)
+```
+
+### High-Accuracy Mode (Research)
+```python
+# Maximum accuracy for FHN dynamics research
+config = NeuroManifoldConfig(
+    fhn_threshold=0.5,           # Balanced
+    fhn_tau=15.0,                # Slower recovery (more biological)
+    fhn_velocity=1.0,            # Standard
+    pulse_width_base=4,          # Standard
+    n_fhn_steps=4,               # More integration steps
+    use_fhn_imex=True,           # Required for τ=15
+    use_fhn_partitioning=True,   # Full stability features
+    use_fhn_parallel=False,      # Exact nonlinear dynamics
+)
+```
+
+### Long-Range Attention
+```python
+# Extended context via faster/wider soliton propagation
+config = NeuroManifoldConfig(
+    fhn_threshold=0.4,           # More excitable (wider activation)
+    fhn_tau=12.5,                # Standard
+    fhn_velocity=2.0,            # 2× faster propagation
+    pulse_width_base=6,          # Wider pulses
+    n_fhn_steps=3,               # More steps for range
+    use_fhn_imex=True,           # Stability
+    use_fhn_partitioning=True,   # Stability
+    use_fhn_parallel=True,       # Speed for long context
+)
+# Effective range: 2.0 * 6 * 3 = 36 tokens per attention
+```
+
+### Sparse Local Attention
+```python
+# Highly selective, local attention patterns
+config = NeuroManifoldConfig(
+    fhn_threshold=0.7,           # High threshold (sparse firing)
+    fhn_tau=10.0,                # Faster recovery
+    fhn_velocity=0.5,            # Slower propagation
+    pulse_width_base=2,          # Narrow pulses
+    n_fhn_steps=2,               # Standard
+    use_fhn_imex=True,           # Stability
+    use_fhn_partitioning=True,   # Balance energy
+    use_fhn_parallel=True,       # Speed
+)
+# Effective range: 0.5 * 2 * 2 = 2 tokens (very local)
+```
+
+---
+
+**FHN Dynamics Troubleshooting:**
+
+| Issue | Likely Cause | Solution |
+|-------|--------------|----------|
+| NaN/Inf during training | `fhn_tau` too small or `use_fhn_imex=False` | Set `fhn_tau ≥ 10.0` and `use_fhn_imex=True` |
+| Attention collapse (all zeros) | `fhn_threshold` too high | Decrease to 0.3-0.5 |
+| Attention explosion (all ones) | `fhn_threshold` too low | Increase to 0.5-0.7 |
+| Slow training | `use_fhn_parallel=False` | Enable parallel scan |
+| Poor long-range dependencies | Small effective range | Increase `fhn_velocity`, `pulse_width_base`, or `n_fhn_steps` |
+| Numerical instability | Large `fhn_tau` with few steps | Increase `n_fhn_steps` or ensure `use_fhn_imex=True` |
+
+---
+
+**Performance Characteristics:**
+
+- **IMEX (True) vs Explicit (False):** ~10% slower, much more stable
+- **Parallel Scan (True) vs Sequential:** 3-5× faster on sequences >256 tokens
+- **Partitioning (True) vs Off:** ~5% slower, improves stability
+- **1 step vs 2 steps:** 2× faster, slight accuracy loss
+- **Overall FHN overhead vs Standard Attention:** ~20-30% slower but O(N) vs O(N²)
 
 ---
 
