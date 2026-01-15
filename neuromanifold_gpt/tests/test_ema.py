@@ -451,6 +451,53 @@ class TestEMANumericalStability:
         assert h64.dtype == torch.float64
 
 
+class TestGradientFlow:
+    """Test gradient flow through EMA modules."""
+
+    def test_gradient_flow(self):
+        """Verify gradients flow through all EMA modules."""
+        # Test ema_fft
+        x_fft = torch.randn(2, 10, 8, requires_grad=True)
+        h_fft = ema_fft(x_fft, alpha=0.9)
+        loss_fft = h_fft.sum()
+        loss_fft.backward()
+        assert x_fft.grad is not None
+        assert x_fft.grad.abs().sum() > 0
+
+        # Test DampedEMA with learnable alpha
+        ema_damped = DampedEMA(alpha='learnable')
+        x_damped = torch.randn(2, 10, 8, requires_grad=True)
+        h_damped = ema_damped(x_damped)
+        loss_damped = h_damped.sum()
+        loss_damped.backward()
+        assert x_damped.grad is not None
+        assert x_damped.grad.abs().sum() > 0
+        assert ema_damped.alpha_logit.grad is not None
+        assert ema_damped.alpha_logit.grad.abs() > 0
+
+        # Test MultiHeadDampedEMA with learnable alpha
+        ema_multi = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha='learnable')
+        x_multi = torch.randn(2, 10, 64, requires_grad=True)
+        h_multi = ema_multi(x_multi)
+        loss_multi = h_multi.sum()
+        loss_multi.backward()
+        assert x_multi.grad is not None
+        assert x_multi.grad.abs().sum() > 0
+        assert ema_multi.alpha_logit.grad is not None
+        assert ema_multi.alpha_logit.grad.abs() > 0
+
+        # Test CEMA with learnable alpha
+        cema = CEMA(dim=64, alpha='learnable')
+        x_cema = torch.randn(2, 10, 64, requires_grad=True)
+        h_cema = cema(x_cema)
+        loss_cema = h_cema.sum()
+        loss_cema.backward()
+        assert x_cema.grad is not None
+        assert x_cema.grad.abs().sum() > 0
+        assert cema.ema.alpha_logit.grad is not None
+        assert cema.ema.alpha_logit.grad.abs() > 0
+
+
 class TestEMAComplexity:
     """Test that parallel scan achieves expected complexity."""
 
