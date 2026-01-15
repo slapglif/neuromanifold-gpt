@@ -65,37 +65,9 @@ class TrainConfig:
     streaming: bool = False  # Use HuggingFace streaming for general text
     vocab_size: int = 0  # 0 = auto-detect, 50257 = GPT-2 BPE
 
-    # Model
+    # Model configuration
     model_type: str = "neuromanifold"  # "neuromanifold" or "gpt"
-    n_layer: int = 6
-    n_head: int = 6
-    n_embd: int = 384
-    dropout: float = 0.0
-    bias: bool = False
-
-    # NeuroManifold specific
-    sdr_size: int = 2048
-    manifold_dim: int = 64
-    n_eigenvectors: int = 32
-    use_sdr: bool = False
-    use_kan: bool = True
-    kan_type: str = "faster"
-    kan_wavelet: str = "dog"
-    use_fast_wavekan: bool = True
-    kan_num_centers: int = 3
-    fhn_threshold: float = 0.5
-    fhn_tau: float = 12.5
-    n_fhn_steps: int = 2
-    use_fhn_imex: bool = True
-    use_fhn_partitioning: bool = True
-    use_fhn_fused: bool = False
-    use_mhc: bool = True
-    use_full_mhc: bool = True
-    mhc_n_streams: int = 2
-    use_kaufmann_attention: bool = False
-
-    # Speed optimization
-    skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
+    model_config: Optional[NeuroManifoldConfig | GPTConfig] = None
 
     # Training
     max_iters: int = 5000
@@ -587,60 +559,30 @@ def train(config: TrainConfig) -> None:
     if config.vocab_size > 0:
         data_module.vocab_size = config.vocab_size
 
-    # Build model config
-    if config.model_type == "neuromanifold":
-        model_config = NeuroManifoldConfig(
-            vocab_size=data_module.vocab_size,
-            block_size=config.block_size,
-            n_layer=config.n_layer,
-            n_heads=config.n_head,
-            n_embd=config.n_embd,
-            dropout=config.dropout,
-            bias=config.bias,
-            # SDR
-            use_sdr=config.use_sdr,
-            sdr_size=config.sdr_size,
-            # Manifold
-            manifold_dim=config.manifold_dim,
-            n_eigenvectors=config.n_eigenvectors,
-            # KAN
-            use_kan=config.use_kan,
-            kan_type=config.kan_type,
-            kan_wavelet=config.kan_wavelet,
-            use_fast_wavekan=config.use_fast_wavekan,
-            kan_num_centers=config.kan_num_centers,
-            # FHN
-            fhn_threshold=config.fhn_threshold,
-            fhn_tau=config.fhn_tau,
-            n_fhn_steps=config.n_fhn_steps,
-            use_fhn_imex=config.use_fhn_imex,
-            use_fhn_partitioning=config.use_fhn_partitioning,
-            use_fhn_fused=config.use_fhn_fused,
-            # mHC
-            use_mhc=config.use_mhc,
-            use_full_mhc=config.use_full_mhc,
-            mhc_n_streams=config.mhc_n_streams,
-            # Attention
-            use_kaufmann_attention=config.use_kaufmann_attention,
-            # Speed optimization
-            skip_manifold_spectral=config.skip_manifold_spectral,
-            # Training
-            learning_rate=config.learning_rate,
-            weight_decay=config.weight_decay,
-            beta1=config.beta1,
-            beta2=config.beta2,
-            grad_clip=config.grad_clip,
-        )
+    # Build or use model config
+    if config.model_config is not None:
+        # Use provided model config, updating vocab_size and block_size
+        model_config = config.model_config
+        model_config.vocab_size = data_module.vocab_size
+        model_config.block_size = config.block_size
     else:
-        model_config = GPTConfig(
-            vocab_size=data_module.vocab_size,
-            block_size=config.block_size,
-            n_layer=config.n_layer,
-            n_head=config.n_head,
-            n_embd=config.n_embd,
-            dropout=config.dropout,
-            bias=config.bias,
-        )
+        # Create default model config based on model_type
+        if config.model_type == "neuromanifold":
+            model_config = NeuroManifoldConfig(
+                vocab_size=data_module.vocab_size,
+                block_size=config.block_size,
+                # Training parameters from train config
+                learning_rate=config.learning_rate,
+                weight_decay=config.weight_decay,
+                beta1=config.beta1,
+                beta2=config.beta2,
+                grad_clip=config.grad_clip,
+            )
+        else:
+            model_config = GPTConfig(
+                vocab_size=data_module.vocab_size,
+                block_size=config.block_size,
+            )
 
     # Build Lightning module
     lit_module = NeuroManifoldLitModule(
