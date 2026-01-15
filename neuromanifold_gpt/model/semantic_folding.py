@@ -205,7 +205,7 @@ class SemanticFoldingEncoder(nn.Module):
 
     def forward(
         self, tokens: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Encode tokens to SDRs.
 
         Args:
@@ -216,6 +216,7 @@ class SemanticFoldingEncoder(nn.Module):
             scores: (B, T, sdr_size) raw scores for gradients
             topographic_loss: Scalar loss for topographic organization
             discrimination_loss: Scalar loss preventing SDR collapse
+            contrastive_loss: Scalar loss for contrastive learning (placeholder)
         """
         B, T = tokens.shape
 
@@ -254,11 +255,12 @@ class SemanticFoldingEncoder(nn.Module):
         # Compute losses during training
         topo_loss = torch.tensor(0.0, device=tokens.device)
         discrim_loss = torch.tensor(0.0, device=tokens.device)
+        contrastive_loss = torch.tensor(0.0, device=tokens.device)  # Placeholder for future implementation
         if self.training:
             topo_loss = self.topographic_loss(context_embeds, scores)
             discrim_loss = self.token_discrimination_loss(tokens, sdr)
 
-        return sdr, scores, topo_loss, discrim_loss
+        return sdr, scores, topo_loss, discrim_loss, contrastive_loss
 
     def semantic_similarity(
         self, sdr_a: torch.Tensor, sdr_b: torch.Tensor
