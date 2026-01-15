@@ -167,7 +167,7 @@ class FHNAttention(nn.Module):
         use_imex: bool = True,
         use_partitioning: bool = True,
         use_fused: bool = False,  # Deprecated
-        use_flash_fhn_fusion: bool = False,  # Use Flash Attention + output modulation
+        use_flash_fhn_fusion: bool = True,  # Use Flash Attention + output modulation
     ):
         super().__init__()
         self.embed_dim = embed_dim
