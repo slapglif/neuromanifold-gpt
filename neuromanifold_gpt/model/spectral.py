@@ -165,6 +165,67 @@ class FastSpectralAttention(nn.Module):
         # Scale
         self.scale = n_eigenvectors**-0.5
 
+    def _chunked_causal_cumsum(
+        self,
+        k: torch.Tensor,
+        v: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute causal cumsum of k^T @ v outer products using chunking.
+
+        Reduces memory from O(T*k^2) to O(chunk_size*k^2) by processing
+        the sequence in chunks and maintaining a running cumsum state.
+
+        Args:
+            k: (B, H, T, n_eig) key vectors
+            v: (B, H, T, n_eig) value vectors
+
+        Returns:
+            kv_causal: (B, H, T, n_eig, n_eig) causal cumsum of outer products
+        """
+        B, H, T, K = k.shape
+        device = k.device
+        dtype = k.dtype
+
+        # Allocate output tensor
+        kv_causal = torch.zeros(B, H, T, K, K, device=device, dtype=dtype)
+
+        # Running cumsum state: (B, H, K, K)
+        cumsum_state = torch.zeros(B, H, K, K, device=device, dtype=dtype)
+
+        # Process sequence in chunks
+        num_chunks = (T + self.chunk_size - 1) // self.chunk_size
+
+        for chunk_idx in range(num_chunks):
+            # Chunk boundaries
+            start_t = chunk_idx * self.chunk_size
+            end_t = min(start_t + self.chunk_size, T)
+            chunk_len = end_t - start_t
+
+            # Extract chunk: (B, H, chunk_len, K)
+            k_chunk = k[:, :, start_t:end_t, :]
+            v_chunk = v[:, :, start_t:end_t, :]
+
+            # Compute outer products for this chunk: (B, H, chunk_len, K, K)
+            # k_chunk.unsqueeze(-1): (B, H, chunk_len, K, 1)
+            # v_chunk.unsqueeze(-2): (B, H, chunk_len, 1, K)
+            kv_chunk = k_chunk.unsqueeze(-1) * v_chunk.unsqueeze(-2)
+
+            # Add cumsum_state to first position of chunk
+            # This ensures causality across chunk boundaries
+            kv_chunk[:, :, 0, :, :] += cumsum_state
+
+            # Compute cumsum within chunk
+            kv_chunk_cumsum = torch.cumsum(kv_chunk, dim=2)
+
+            # Store results
+            kv_causal[:, :, start_t:end_t, :, :] = kv_chunk_cumsum
+
+            # Update running state for next chunk
+            cumsum_state = kv_chunk_cumsum[:, :, -1, :, :]
+
+        return kv_causal
+
     def forward(
         self,
         x: torch.Tensor,
