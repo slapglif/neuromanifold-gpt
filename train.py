@@ -69,6 +69,15 @@ class TrainConfig:
     model_type: str = "neuromanifold"  # "neuromanifold" or "gpt"
     model_config: Optional[NeuroManifoldConfig | GPTConfig] = None
 
+    # Model architecture parameters (for backward compatibility)
+    # If model_config is None, these will be used to create it
+    n_layer: Optional[int] = None
+    n_embd: Optional[int] = None
+    n_head: Optional[int] = None  # For GPTConfig
+    n_heads: Optional[int] = None  # For NeuroManifoldConfig
+    dropout: Optional[float] = None
+    bias: Optional[bool] = None
+
     # Training
     max_iters: int = 5000
     gradient_accumulation_steps: int = 1
@@ -99,6 +108,40 @@ class TrainConfig:
     wandb_log: bool = False
     wandb_project: str = "neuromanifold-gpt"
     wandb_run_name: str = "neuromanifold"
+
+    def __post_init__(self):
+        """Create model_config from individual parameters if not provided."""
+        if self.model_config is None:
+            # Build kwargs from individual parameters
+            config_kwargs = {}
+
+            # Add common parameters
+            if self.n_layer is not None:
+                config_kwargs['n_layer'] = self.n_layer
+            if self.n_embd is not None:
+                config_kwargs['n_embd'] = self.n_embd
+            if self.dropout is not None:
+                config_kwargs['dropout'] = self.dropout
+            if self.bias is not None:
+                config_kwargs['bias'] = self.bias
+
+            # Add vocab_size and block_size if set
+            if self.vocab_size > 0:
+                config_kwargs['vocab_size'] = self.vocab_size
+            if self.block_size > 0:
+                config_kwargs['block_size'] = self.block_size
+
+            # Create appropriate config based on model_type
+            if self.model_type == "gpt":
+                # GPT uses n_head (not n_heads)
+                if self.n_head is not None:
+                    config_kwargs['n_head'] = self.n_head
+                self.model_config = GPTConfig(**config_kwargs)
+            else:
+                # NeuroManifold uses n_heads (not n_head)
+                if self.n_heads is not None:
+                    config_kwargs['n_heads'] = self.n_heads
+                self.model_config = NeuroManifoldConfig(**config_kwargs)
 
 
 # -----------------------------------------------------------------------------
