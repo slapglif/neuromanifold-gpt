@@ -57,7 +57,8 @@ class NeuroManifoldConfig:
         learning_rate: Learning rate for optimizer (default 3e-4)
         weight_decay: Weight decay for AdamW (default 0.1)
         beta1: AdamW beta1 parameter (default 0.9)
-        beta2: AdamW beta2 parameter (default 0.95)
+        beta2: AdamW beta2 parameter (default 0.95, MiniMax: faster adaptation)
+        optimizer_eps: AdamW epsilon (default 1e-15, MiniMax: handles tiny gradients)
         grad_clip: Gradient clipping norm (default 1.0)
     """
 
@@ -77,6 +78,12 @@ class NeuroManifoldConfig:
     n_neighbors: int = 15
     n_eigenvectors: int = 32
     spectral_sigma: float = 1.0
+
+    # Phase 2: Multi-scale manifold (E7 subgroup chain: E7 → E6 → D5)
+    use_multiscale_manifold: bool = True  # Progressive coarse-to-fine scales
+    multiscale_coarse_dim: int = 16  # D5 level (global patterns)
+    multiscale_medium_dim: int = 32  # E6 level (phrase patterns)
+    multiscale_fine_dim: int = 64  # E7 level (token patterns)
 
     # Attention configuration
     n_heads: int = 8
@@ -107,10 +114,12 @@ class NeuroManifoldConfig:
     use_full_mhc: bool = True  # Use full multi-stream mHC (vs simplified)
     mhc_n_streams: int = 2  # Number of parallel streams for full mHC (2 for efficiency)
     mhc_residual_weight: float = 0.9  # Initial identity mapping bias
+    mhc_sinkhorn_iters: int = 5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
 
     # Attention configuration
     use_knot_attention: bool = False  # Enable Knot-Theoretic attention
     use_kaufmann_attention: bool = False  # Enable Kaufmann Trifecta Attention (The Endgame)
+    use_qk_norm: bool = True  # Qwen3/GLM-4.5: RMSNorm on Q,K prevents attention logit explosion
 
     # KAN configuration
     # FFN/MLP uses FasterKAN (RSWAF basis) for speed
@@ -141,6 +150,13 @@ class NeuroManifoldConfig:
     l2_capacity: int = 500
     l3_capacity: int = 1000
 
+    # Memory active retrieval (enables using stored engrams during forward pass)
+    # When True, retrieves similar memories and augments token representations
+    # This transforms memory from "write-only log" to active retrieval-augmented component
+    memory_active_retrieval: bool = False  # Off by default for backwards compatibility
+    memory_retrieval_top_k: int = 3  # Number of memories to retrieve per query
+    memory_retrieval_weight: float = 0.1  # Weight for mixing retrieved content (0-1)
+
     # DAG planning and imagination
     max_dag_depth: int = 8
     imagination_steps: int = 4
@@ -152,14 +168,86 @@ class NeuroManifoldConfig:
     skip_semantic_retina: bool = False  # Skip Gaussian smoothing
     skip_metric_tensor: bool = False  # Skip manifold metric computation
 
+    # Multi-Token Prediction (MTP) - DeepSeek/Meta style
+    # Predicting multiple future tokens improves representation learning
+    use_mtp: bool = True  # Enable multi-token prediction
+    mtp_n_predict: int = 4  # Number of future tokens to predict (1=standard, 4=recommended)
+    mtp_loss_weight: float = 0.1  # Weight for auxiliary MTP losses (main loss weight=1.0)
+
+    # MLA (Multi-Head Latent Attention) - DeepSeek style KV compression
+    # Compresses KV cache to low-dimensional latent space for 8x memory reduction
+    use_mla: bool = False  # Off by default (adds complexity)
+    mla_latent_dim: int = 64  # KV compression dimension
+    mla_rope_dim: int = 32  # Decoupled RoPE dimension
+
+    # MoE (Mixture of Experts) - DeepSeek style auxiliary-loss-free
+    # Uses bias-based load balancing without auxiliary loss terms
+    use_moe: bool = False  # Off by default (increases params significantly)
+    moe_n_experts: int = 8  # Total number of experts
+    moe_n_active: int = 2  # Number of active experts per token
+    use_shared_expert: bool = True  # Always-active shared expert (DeepSeek style)
+    use_e7_routing: bool = False  # Route by E7 curriculum tier
+
+    # Hybrid Reasoning (Qwen3 style) - Thinking/Non-thinking modes
+    # Routes between fast (direct) and slow (thinking) paths based on complexity
+    use_hybrid_reasoning: bool = False  # Off by default
+    n_thinking_layers: int = 2  # Extra layers for thinking mode
+    thinking_threshold: float = 0.5  # Mode selection threshold
+
+    # ========================================
+    # System 2 Reasoning Components
+    # ========================================
+
+    # ForcedDAGPlanner - Decomposes tasks into DAGs for systematic reasoning
+    # Forces deliberate thinking instead of pure pattern matching
+    use_dag_planner: bool = False  # Off by default (adds compute)
+    dag_max_nodes: int = 32  # Maximum nodes in task DAG
+    dag_min_nodes: int = 3  # Minimum nodes (forces decomposition)
+
+    # HierarchicalEngramMemory - L1/L2/L3 tiered memory system
+    # Replaces SDREngramMemory for better memory management
+    use_hierarchical_memory: bool = False  # Off by default
+    hierarchical_l1_capacity: int = 64  # Hot memory (fast)
+    hierarchical_l2_capacity: int = 512  # Warm memory (medium)
+    hierarchical_l3_capacity: int = 4096  # Cold memory (compressed)
+
+    # ConsistencyImaginationModule - Counterfactual exploration
+    # Lightweight diffusion for "mental whiteboard" exploration
+    use_imagination: bool = False  # Off by default
+    imagination_steps: int = 4  # Denoising steps (2-4 recommended)
+    imagination_n_alternatives: int = 4  # Number of counterfactuals to generate
+
     # Training configuration
     learning_rate: float = 3e-4
     weight_decay: float = 0.1
     beta1: float = 0.9
-    beta2: float = 0.95
+    beta2: float = 0.95  # MiniMax: lower than default 0.999 for faster adaptation
+    optimizer_eps: float = 1e-15  # MiniMax critical: handles tiny gradients (default 1e-8 masks them)
     grad_clip: float = 1.0
     early_stopping_patience: int = 5
     use_perplexity_stopping: bool = True
+
+    # Learning Rate Schedule (MiniMax/DeepSeek WSD)
+    # WSD (Warmup-Stable-Decay) provides better final loss than cosine
+    # Reference: MiniMax-01 and DeepSeek-V3 technical reports
+    lr_schedule: str = "wsd"  # "wsd" or "cosine"
+    warmup_ratio: float = 0.05  # 5% warmup phase
+    stable_ratio: float = 0.65  # 65% stable at peak LR
+    decay_ratio: float = 0.30  # 30% linear decay to min_lr
+
+    # Label smoothing - critical for large vocab (e.g., 151K Qwen3)
+    # Softens one-hot targets to prevent overconfident predictions
+    # Recommended: 0.1 for 50K vocab, 0.15-0.2 for 150K+ vocab
+    label_smoothing: float = 0.0  # Disabled by default for backwards compat
+
+    # FP32 LM Head - MiniMax/DeepSeek style numerical stability
+    # Keep lm_head in FP32 for large vocabularies to prevent gradient underflow/overflow
+    # Critical for 151K Qwen3 vocab - the final projection layer is most sensitive
+    lm_head_fp32: bool = True  # Default True for safety with large vocab
+
+    # Weight initialization (DeepSeek-V3 style)
+    # DeepSeek uses std=0.006 instead of typical 0.02 for faster early convergence
+    init_std: float = 0.006
 
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""
@@ -178,6 +266,13 @@ class NeuroManifoldConfig:
         assert self.n_embd % self.n_heads == 0, (
             f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
         )
+
+        # Memory active retrieval requires SDR mode
+        if self.memory_active_retrieval and not self.use_sdr:
+            raise ValueError(
+                "memory_active_retrieval=True requires use_sdr=True. "
+                "Enable use_sdr=True or disable retrieval."
+            )
 
     @property
     def head_dim(self) -> int:

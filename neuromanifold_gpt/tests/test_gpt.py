@@ -91,3 +91,34 @@ def test_gpt_no_memory_during_eval():
 
     # Memory should be unchanged
     assert len(model.memory) == initial_memory_size
+
+
+def test_gpt_memory_active_retrieval():
+    """Memory should retrieve when memory_active_retrieval=True and memory has content."""
+    config = NeuroManifoldConfigNano()
+    config.memory_active_retrieval = True  # Enable active retrieval
+    config.use_sdr = True  # SDR required for memory retrieval to work
+
+    model = NeuroManifoldGPT(config)
+    model.train()
+
+    # Build memory with multiple passes
+    for _ in range(5):
+        tokens = torch.randint(0, config.vocab_size, (2, 20))
+        _, _, _ = model(tokens)
+
+    memory_size = len(model.memory)
+    assert memory_size > 0, f"Memory should have content after 5 training passes, got size={memory_size}"
+
+    # Now test retrieval in eval mode
+    model.eval()
+    with torch.no_grad():
+        tokens = torch.randint(0, config.vocab_size, (2, 20))
+        _, _, info = model(tokens)
+
+    # Verify retrieval happened
+    assert "memory_retrieval" in info
+    retrieved = info["memory_retrieval"]["retrieved_count"]
+    similarity = info["memory_retrieval"]["avg_similarity"]
+    assert retrieved > 0, f"Should retrieve memories from {memory_size} stored, got retrieved_count={retrieved}"
+    assert similarity > 0.01, f"Avg similarity should exceed 0.01 for meaningful retrieval, got {similarity:.4f}"
