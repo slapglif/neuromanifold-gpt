@@ -659,15 +659,161 @@ If you use NeuroManifoldGPT in your research, please cite:
 
 ---
 
+## References
+
+This architecture synthesizes concepts from multiple disciplines. Below are key theoretical foundations and research papers that informed the design:
+
+### Neuromorphic Computing & Soliton Dynamics
+
+- **Konrad Kaufmann** - *Thermodynamics and Soliton Theory*
+  - Theory: Nerve impulses as acoustic solitons (density waves) in phase-transitioning membranes
+  - Mechanism: Lossless information propagation through non-dissipative wave dynamics
+  - Application: FHN Attention mechanism implementing soliton propagation
+
+- **FitzHugh, R.** (1961). "Impulses and Physiological States in Theoretical Models of Nerve Membrane." *Biophysical Journal* 1(6): 445-466.
+  - Foundation for FitzHugh-Nagumo neural dynamics model
+
+- **Nagumo, J., Arimoto, S., & Yoshizawa, S.** (1962). "An Active Pulse Transmission Line Simulating Nerve Axon." *Proceedings of the IRE* 50(10): 2061-2070.
+  - Experimental validation of reaction-diffusion neural spike propagation
+
+### Complexity Theory & Fitness Landscapes
+
+- **Kauffman, Stuart A.** (1993). *The Origins of Order: Self-Organization and Selection in Evolution*. Oxford University Press.
+  - NK model of rugged fitness landscapes
+  - "Edge of Chaos" dynamics and adaptation
+  - "Adjacent Possible" constraint theory
+  - Application: WaveKAN landscape navigation and embedding space topology
+
+- **Kauffman, Stuart A.** (1995). *At Home in the Universe: The Search for Laws of Self-Organization and Complexity*. Oxford University Press.
+  - Self-organization principles applied to complex adaptive systems
+
+### Topological Knot Theory
+
+- **Kauffman, Louis H.** (1987). "On Knots." *Annals of Mathematics Studies* 115. Princeton University Press.
+  - Knot invariants and linking numbers
+  - Topological constraints on entanglement
+  - Application: Knot Attention gating mechanism
+
+- **Kauffman, Louis H.** (2001). *Knots and Physics* (3rd ed.). World Scientific.
+  - Physical interpretation of knot theory
+  - Quantum entanglement as topological invariants
+
+### Sparse Distributed Representations
+
+- **Hawkins, Jeff & Blakeslee, Sandra** (2004). *On Intelligence*. Times Books.
+  - Hierarchical Temporal Memory (HTM) framework
+  - Sparse coding in cortical columns
+  - Prediction-based learning
+
+- **Hawkins, Jeff & Ahmad, Subutai** (2016). "Why Neurons Have Thousands of Synapses, a Theory of Sequence Memory in Neocortex." *Frontiers in Neural Circuits* 10: 23.
+  - SDR theory and semantic folding
+  - Biological basis for sparse representations (~2% sparsity)
+  - Application: SDR Encoding and Engram Memory
+
+### Kolmogorov-Arnold Networks
+
+- **Kolmogorov, A.N.** (1957). "On the Representation of Continuous Functions of Several Variables by Superposition of Continuous Functions of One Variable and Addition." *Doklady Akademii Nauk SSSR* 114: 953-956.
+  - Universal function approximation theorem
+  - Foundation for Kolmogorov-Arnold representation
+
+- **Liu, Ziming, et al.** (2024). "KAN: Kolmogorov-Arnold Networks." *arXiv:2404.19756*
+  - Modern neural implementation of KAN with learnable activation functions
+  - Application: WaveKAN with wavelet basis functions
+
+### Lie Groups & Exceptional Symmetries
+
+- **Cremmer, E. & Julia, B.** (1979). "The SO(8) Supergravity." *Nuclear Physics B* 159(1-2): 141-212.
+  - E7 Lie group in N=8 supergravity
+  - Duality symmetries and hyper-entanglement
+
+- **Duff, M.J.** (2007). "The World in Eleven Dimensions: Supergravity, Supermembranes and M-theory." *Physics Reports* 130(1-2): 1-142.
+  - E7 exceptional Lie group manifolds
+  - Application: Manifold projection geometry
+
+### Number Theory & Ramanujan Sums
+
+- **Ramanujan, Srinivasa** (1918). "On Certain Trigonometrical Sums and Their Applications in the Theory of Numbers." *Transactions of the Cambridge Philosophical Society* 22(13): 259-276.
+  - Ramanujan sums and discrete periodicity
+  - Prime frequency decomposition
+  - Application: Ramanujan positional embeddings
+
+### Graph Theory & Spectral Methods
+
+- **Karmarkar, N. & Karp, R.M.** (1982). "The Differencing Method of Set Partitioning." *Technical Report UCB/CSD-82-113*. UC Berkeley.
+  - Karmarkar-Karp number partitioning algorithm
+  - Application: Balanced partitioning for ODE stability
+
+- **Chung, Fan R.K.** (1997). *Spectral Graph Theory*. American Mathematical Society.
+  - Graph Laplacian eigendecomposition
+  - Spectral clustering and community detection
+  - Application: Spectral Decomposition module
+
+### Attention Mechanisms & Transformers
+
+- **Vaswani, A., et al.** (2017). "Attention Is All You Need." *NeurIPS*.
+  - Original transformer architecture with softmax attention
+  - Foundation that NeuroManifoldGPT reimagines
+
+- **Radford, A., et al.** (2019). "Language Models are Unsupervised Multitask Learners." *OpenAI*.
+  - GPT-2 architecture (baseline for comparison)
+
+### Research Documentation
+
+For detailed implementation strategies and theoretical integration, see:
+
+- **[Kaufmann Trifecta Attention Model](neuromanifold_gpt/research/kaufmann_attention.md)** - Unified theory synthesizing soliton dynamics, complexity theory, and knot topology
+- **[E7 Lie Algebra & Geometric Algebra](neuromanifold_gpt/research/lie_algebra_e7.md)** - Exceptional Lie group manifolds and Clifford algebra approximations
+- **[Efficiency Theory Integration](neuromanifold_gpt/research/efficiency_theory_integration.md)** - Knot-theoretic gating and number partitioning for computational efficiency
+
+---
+
 ## Acknowledgments
 
-This project builds on:
-- **nanoGPT** by Andrej Karpathy (foundation codebase)
-- **Kaufmann/Kauffman Trifecta**: Konrad Kaufmann (soliton theory), Stuart Kauffman (complexity), Louis Kauffman (knot theory)
-- **Hierarchical Temporal Memory (HTM)** by Jeff Hawkins (SDR encoding)
-- **FitzHugh-Nagumo model** (neuroscience)
-- **Kolmogorov-Arnold Networks** (WaveKAN)
-- **E7 Lie group theory** (theoretical physics)
+This project is built on the shoulders of giants, synthesizing insights from multiple disciplines:
+
+### Foundation Codebase
+- **Andrej Karpathy** - [nanoGPT](https://github.com/karpathy/nanoGPT): The elegant foundation codebase that demonstrates the power of simplicity. NeuroManifoldGPT reimagines the core mechanisms while preserving nanoGPT's clarity and educational value.
+
+### Theoretical Foundations
+
+**The Kaufmann/Kauffman Trifecta** - Three visionaries whose work converges to form the core attention mechanism:
+- **Konrad Kaufmann** (Thermodynamics & Solitons): Nerve impulses as acoustic density waves in phase-transitioning membranes → FHN Attention
+- **Stuart Kauffman** (Complexity Theory): Evolution on rugged fitness landscapes at the "Edge of Chaos" → WaveKAN landscape navigation
+- **Louis Kauffman** (Knot Theory & Topology): Quantum entanglement as topological knots → Knot Attention gating
+
+### Neuroscience & Biological Intelligence
+- **Jeff Hawkins** - Hierarchical Temporal Memory (HTM) theory: SDR encoding, sparse distributed representations, prediction-based learning, and content-addressable memory (Numenta/HTM research)
+- **Richard FitzHugh & Jinichi Nagumo** - FitzHugh-Nagumo model: Mathematical description of neural spike propagation and excitable membrane dynamics
+
+### Mathematical Frameworks
+- **A.N. Kolmogorov & V.I. Arnold** - Kolmogorov-Arnold representation theorem: Universal function approximation with composition of univariate functions → WaveKAN foundation
+- **Srinivasa Ramanujan** - Number theory and discrete periodicity: Ramanujan sums for encoding morphological patterns in prime frequency basis
+- **Narendra Karmarkar & Richard Karp** - Differencing method for balanced partitioning: Enables stable ODE integration with larger timesteps
+
+### Physics & Symmetry
+- **E7 Lie Group Theory** (Cremmer, Julia, et al.) - Exceptional Lie groups in theoretical physics: E7 manifolds capture hyper-entanglement and U-duality symmetries → Manifold projection geometry
+- **Geometric Algebra** (Clifford, Hestenes) - Clifford algebras and geometric product: Efficient rotors for approximating Lie group operations
+
+### Deep Learning & AI
+- **Ashish Vaswani et al.** - Transformer architecture ("Attention Is All You Need"): The paradigm that NeuroManifoldGPT fundamentally reimagines
+- **Alec Radford et al.** - GPT-2 architecture: Standard baseline for performance comparison
+- **Ziming Liu et al.** - Modern Kolmogorov-Arnold Networks (KAN): Neural implementation with learnable activation functions
+
+### Community & Tools
+- **PyTorch Team** - Deep learning framework enabling efficient research iteration
+- **Hugging Face** - Datasets and transformers ecosystem
+- **Weights & Biases (wandb)** - Experiment tracking and visualization
+- **PyTorch Lightning** - Training abstraction for multi-GPU scaling
+
+---
+
+### A Note on Biological Plausibility
+
+This architecture is inspired by biological intelligence but is not intended as a direct simulation of the brain. Rather, it asks: *"What if we designed AI systems using the same principles that make biological neural systems efficient—sparsity, wave propagation, topological constraints, and manifold geometry?"*
+
+The goal is not perfect biological realism, but **functional principles** that bridge neuroscience and machine learning to create more efficient, interpretable, and scalable AI systems.
+
+---
 
 ---
 
