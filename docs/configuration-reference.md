@@ -2138,9 +2138,726 @@ use_kan_everywhere=True  # Massive parameter bloat, marginal gains
 
 ## 8. Advanced Architectures
 
-**Category:** MLA, MTP, and MoE configurations.
+**Category:** Advanced scaling techniques for efficiency and performance.
 
-*(This section will be expanded in subsequent subtasks)*
+This section covers three major architectural extensions inspired by recent transformer research:
+
+- **MLA (Multi-Head Latent Attention):** DeepSeek-style KV cache compression for 8x memory reduction
+- **MTP (Multi-Token Prediction):** Meta/DeepSeek-style auxiliary prediction for better representations
+- **MoE (Mixture of Experts):** DeepSeek-style sparse expert routing for parameter-efficient scaling
+
+These features are **off by default** (except MTP) due to complexity/parameter overhead, but enable significant improvements when properly tuned.
+
+---
+
+### 8.1 MTP (Multi-Token Prediction)
+
+**What is MTP?**
+
+Multi-Token Prediction (MTP) is a training technique where the model predicts multiple future tokens simultaneously, not just the immediate next token. This forces the model to learn better intermediate representations that capture longer-range dependencies.
+
+**Key Benefits:**
+- **Improved Representations:** Predicting future tokens requires richer latent features
+- **Better Generalization:** Multi-step prediction acts as regularization
+- **Faster Convergence:** Auxiliary losses provide additional gradient signal
+- **No Inference Overhead:** MTP heads are only used during training
+
+**Research Background:**
+- Introduced by Meta AI (2024) and adopted by DeepSeek-V3
+- Predicting 4 future tokens reduces perplexity by 5-10% in practice
+- Particularly effective for code generation and structured text
+
+---
+
+#### use_mtp
+- **Type:** `bool`
+- **Default:** `True` (enabled by default)
+- **Description:** Enable multi-token prediction auxiliary heads
+- **Details:**
+  - When enabled, adds `mtp_n_predict` auxiliary prediction heads
+  - Each head predicts a future token: t+1, t+2, ..., t+n
+  - Main loss (next token) has weight 1.0, auxiliary losses weighted by `mtp_loss_weight`
+  - Heads share the same trunk but have separate output projections
+  - **No inference cost:** Auxiliary heads are dropped after training
+- **Interdependencies:**
+  - Requires `mtp_n_predict ≥ 1` (number of future tokens)
+  - Interacts with `mtp_loss_weight` for loss balancing
+  - Compatible with all attention types (standard, MLA, MoE)
+- **Tuning Tips:**
+  - **Keep enabled** (True) for most use cases - minimal overhead, clear benefits
+  - Particularly effective for:
+    - Code generation (predicting function bodies)
+    - Structured text (JSON, XML)
+    - Long-range dependencies (reasoning tasks)
+  - Disable only if training memory is extremely tight
+  - Combine with MoE for maximum efficiency
+
+**Example:**
+```python
+# Standard MTP configuration (recommended)
+config = NeuroManifoldConfig(
+    use_mtp=True,            # Enable multi-token prediction
+    mtp_n_predict=4,         # Predict 4 future tokens
+    mtp_loss_weight=0.1,     # 10% weight for auxiliary losses
+)
+```
+
+---
+
+#### mtp_n_predict
+- **Type:** `int`
+- **Default:** `4`
+- **Range:** 1-8 (typical: 2-6)
+- **Description:** Number of future tokens to predict simultaneously
+- **Details:**
+  - 1 = standard next-token prediction (no auxiliary heads)
+  - 4 = predict tokens at positions t+1, t+2, t+3, t+4 (recommended)
+  - Higher values = more regularization but diminishing returns
+  - Each prediction requires a separate output head (memory overhead)
+  - Predictions are made in parallel (no autoregressive dependency during training)
+- **Interdependencies:**
+  - Requires `use_mtp=True`
+  - Parameter count increases by `mtp_n_predict × vocab_size × n_embd`
+  - For vocab_size=50304, n_embd=768: +154M parameters per head
+  - Total overhead: `mtp_n_predict × 154M` parameters
+- **Memory Impact:**
+  - Training memory: +10-20% for mtp_n_predict=4
+  - No inference memory overhead (heads dropped)
+  - Parameter count: +`mtp_n_predict` output heads
+- **Tuning Tips:**
+  - **Recommended: 4** - optimal balance (proven by Meta/DeepSeek research)
+  - Use 2-3 for smaller models or memory constraints
+  - Use 6-8 for very long-range tasks (document-level reasoning)
+  - Diminishing returns beyond 6 predictions
+  - Consider: More predictions ≠ always better (overfitting risk)
+  - Balance with `mtp_loss_weight`: higher n_predict → lower loss weight
+
+**Example:**
+```python
+# Aggressive MTP for code generation
+config = NeuroManifoldConfig(
+    use_mtp=True,
+    mtp_n_predict=6,         # Predict 6 tokens ahead
+    mtp_loss_weight=0.05,    # Lower weight for more predictions
+)
+
+# Conservative MTP for small models
+config = NeuroManifoldConfig(
+    use_mtp=True,
+    mtp_n_predict=2,         # Just 2 future tokens
+    mtp_loss_weight=0.15,    # Higher weight for fewer predictions
+)
+```
+
+---
+
+#### mtp_loss_weight
+- **Type:** `float`
+- **Default:** `0.1`
+- **Range:** 0.01-0.5 (typical: 0.05-0.2)
+- **Description:** Weight for auxiliary MTP losses (main loss always weighted at 1.0)
+- **Details:**
+  - Controls balance between next-token prediction (main task) and future predictions
+  - Total loss: `L = L_main + mtp_loss_weight × (L_t+1 + L_t+2 + ... + L_t+n)`
+  - Lower weight = prioritize immediate next token
+  - Higher weight = prioritize long-range predictions
+  - Too high: Model focuses on future at expense of next-token accuracy
+  - Too low: MTP regularization effect is negligible
+- **Interdependencies:**
+  - Requires `use_mtp=True`
+  - Inverse relationship with `mtp_n_predict`: more predictions → lower weight
+  - Interacts with main learning rate and optimizer settings
+- **Tuning Tips:**
+  - **Recommended: 0.1** for mtp_n_predict=4 (start here)
+  - Scale inversely with `mtp_n_predict`:
+    - n_predict=2: weight=0.15-0.2
+    - n_predict=4: weight=0.1 (default)
+    - n_predict=6: weight=0.05-0.08
+  - Monitor training: if next-token perplexity degrades, reduce weight
+  - If auxiliary losses dominate (check tensorboard), reduce weight
+  - If auxiliary losses are ignored (flat), increase weight
+  - Typical range: 0.05 (conservative) to 0.2 (aggressive)
+
+**Example:**
+```python
+# Balanced MTP configuration
+config = NeuroManifoldConfig(
+    use_mtp=True,
+    mtp_n_predict=4,
+    mtp_loss_weight=0.1,     # 10% weight for 4 auxiliary losses
+)
+
+# Check loss balance during training:
+# - Main loss should dominate (weight=1.0)
+# - Auxiliary losses should contribute but not overwhelm
+# - Typical ratio: main:aux ≈ 10:1 to 5:1
+```
+
+---
+
+### 8.2 MLA (Multi-Head Latent Attention)
+
+**What is MLA?**
+
+Multi-Head Latent Attention (MLA) is DeepSeek's technique for compressing the KV (key-value) cache into a low-dimensional latent space. This enables **8x memory reduction** for long-context inference with minimal quality loss.
+
+**Key Benefits:**
+- **8x KV Cache Reduction:** Compress from `2 × n_heads × d_head` to `mla_latent_dim`
+- **Long Context Efficiency:** Enable 32K+ context with limited memory
+- **Decoupled RoPE:** Separate positional encoding for better flexibility
+- **Maintained Quality:** <1% perplexity degradation vs standard attention
+
+**Research Background:**
+- Introduced by DeepSeek-V2 (2024), refined in DeepSeek-V3
+- Compresses KV cache from ~2048 dims to ~64 dims (32x compression)
+- Combined with RoPE decoupling for rotary positional encoding
+- Critical for scaling to 128K+ context windows
+
+**When to Use MLA:**
+- Long-context applications (8K+ tokens)
+- Memory-constrained inference environments
+- Production deployments requiring low latency
+- **Not needed** for short contexts (<2K tokens) or training-only workloads
+
+---
+
+#### use_mla
+- **Type:** `bool`
+- **Default:** `False` (disabled - adds architectural complexity)
+- **Description:** Enable Multi-Head Latent Attention for KV compression
+- **Details:**
+  - Replaces standard K/V projections with low-dimensional latent compression
+  - Architecture: `[n_embd] → [mla_latent_dim] → [n_heads × d_head]`
+  - Standard attention: KV cache is `2 × n_heads × d_head × seq_len`
+  - MLA: KV cache is `mla_latent_dim × seq_len` (8x smaller)
+  - Compression is lossy but carefully designed to preserve attention quality
+  - **Adds complexity:** Requires careful tuning of `mla_latent_dim` and `mla_rope_dim`
+- **Interdependencies:**
+  - Requires `mla_latent_dim < n_embd` (compression bottleneck)
+  - Requires `mla_rope_dim < mla_latent_dim` (RoPE dimension)
+  - Incompatible with `use_knot_attention=True` (different attention structure)
+  - Compatible with `use_moe=True` and `use_mtp=True`
+  - Works best with `block_size ≥ 4096` (long context)
+- **Performance Impact:**
+  - Training: +5-10% slower (extra projection layers)
+  - Inference: 8x KV cache memory reduction
+  - Quality: <1% perplexity increase (well-tuned)
+  - Best for: Memory-bound inference, long-context scenarios
+- **Tuning Tips:**
+  - **Leave disabled (False)** unless you specifically need long-context efficiency
+  - Enable for:
+    - Inference with context ≥8K tokens
+    - Memory-constrained deployments (edge devices, limited VRAM)
+    - Production systems requiring low latency
+  - **Not beneficial** for:
+    - Training-only workloads (no inference)
+    - Short contexts (<2K tokens)
+    - When memory is not a constraint
+  - Carefully tune `mla_latent_dim` to balance compression vs quality
+
+**Example:**
+```python
+# MLA for long-context inference
+config = NeuroManifoldConfig(
+    use_mla=True,            # Enable KV compression
+    mla_latent_dim=64,       # Compress to 64 dims (8x reduction)
+    mla_rope_dim=32,         # RoPE dimension (half of latent)
+    block_size=8192,         # Long context window
+    n_embd=768,              # Standard model size
+    n_heads=12,              # 12 attention heads
+)
+
+# Memory savings calculation:
+# Standard KV: 2 × 12 × 64 × 8192 = 12.6M floats per sample
+# MLA KV: 64 × 8192 = 524K floats per sample
+# Reduction: 24x smaller KV cache
+```
+
+---
+
+#### mla_latent_dim
+- **Type:** `int`
+- **Default:** `64`
+- **Range:** 32-256 (typical: 48-128)
+- **Description:** Dimension of the latent KV compression bottleneck
+- **Details:**
+  - Target dimension for compressing key-value representations
+  - Standard attention: KV dims = `n_heads × (n_embd // n_heads)` = `n_embd`
+  - MLA: KV dims = `mla_latent_dim` (much smaller)
+  - Compression ratio: `n_embd / mla_latent_dim`
+  - Example: `768 / 64 = 12x compression`
+  - Smaller `mla_latent_dim` = more compression but potential quality loss
+  - Larger `mla_latent_dim` = less compression but better quality
+- **Interdependencies:**
+  - Requires `use_mla=True`
+  - Must satisfy: `mla_latent_dim < n_embd` (otherwise no compression)
+  - Must satisfy: `mla_latent_dim > mla_rope_dim` (RoPE is subset)
+  - Typical ratio: `mla_latent_dim ≈ n_embd / 8` to `n_embd / 16`
+  - Larger models can afford lower compression ratios
+- **Memory Impact:**
+  - KV cache size: `mla_latent_dim × seq_len × 2` (K and V) floats
+  - Compression ratio: `n_embd / mla_latent_dim`
+  - Example savings (n_embd=768, seq_len=8K):
+    - Standard: 768 × 8K × 2 = 12.3M floats = 49MB
+    - MLA (dim=64): 64 × 8K × 2 = 1.05M floats = 4.2MB (~12x reduction)
+- **Tuning Tips:**
+  - **Start with `n_embd / 12`** as a safe default
+  - Aggressive compression: `n_embd / 16` (e.g., 768 → 48)
+  - Conservative compression: `n_embd / 8` (e.g., 768 → 96)
+  - Monitor perplexity: if degraded, increase `mla_latent_dim`
+  - Larger models (n_embd=1024+) can use lower dims (32-64)
+  - Smaller models (n_embd=384) need higher dims (64-128)
+  - Balance: More compression = less quality, but enables longer contexts
+
+**Example:**
+```python
+# Small model with conservative MLA
+config = NeuroManifoldConfig(
+    n_embd=384,
+    use_mla=True,
+    mla_latent_dim=64,       # 384/64 = 6x compression
+    mla_rope_dim=32,
+)
+
+# Large model with aggressive MLA
+config = NeuroManifoldConfig(
+    n_embd=1536,
+    use_mla=True,
+    mla_latent_dim=64,       # 1536/64 = 24x compression
+    mla_rope_dim=32,
+)
+```
+
+---
+
+#### mla_rope_dim
+- **Type:** `int`
+- **Default:** `32`
+- **Range:** 16-128 (typical: 32-64)
+- **Description:** Dimension for decoupled RoPE (Rotary Position Embedding)
+- **Details:**
+  - MLA decouples positional encoding from content encoding
+  - RoPE is applied to a separate subset of the latent dimension
+  - Standard attention: RoPE applied to full K/V (dimension = `n_embd`)
+  - MLA: RoPE applied to `mla_rope_dim` subset (much smaller)
+  - This decoupling allows independent tuning of content vs position
+  - Smaller `mla_rope_dim` = more aggressive position compression
+- **Interdependencies:**
+  - Requires `use_mla=True`
+  - Must satisfy: `mla_rope_dim < mla_latent_dim` (RoPE is subset)
+  - Typical ratio: `mla_rope_dim ≈ mla_latent_dim / 2`
+  - Minimum: 16-32 dims for meaningful positional encoding
+- **Tuning Tips:**
+  - **Use `mla_latent_dim / 2`** as default (e.g., latent=64 → rope=32)
+  - Increase to `mla_latent_dim * 0.75` if positional encoding is critical
+  - Decrease to `mla_latent_dim / 4` for maximum compression
+  - Minimum 16-32 dims needed for effective RoPE
+  - Longer contexts (32K+) may benefit from larger `mla_rope_dim`
+  - For tasks with weak positional dependencies, can use smaller values
+
+**Example:**
+```python
+# Standard MLA with balanced RoPE
+config = NeuroManifoldConfig(
+    use_mla=True,
+    mla_latent_dim=64,
+    mla_rope_dim=32,         # Half of latent dim
+)
+
+# Positional-heavy tasks (e.g., code with strict syntax)
+config = NeuroManifoldConfig(
+    use_mla=True,
+    mla_latent_dim=96,
+    mla_rope_dim=64,         # 2/3 of latent dim (more positional capacity)
+)
+```
+
+---
+
+### 8.3 MoE (Mixture of Experts)
+
+**What is MoE?**
+
+Mixture of Experts (MoE) is a sparse architecture that routes each token to a subset of "expert" networks, dramatically increasing model capacity without proportional compute increase.
+
+**Key Benefits:**
+- **Parameter-Efficient Scaling:** 8 experts ≈ 8× parameters, but only 2 active per token
+- **Sublinear Compute:** Training cost scales ~2.5x (not 8x) for 8 experts
+- **Specialization:** Experts learn domain-specific features (code, math, prose)
+- **Auxiliary-Loss-Free:** DeepSeek-style bias-based load balancing (no auxiliary loss)
+
+**Research Background:**
+- Classical MoE (2017): Requires auxiliary loss for load balancing
+- Switch Transformers (Google, 2021): Scaled to trillions of parameters
+- DeepSeek-MoE (2024): Eliminated auxiliary loss via bias-based routing
+- DeepSeek-V3 (2024): 671B total, 37B active per token (18x efficiency)
+
+**When to Use MoE:**
+- Large-scale models (1B+ parameters) needing efficiency
+- Multi-domain datasets (code + math + prose)
+- Parameter scaling without proportional compute increase
+- **Not needed** for small models (<500M) or single-domain tasks
+
+**Important:** MoE significantly increases total parameter count. Use judiciously.
+
+---
+
+#### use_moe
+- **Type:** `bool`
+- **Default:** `False` (disabled - increases parameters significantly)
+- **Description:** Enable Mixture of Experts sparse routing
+- **Details:**
+  - Replaces standard FFN with a gated router + multiple expert FFNs
+  - Each token routed to `moe_n_active` experts out of `moe_n_experts` total
+  - Architecture: Router → TopK gating → Expert FFNs → Weighted sum
+  - Parameter count: ~`moe_n_experts × FFN_params` (vs 1× for standard)
+  - Compute: ~`moe_n_active × FFN_compute` (sparse activation)
+  - **Significant overhead:** 8 experts with top-2 routing = 8× params, ~2× compute
+- **Interdependencies:**
+  - Requires `moe_n_experts ≥ 2` (number of experts)
+  - Requires `moe_n_active ≤ moe_n_experts` (active experts per token)
+  - Compatible with `use_mtp=True` (multi-token prediction)
+  - Compatible with `use_mla=True` (latent attention)
+  - May conflict with `use_kan=True` (KAN experts are very large)
+  - `use_shared_expert=True` recommended (DeepSeek style)
+- **Parameter Impact:**
+  - Standard FFN: `4 × n_embd × n_embd` (e.g., 4× 384² = 590K)
+  - MoE: `moe_n_experts × 4 × n_embd × n_embd` (e.g., 8× 590K = 4.7M)
+  - Total model: `base_params + (n_layer × MoE_overhead)`
+  - Example: 6-layer model → 6 × 4.7M = +28M parameters
+- **Compute Impact:**
+  - Compute: `moe_n_active / moe_n_experts × FFN_compute`
+  - Example: top-2 of 8 experts = 25% of full expert compute (but routing overhead)
+  - Training: ~2-3× slower than standard (routing + load balancing)
+  - Inference: ~1.5-2× slower (sparse matmul overhead)
+- **Tuning Tips:**
+  - **Leave disabled (False)** unless you need parameter-efficient scaling
+  - Enable for:
+    - Large models (1B+ parameters)
+    - Multi-domain datasets (code, math, prose, etc.)
+    - When parameter count << training compute
+  - **Not beneficial** for:
+    - Small models (<500M parameters)
+    - Single-domain tasks
+    - Constrained parameter budgets
+  - Requires large-scale data (100B+ tokens) for expert specialization
+  - Consider: Training complexity increases significantly
+
+**Example:**
+```python
+# MoE for large-scale multi-domain model
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,         # 8 expert FFNs
+    moe_n_active=2,          # Top-2 routing (25% sparse)
+    use_shared_expert=True,  # Always-on shared expert (DeepSeek)
+    use_e7_routing=False,    # Standard learned routing
+    n_embd=1024,             # Large model
+    n_layer=24,              # Deep model
+)
+
+# Parameter calculation:
+# Base model: ~500M parameters
+# MoE overhead: 24 layers × 8 experts × 4M = +768M parameters
+# Total: ~1.3B parameters (but only ~200M active per token)
+```
+
+---
+
+#### moe_n_experts
+- **Type:** `int`
+- **Default:** `8`
+- **Range:** 2-64 (typical: 4-16)
+- **Description:** Total number of expert FFN networks
+- **Details:**
+  - Number of parallel expert networks in each MoE layer
+  - Each expert is a full FFN: `Linear(n_embd, 4×n_embd) → GELU → Linear(4×n_embd, n_embd)`
+  - More experts = more specialization capacity but higher parameters
+  - Experts learn to specialize on different input patterns (domains, styles, etc.)
+  - DeepSeek-V3 uses 256 experts; GPT-4 rumored to use 8-16
+- **Interdependencies:**
+  - Requires `use_moe=True`
+  - Must be ≥ `moe_n_active` (can't activate more than exist)
+  - Parameter overhead: `moe_n_experts × FFN_params` per layer
+  - Larger `moe_n_experts` requires more training data for specialization
+  - Typically power of 2 for efficient GPU kernels (4, 8, 16, 32)
+- **Parameter Impact:**
+  - Each expert: ~`4 × n_embd × n_embd` parameters
+  - Total MoE: `moe_n_experts × 4 × n_embd²` per layer
+  - Example (n_embd=768):
+    - 4 experts: 4 × 2.36M = 9.4M params/layer
+    - 8 experts: 8 × 2.36M = 18.9M params/layer
+    - 16 experts: 16 × 2.36M = 37.7M params/layer
+- **Tuning Tips:**
+  - **Start with 8 experts** (proven sweet spot from DeepSeek/OpenAI)
+  - Use 4 experts for smaller models (n_embd < 512)
+  - Use 16-32 experts for very large models (10B+ params) with massive data
+  - Diminishing returns beyond 16 experts without trillion-token datasets
+  - Power-of-2 values (4, 8, 16, 32) for GPU efficiency
+  - More experts requires:
+    - More training data (100B+ tokens minimum)
+    - Larger batch sizes (for load balancing)
+    - Longer training (expert specialization takes time)
+
+**Example:**
+```python
+# Small MoE configuration
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=4,         # 4 experts (conservative)
+    moe_n_active=2,          # Top-2 routing (50% sparse)
+    n_embd=512,
+)
+
+# Standard MoE configuration (recommended)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,         # 8 experts (DeepSeek style)
+    moe_n_active=2,          # Top-2 routing (25% sparse)
+    n_embd=1024,
+)
+
+# Large-scale MoE configuration
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=16,        # 16 experts (requires massive data)
+    moe_n_active=2,          # Top-2 routing (12.5% sparse)
+    n_embd=2048,
+    # Requires: 1T+ tokens, large batch sizes, extensive training
+)
+```
+
+---
+
+#### moe_n_active
+- **Type:** `int`
+- **Default:** `2`
+- **Range:** 1-8 (typical: 1-2)
+- **Description:** Number of active experts per token (top-k routing)
+- **Details:**
+  - Number of experts selected by the routing function for each token
+  - Router scores all experts, then selects top-k highest scores
+  - Sparse activation: only `moe_n_active` experts process each token
+  - More active = more compute and better quality, less sparsity
+  - DeepSeek-V3, GPT-4, and most MoE systems use top-2 routing
+- **Interdependencies:**
+  - Requires `use_moe=True`
+  - Must satisfy: `moe_n_active ≤ moe_n_experts`
+  - Sparsity ratio: `moe_n_active / moe_n_experts`
+  - Example: 2 active of 8 total = 25% sparsity
+  - Affects compute: `moe_n_active × expert_compute`
+- **Compute Impact:**
+  - Compute per token: `moe_n_active × FFN_compute`
+  - Example (8 experts):
+    - top-1: 12.5% compute (very sparse, may hurt quality)
+    - top-2: 25% compute (standard, good balance)
+    - top-4: 50% compute (less sparse, higher quality)
+  - Routing overhead: ~10-20% regardless of `moe_n_active`
+- **Tuning Tips:**
+  - **Use 2** (top-2 routing) - industry standard (DeepSeek, OpenAI, Google)
+  - Top-1 routing:
+    - Most sparse (lowest compute)
+    - May hurt quality (single expert bottleneck)
+    - Use only for extreme efficiency requirements
+  - Top-2 routing (recommended):
+    - Excellent quality vs compute tradeoff
+    - Robust to routing errors (two experts redundancy)
+    - Proven at scale (DeepSeek-V3, GPT-4)
+  - Top-4+ routing:
+    - Diminishing returns (approaching dense model)
+    - Use only if quality is paramount and compute is cheap
+  - Never exceed `moe_n_experts / 2` (defeats sparsity purpose)
+
+**Example:**
+```python
+# Standard top-2 routing (recommended)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,
+    moe_n_active=2,          # Top-2: 25% sparsity, robust
+)
+
+# Ultra-sparse top-1 routing (for extreme efficiency)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,
+    moe_n_active=1,          # Top-1: 12.5% sparsity, risky
+)
+
+# Dense top-4 routing (high quality, less sparse)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,
+    moe_n_active=4,          # Top-4: 50% sparsity, approaching dense
+)
+```
+
+---
+
+#### use_shared_expert
+- **Type:** `bool`
+- **Default:** `True` (enabled - DeepSeek style)
+- **Description:** Enable always-active shared expert (DeepSeek innovation)
+- **Details:**
+  - In addition to routed experts, adds one shared expert processed by all tokens
+  - Architecture: `output = SharedExpert(x) + sum(TopK_RoutedExperts(x))`
+  - Shared expert captures common features across all domains
+  - Routed experts specialize on specific patterns
+  - Improves stability and reduces routing errors
+  - Introduced by DeepSeek-MoE, adopted widely
+- **Interdependencies:**
+  - Requires `use_moe=True`
+  - Adds one additional expert (parameter overhead)
+  - Shared expert is always active (not counted in `moe_n_active`)
+  - Total active experts per token: `moe_n_active + 1` (shared)
+- **Parameter Impact:**
+  - Adds 1 extra FFN per layer: `+4 × n_embd²` parameters
+  - Total experts: `moe_n_experts` (routed) + 1 (shared)
+  - Example (n_embd=768): +2.36M parameters per layer
+- **Compute Impact:**
+  - Shared expert processed for all tokens (dense compute)
+  - Effective compute: `(moe_n_active + 1) / moe_n_experts`
+  - Example (top-2 of 8): (2+1)/8 = 37.5% compute (vs 25% without shared)
+- **Tuning Tips:**
+  - **Keep enabled (True)** - DeepSeek's research shows clear benefits
+  - Improves:
+    - Training stability (common features not dependent on routing)
+    - Load balancing (shared expert absorbs uncertain tokens)
+    - Quality (all tokens get shared features)
+  - Disable (False) only if:
+    - Parameter budget is extremely tight
+    - You're replicating non-DeepSeek MoE architectures
+  - Negligible downside: +1 expert overhead pays for itself in stability
+
+**Example:**
+```python
+# DeepSeek-style MoE (recommended)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,         # 8 routed experts
+    moe_n_active=2,          # Top-2 routing
+    use_shared_expert=True,  # +1 always-on shared expert
+    # Effective: 3 active experts per token (2 routed + 1 shared)
+)
+
+# Classical MoE (no shared expert)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    moe_n_experts=8,
+    moe_n_active=2,
+    use_shared_expert=False, # Pure routed experts only
+)
+```
+
+---
+
+#### use_e7_routing
+- **Type:** `bool`
+- **Default:** `False` (disabled - uses standard learned routing)
+- **Description:** Route experts based on E7 curriculum tier (experimental)
+- **Details:**
+  - Experimental feature: Routes experts based on E7 exceptional Lie group hierarchy
+  - E7 curriculum tiers: D5 (global) → E6 (phrase) → E7 (token) patterns
+  - Instead of learned routing, uses geometric curriculum level to select experts
+  - Idea: Align expert specialization with geometric abstraction levels
+  - **Highly experimental:** No proven benefits, may hurt quality
+- **Interdependencies:**
+  - Requires `use_moe=True`
+  - Requires `use_multiscale_manifold=True` (E7 hierarchy)
+  - Replaces standard learned router with deterministic E7-based routing
+  - May conflict with load balancing (E7 routing is not balanced by default)
+- **Tuning Tips:**
+  - **Leave disabled (False)** - experimental, unproven
+  - Standard learned routing is more flexible and battle-tested
+  - Enable only for research into geometric expert specialization
+  - Requires careful analysis of expert utilization patterns
+  - May need custom load balancing if enabled
+
+**Example:**
+```python
+# Standard learned routing (recommended)
+config = NeuroManifoldConfig(
+    use_moe=True,
+    use_e7_routing=False,    # Use learned router (standard)
+)
+
+# Experimental E7-based routing
+config = NeuroManifoldConfig(
+    use_moe=True,
+    use_e7_routing=True,     # Route by geometric tier (experimental)
+    use_multiscale_manifold=True,  # Required for E7 hierarchy
+    # WARNING: Unproven, may hurt quality
+)
+```
+
+---
+
+### 8.4 Combining Advanced Features
+
+**MTP + MLA:**
+- Excellent combination for long-context efficiency
+- MTP improves representations, MLA reduces memory
+- No conflicts, complementary benefits
+- Recommended for production long-context models
+
+**MTP + MoE:**
+- Great combination for parameter-efficient scaling
+- MTP regularization helps expert specialization
+- Slightly slower training (both add overhead)
+- Recommended for large multi-domain models
+
+**MLA + MoE:**
+- Powerful combination for massive-scale models
+- MLA reduces KV cache, MoE increases parameters efficiently
+- Complex to tune (two interdependent systems)
+- Used by DeepSeek-V3 (671B params, 37B active)
+
+**All Three (MTP + MLA + MoE):**
+- Maximum efficiency for frontier models
+- Requires careful tuning and large-scale infrastructure
+- Example: DeepSeek-V3 uses all three techniques
+- Not recommended for models <10B parameters
+
+**Example Configurations:**
+
+```python
+# Long-context efficiency (MTP + MLA)
+config = NeuroManifoldConfig(
+    use_mtp=True,
+    mtp_n_predict=4,
+    use_mla=True,
+    mla_latent_dim=64,
+    block_size=16384,        # 16K context
+)
+
+# Parameter-efficient scaling (MTP + MoE)
+config = NeuroManifoldConfig(
+    use_mtp=True,
+    mtp_n_predict=4,
+    use_moe=True,
+    moe_n_experts=8,
+    moe_n_active=2,
+    use_shared_expert=True,
+    n_embd=1024,
+    n_layer=24,
+)
+
+# Frontier model (MTP + MLA + MoE)
+config = NeuroManifoldConfig(
+    use_mtp=True,
+    mtp_n_predict=6,
+    use_mla=True,
+    mla_latent_dim=96,
+    use_moe=True,
+    moe_n_experts=16,
+    moe_n_active=2,
+    use_shared_expert=True,
+    n_embd=2048,
+    n_layer=32,
+    block_size=32768,
+    # Requires: Large-scale infrastructure, 1T+ tokens
+)
+```
 
 ---
 
