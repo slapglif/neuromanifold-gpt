@@ -157,6 +157,15 @@ class RichLogger:
         self._logger = self._logger.bind(**kwargs)
         return self
 
+    def table(self, renderable: Any) -> None:
+        """
+        Print a Rich renderable object (e.g., Table, Panel, etc.).
+
+        Args:
+            renderable: Any Rich renderable object (Table, Panel, etc.)
+        """
+        _console.print(renderable)
+
 
 def get_logger(name: str) -> RichLogger:
     """

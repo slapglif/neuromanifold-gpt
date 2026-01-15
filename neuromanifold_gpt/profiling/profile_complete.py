@@ -330,7 +330,7 @@ def main():
             pct_str,
         )
 
-    console.print(table)
+    logger.table(table)
 
     # =========================================================================
     # Analysis
