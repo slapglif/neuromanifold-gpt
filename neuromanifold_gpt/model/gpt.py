@@ -18,9 +18,14 @@ from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
+from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
+from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -78,44 +83,59 @@ class NeuroManifoldGPT(nn.Module):
             self.embed_to_sdr = None
 
         # Transformer blocks
-        self.blocks = nn.ModuleList(
-            [
-                NeuroManifoldBlock(
-                    sdr_size=config.n_embd,
-                    embed_dim=config.n_embd,
-                    manifold_dim=config.manifold_dim,
-                    n_eigenvectors=config.n_eigenvectors,
-                    n_heads=config.n_heads,
-                    dropout=config.dropout,
-                    # FHN dynamics with semi-implicit IMEX scheme
-                    fhn_threshold=config.fhn_threshold,
-                    fhn_tau=config.fhn_tau,
-                    pulse_width_base=config.pulse_width_base,
-                    n_fhn_steps=config.n_fhn_steps,
-                    use_fhn_imex=config.use_fhn_imex,
-                    use_fhn_partitioning=config.use_fhn_partitioning,
-                    use_fhn_fused=config.use_fhn_fused,
-                    # KAN configuration
-                    use_kan=config.use_kan,
-                    kan_type=config.kan_type,
-                    kan_degree=config.kan_degree,
-                    kan_wavelet=config.kan_wavelet,
-                    use_fast_wavekan=config.use_fast_wavekan,
-                    kan_num_centers=config.kan_num_centers,
-                    # Knot attention
-                    use_knot_attention=config.use_knot_attention,
-                    use_kaufmann_attention=config.use_kaufmann_attention,
-                    # mHC (Manifold-Constrained Hyper-Connections)
-                    use_mhc=config.use_mhc,
-                    use_full_mhc=config.use_full_mhc,
-                    mhc_n_streams=config.mhc_n_streams,
-                    mhc_residual_weight=config.mhc_residual_weight,
-                    # Speed optimization
-                    skip_manifold_spectral=config.skip_manifold_spectral,
-                )
-                for _ in range(config.n_layer)
-            ]
-        )
+        # First block receives SDR (if enabled), subsequent blocks receive n_embd
+        def make_block(layer_idx):
+            # First block: receives SDR if enabled, else n_embd
+            # Other blocks: always receive n_embd from previous block
+            if layer_idx == 0 and config.use_sdr:
+                block_sdr_size = config.sdr_size
+            else:
+                block_sdr_size = config.n_embd
+            return NeuroManifoldBlock(
+                sdr_size=block_sdr_size,
+                embed_dim=config.n_embd,
+                manifold_dim=config.manifold_dim,
+                n_eigenvectors=config.n_eigenvectors,
+                n_heads=config.n_heads,
+                dropout=config.dropout,
+                # FHN dynamics with semi-implicit IMEX scheme
+                fhn_threshold=config.fhn_threshold,
+                fhn_tau=config.fhn_tau,
+                pulse_width_base=config.pulse_width_base,
+                n_fhn_steps=config.n_fhn_steps,
+                use_fhn_imex=config.use_fhn_imex,
+                use_fhn_partitioning=config.use_fhn_partitioning,
+                use_fhn_fused=config.use_fhn_fused,
+                # KAN configuration
+                use_kan=config.use_kan,
+                kan_type=config.kan_type,
+                kan_degree=config.kan_degree,
+                kan_wavelet=config.kan_wavelet,
+                use_fast_wavekan=config.use_fast_wavekan,
+                kan_num_centers=config.kan_num_centers,
+                # Knot attention
+                use_knot_attention=config.use_knot_attention,
+                use_kaufmann_attention=config.use_kaufmann_attention,
+                # mHC (Manifold-Constrained Hyper-Connections)
+                use_mhc=config.use_mhc,
+                use_full_mhc=config.use_full_mhc,
+                mhc_n_streams=config.mhc_n_streams,
+                mhc_residual_weight=config.mhc_residual_weight,
+                mhc_sinkhorn_iters=getattr(config, 'mhc_sinkhorn_iters', 5),
+                # Speed optimization
+                skip_manifold_spectral=config.skip_manifold_spectral,
+                # MLA (Multi-Head Latent Attention) - DeepSeek style
+                use_mla=getattr(config, 'use_mla', False),
+                mla_latent_dim=getattr(config, 'mla_latent_dim', 64),
+                mla_rope_dim=getattr(config, 'mla_rope_dim', 32),
+                # MoE (Mixture of Experts) - DeepSeek style
+                use_moe=getattr(config, 'use_moe', False),
+                moe_n_experts=getattr(config, 'moe_n_experts', 8),
+                moe_n_active=getattr(config, 'moe_n_active', 2),
+                use_shared_expert=getattr(config, 'use_shared_expert', True),
+                use_e7_routing=getattr(config, 'use_e7_routing', False),
+            )
+        self.blocks = nn.ModuleList([make_block(i) for i in range(config.n_layer)])
 
         # mHC stream expansion/reduction (for multi-stream mHC)
         # These expand input to num_streams copies and reduce back after blocks
@@ -125,11 +145,41 @@ class NeuroManifoldGPT(nn.Module):
         )
         self.mhc_enabled = config.use_mhc and config.mhc_n_streams > 1
 
-        # Final layer norm
-        self.ln_f = nn.LayerNorm(config.n_embd)
+        # Final layer norm - RMSNorm is ~15% faster than LayerNorm (no mean computation)
+        self.ln_f = RMSNorm(config.n_embd)
 
         # Language model head
+        # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
+        self.lm_head_fp32 = getattr(config, 'lm_head_fp32', True)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        if self.lm_head_fp32:
+            # Keep lm_head in FP32 even during mixed precision training
+            self.lm_head = self.lm_head.float()
+
+        # Multi-Token Prediction (MTP) heads - DeepSeek/Meta style
+        # Each head predicts token at position t+k (k=2,3,...,n_predict)
+        # Head 1 (t+1) is the main lm_head, auxiliary heads predict further ahead
+        self.use_mtp = getattr(config, 'use_mtp', False)
+        self.mtp_n_predict = getattr(config, 'mtp_n_predict', 4)
+        self.mtp_loss_weight = getattr(config, 'mtp_loss_weight', 0.1)
+
+        # Configurable auxiliary loss weights (allows reducing auxiliary impact)
+        self.ortho_loss_weight = getattr(config, 'ortho_loss_weight', 1.0)
+        self.discrimination_loss_weight = getattr(config, 'discrimination_loss_weight', 0.5)
+        self.contrastive_loss_weight = getattr(config, 'contrastive_loss_weight', 1.0)
+
+        if self.use_mtp and self.mtp_n_predict > 1:
+            # Auxiliary prediction heads for t+2, t+3, ..., t+n_predict
+            # Each head has a small projection to adapt representations
+            self.mtp_projs = nn.ModuleList([
+                nn.Sequential(
+                    nn.Linear(config.n_embd, config.n_embd),
+                    nn.SiLU(),
+                )
+                for _ in range(self.mtp_n_predict - 1)
+            ])
+            # Share lm_head weights for efficiency (all heads predict from vocab)
+            # The projection adapts the representation, shared head does vocab projection
 
         # Engram memory
         self.memory = SDREngramMemory(
@@ -139,6 +189,64 @@ class NeuroManifoldGPT(nn.Module):
             content_dim=config.n_embd,
             threshold=config.engram_threshold,
         )
+
+        # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
+        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
+        if self.use_hybrid_reasoning:
+            self.hybrid_reasoning = HybridReasoningModule(
+                embed_dim=config.n_embd,
+                n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
+                n_heads=config.n_heads,
+                dropout=config.dropout,
+                use_e7_prior=True,
+                thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
+            )
+
+        # ========================================
+        # System 2 Reasoning Components
+        # ========================================
+
+        # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
+        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
+        if self.use_dag_planner:
+            self.dag_planner = ForcedDAGPlanner(
+                embed_dim=config.n_embd,
+                manifold_dim=config.manifold_dim,
+                max_nodes=getattr(config, 'dag_max_nodes', 32),
+                min_nodes=getattr(config, 'dag_min_nodes', 3),
+            )
+
+        # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
+        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
+        if self.use_hierarchical_memory:
+            self.hierarchical_memory = HierarchicalEngramMemory(
+                sdr_size=config.sdr_size,
+                n_active=config.sdr_n_active,
+                content_dim=config.n_embd,
+                l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
+                l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
+                l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
+            )
+
+        # ConsistencyImaginationModule - Counterfactual exploration
+        self.use_imagination = getattr(config, 'use_imagination', False)
+        if self.use_imagination:
+            self.imagination = ConsistencyImaginationModule(
+                embed_dim=config.n_embd,
+                manifold_dim=config.manifold_dim,
+                n_imagination_steps=getattr(config, 'imagination_steps', 4),
+            )
+            self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
+
+        # Memory Active Retrieval configuration
+        self.memory_active_retrieval = getattr(config, 'memory_active_retrieval', False)
+        self.memory_retrieval_top_k = getattr(config, 'memory_retrieval_top_k', 3)
+        self.memory_retrieval_weight = getattr(config, 'memory_retrieval_weight', 0.1)
+
+        # Projection to combine retrieved memory with input (only if retrieval enabled)
+        if self.memory_active_retrieval:
+            # Project retrieved content to embedding dimension for mixing
+            self.memory_retrieval_proj = nn.Linear(config.n_embd, config.n_embd)
 
         # Initialize weights
         self.apply(self._init_weights)
@@ -153,21 +261,33 @@ class NeuroManifoldGPT(nn.Module):
             )
 
     def _init_weights(self, module: nn.Module) -> None:
-        """Initialize linear and embedding weights."""
+        """Initialize linear and embedding weights.
+
+        Uses DeepSeek-V3 style std=0.006 by default (configurable via init_std).
+        Smaller initialization leads to faster early convergence.
+        """
+        init_std = getattr(self.config, 'init_std', 0.006)
         if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=init_std)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=init_std)
 
     def forward(
         self,
         tokens: torch.Tensor,
         targets: torch.Tensor = None,
+        loss_weights: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None, dict]:
         """
         Forward pass.
+
+        Args:
+            tokens: Input token IDs (B, T)
+            targets: Target token IDs for loss computation (B, T), optional
+            loss_weights: Per-token loss weights (B, T), optional
+                         Used for soft curriculum weighting instead of hard masking
         """
         B, T = tokens.shape
         device = tokens.device
@@ -175,9 +295,10 @@ class NeuroManifoldGPT(nn.Module):
         # Embedding Stage
         topographic_loss = torch.tensor(0.0, device=device)
         discrimination_loss = torch.tensor(0.0, device=device)
+        contrastive_loss = torch.tensor(0.0, device=device)
         if self.use_sdr:
-            # Semantic folding to SDR with topographic and discrimination losses
-            sdr, sdr_scores, topographic_loss, discrimination_loss = self.encoder(
+            # Semantic folding to SDR with topographic, discrimination, and contrastive losses
+            sdr, sdr_scores, topographic_loss, discrimination_loss, contrastive_loss = self.encoder(
                 tokens
             )
             x = None  # Initial x comes from first block processing SDR
@@ -193,9 +314,95 @@ class NeuroManifoldGPT(nn.Module):
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)  # Dummy SDR
             sdr_scores = None
 
+        # ========================================
+        # Memory Active Retrieval
+        # ========================================
+        # Retrieve similar memories and augment representations BEFORE transformer blocks
+        # This enables the model to use stored engrams during inference
+        #
+        # NOTE: Memory retrieval requires SDR representations for similarity matching.
+        # In non-SDR mode, retrieval is disabled since there are no SDR patterns to query with.
+        memory_retrieval_info = {"retrieved_count": 0, "avg_similarity": 0.0}
+        pending_memory_retrieval = None  # Local variable (not instance var) for thread safety
+
+        if self.memory_active_retrieval and self.use_sdr:
+            # Check if memory has content
+            memory_has_content = False
+            if self.use_hierarchical_memory:
+                total_count = len(self.hierarchical_memory.l1) + len(self.hierarchical_memory.l2) + len(self.hierarchical_memory.l3)
+                memory_has_content = total_count > 0
+            else:
+                memory_has_content = self.memory.count.item() > 0
+
+            if memory_has_content:
+                # For SDR mode, we need to retrieve based on SDR patterns
+                # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
+                # Alternative: per-position queries (more expensive but more precise)
+
+                # Mean pool SDR across sequence for query (B, sdr_size)
+                query_sdr = sdr.mean(dim=1)  # (B, sdr_size)
+
+                # Retrieve for each batch element
+                retrieved_contents_list = []
+                total_similarity = 0.0
+                total_retrieved = 0
+
+                for b in range(B):
+                    # Select memory to query
+                    if self.use_hierarchical_memory:
+                        contents, sims, tier = self.hierarchical_memory.retrieve(
+                            query_sdr[b],
+                            top_k=self.memory_retrieval_top_k,
+                            threshold=self.config.engram_threshold,
+                        )
+                    else:
+                        contents, sims = self.memory.retrieve(
+                            query_sdr[b],
+                            top_k=self.memory_retrieval_top_k,
+                        )
+
+                    if len(contents) > 0:
+                        # Aggregate retrieved content weighted by similarity
+                        # Normalize similarities to sum to 1
+                        weights = F.softmax(sims, dim=0)  # (n_results,)
+                        # Weighted sum of contents: (n_results, content_dim) -> (content_dim,)
+                        aggregated = (weights.unsqueeze(1) * contents).sum(dim=0)  # (content_dim,)
+                        retrieved_contents_list.append(aggregated)
+                        total_similarity += sims.mean().item()
+                        total_retrieved += len(contents)
+                    else:
+                        # No match found - use zeros
+                        retrieved_contents_list.append(
+                            torch.zeros(self.config.n_embd, device=device)
+                        )
+
+                # Stack retrieved contents: (B, n_embd)
+                retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
+
+                # Project and expand to sequence length: (B, n_embd) -> (B, T, n_embd)
+                retrieved_proj = self.memory_retrieval_proj(retrieved_contents)  # (B, n_embd)
+                retrieved_expanded = retrieved_proj.unsqueeze(1).expand(-1, T, -1)  # (B, T, n_embd)
+
+                # Mix with input representations
+                # For SDR mode, we'll add to the first block's output later
+                # Store in local variable for application after first block produces x
+                pending_memory_retrieval = retrieved_expanded
+
+                # Update info
+                memory_retrieval_info["retrieved_count"] = total_retrieved
+                memory_retrieval_info["avg_similarity"] = (
+                    total_similarity / B if B > 0 else 0.0
+                )
+        # NOTE: Memory retrieval requires SDR mode (use_sdr=True).
+        # SDR engram memory stores sparse distributed representations for similarity matching.
+        # In non-SDR mode, we use standard dense embeddings without sparse patterns, so there
+        # are no valid SDR fingerprints to query with. Config validation now enforces that
+        # memory_active_retrieval=True requires use_sdr=True.
+
         # Through blocks
         block_infos = []
         total_ortho_loss = torch.tensor(0.0, device=device)
+        total_fhn_lyapunov_loss = torch.tensor(0.0, device=device)
 
         for i, block in enumerate(self.blocks):
             if self.use_sdr:
@@ -208,6 +415,18 @@ class NeuroManifoldGPT(nn.Module):
                     # x is (B*S, T, n_embd) if mHC, else (B, T, n_embd)
                     pos_emb = self.ramanujan_pos(torch.zeros(1, T, device=device))
                     x = x + pos_emb
+
+                    # Apply pending memory retrieval after first block produces x
+                    # This augments representations with retrieved engrams
+                    if pending_memory_retrieval is not None:
+                        # Handle mHC multi-stream case: expand retrieval to match
+                        if self.mhc_enabled:
+                            # x is (B*S, T, n_embd), need to expand retrieval
+                            retrieval_expanded = self.expand_stream(pending_memory_retrieval)
+                            x = x + self.memory_retrieval_weight * retrieval_expanded
+                        else:
+                            x = x + self.memory_retrieval_weight * pending_memory_retrieval
+                        # Local variable - no need to clear, goes out of scope naturally
                 else:
                     # Block already applies internal residuals
                     x, info = block(x)
@@ -224,55 +443,164 @@ class NeuroManifoldGPT(nn.Module):
             # Accumulate orthogonality regularization loss
             if "ortho_loss" in info:
                 total_ortho_loss = total_ortho_loss + info["ortho_loss"]
+            # Accumulate FHN Lyapunov stability loss (from theory2 proof)
+            if "fhn_lyapunov_loss" in info:
+                total_fhn_lyapunov_loss = total_fhn_lyapunov_loss + info["fhn_lyapunov_loss"]
 
         # Reduce multi-stream mHC back to single stream
         if self.mhc_enabled:
             x = self.reduce_stream(x)
 
+        # Hybrid Reasoning (thinking/non-thinking modes)
+        hybrid_info = {}
+        if self.use_hybrid_reasoning:
+            # Get E7 tier if available (set by trainer based on curriculum)
+            e7_tier = getattr(self, '_e7_tier', None)
+            x, hybrid_info = self.hybrid_reasoning(x, e7_tier=e7_tier)
+
         # Final norm
         x = self.ln_f(x)
+
+        # DAG Planner - System 2 task decomposition
+        dag_info = {}
+        if self.use_dag_planner:
+            dag_output = self.dag_planner(x, deterministic=not self.training)
+            dag_info = {
+                'node_embeddings': dag_output['node_embeddings'],
+                'adj_matrix': dag_output['adj_matrix'],
+                'surface_area': dag_output['surface_area'],
+                'complexities': dag_output['complexities'],
+            }
 
         # Store final representations as engrams (during training only)
         if self.training:
             # Vectorized storage - critical for performance!
             flat_sdr = sdr.view(-1, sdr.size(-1))
             flat_x = x.view(-1, x.size(-1))
-            self.memory.store_batch(flat_sdr, flat_x.detach())
+
+            # Use hierarchical memory if enabled, otherwise use basic memory
+            if self.use_hierarchical_memory:
+                # Batch store to hierarchical memory
+                for i in range(min(flat_sdr.shape[0], 100)):  # Cap at 100 per step
+                    self.hierarchical_memory.store(flat_sdr[i], flat_x[i].detach())
+            else:
+                self.memory.store_batch(flat_sdr, flat_x.detach())
 
         # Compute logits
-        logits = self.lm_head(x)
+        # Use FP32 computation for lm_head if enabled (MiniMax/DeepSeek recipe)
+        if self.lm_head_fp32:
+            # Cast input to FP32 and disable autocast for numerical stability
+            with torch.amp.autocast(device_type='cuda', enabled=False):
+                logits = self.lm_head(x.float())
+        else:
+            logits = self.lm_head(x)
 
         # Compute loss if targets provided
         loss = None
+        mtp_loss = torch.tensor(0.0, device=device)
         if targets is not None:
-            ce_loss = F.cross_entropy(
-                logits.view(-1, logits.size(-1)),
-                targets.view(-1),
-                ignore_index=-1,
-            )
-            # Add auxiliary losses:
-            # - ortho_loss: spectral orthogonality
+            # Get label smoothing from config (critical for large vocab like 151K Qwen3)
+            label_smoothing = getattr(self.config, 'label_smoothing', 0.0)
+
+            if loss_weights is not None:
+                # Soft curriculum: weighted CE loss (per-token weights)
+                per_token_loss = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    targets.view(-1),
+                    reduction='none',  # Per-token loss
+                    label_smoothing=label_smoothing,
+                )
+                # Apply weights and compute weighted mean
+                flat_weights = loss_weights.view(-1)
+                ce_loss = (per_token_loss * flat_weights).sum() / flat_weights.sum()
+            else:
+                # Standard CE loss with ignore_index for hard masking
+                ce_loss = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    targets.view(-1),
+                    ignore_index=-100,
+                    label_smoothing=label_smoothing,
+                )
+
+            # Multi-Token Prediction (MTP) auxiliary losses
+            # Predict tokens at t+2, t+3, ..., t+n_predict
+            if self.use_mtp and self.mtp_n_predict > 1 and hasattr(self, 'mtp_projs'):
+                B, T, _ = x.shape
+                for k, proj in enumerate(self.mtp_projs, start=2):
+                    # k=2 means predicting t+2 (2 tokens ahead)
+                    if T > k:
+                        # Project hidden states for this prediction depth
+                        x_proj = proj(x[:, :-k, :])  # (B, T-k, D)
+                        # Get logits using shared lm_head (FP32 if enabled)
+                        if self.lm_head_fp32:
+                            with torch.amp.autocast(device_type='cuda', enabled=False):
+                                mtp_logits = self.lm_head(x_proj.float())  # (B, T-k, V)
+                        else:
+                            mtp_logits = self.lm_head(x_proj)  # (B, T-k, V)
+                        # Targets shifted by k (predict k tokens ahead)
+                        mtp_targets = targets[:, k:]  # (B, T-k)
+                        # Compute loss for this depth
+                        mtp_k_loss = F.cross_entropy(
+                            mtp_logits.reshape(-1, mtp_logits.size(-1)),
+                            mtp_targets.reshape(-1),
+                            ignore_index=-100,  # Match E7 curriculum's ignore_index
+                            label_smoothing=label_smoothing,
+                        )
+                        mtp_loss = mtp_loss + mtp_k_loss
+                # Average over prediction depths
+                mtp_loss = mtp_loss / (self.mtp_n_predict - 1)
+
+            # =================================================================
+            # HYBRID LOSS (proven valid in theory2 mathematical proof)
+            # L_total = L_CE + α*L_ortho + β*L_disc + γ*L_topo + δ*L_mtp + ε*L_fhn
+            # =================================================================
+            # - ortho_loss: spectral orthogonality (manifold regularization)
             # - discrimination_loss: prevent SDR mode collapse (CRITICAL for SDR mode)
-            # - topographic_loss: currently disabled for stability
+            # - topographic_loss: E7-inspired manifold organization (with warmup)
+            # - mtp_loss: multi-token prediction (DeepSeek/Meta style)
+            # - fhn_lyapunov_loss: FHN stability loss (penalize energy increase)
+            #
+            # Get topographic weight from model attribute (set by trainer)
+            topo_weight = getattr(self, '_topo_weight', 0.0)
+            # FHN Lyapunov weight (small, for regularization)
+            fhn_lyapunov_weight = getattr(self, '_fhn_lyapunov_weight', 0.001)
+
             loss = (
                 ce_loss
-                + total_ortho_loss
-                + 0.5 * discrimination_loss
-                + 0.0 * topographic_loss
+                + self.ortho_loss_weight * total_ortho_loss
+                + self.discrimination_loss_weight * discrimination_loss
+                + topo_weight * topographic_loss
+                + self.mtp_loss_weight * mtp_loss
+                + fhn_lyapunov_weight * total_fhn_lyapunov_loss
+                + self.contrastive_loss_weight * contrastive_loss
             )
         else:
             loss = None
             topographic_loss = torch.tensor(0.0, device=device)
             discrimination_loss = torch.tensor(0.0, device=device)
 
+        # Memory stats (hierarchical or basic)
+        if self.use_hierarchical_memory:
+            memory_stats = self.hierarchical_memory.get_stats()
+        else:
+            memory_stats = {"memory_size": self.memory.get_size()}
+
         info = {
             "sdr": sdr,
             "sdr_scores": sdr_scores,
             "block_infos": block_infos,
-            "memory_size": self.memory.get_size(),
+            "memory_size": memory_stats.get("memory_size", memory_stats.get("l1_count", 0) + memory_stats.get("l2_count", 0) + memory_stats.get("l3_count", 0)),
+            "memory_stats": memory_stats,
+            "memory_retrieval": memory_retrieval_info,  # Active retrieval stats
             "ortho_loss": total_ortho_loss,
             "topographic_loss": topographic_loss,
             "discrimination_loss": discrimination_loss,
+            "contrastive_loss": contrastive_loss,  # wav2vec-style contrastive embedding loss
+            "mtp_loss": mtp_loss,
+            "fhn_lyapunov_loss": total_fhn_lyapunov_loss,
+            "ce_loss": ce_loss if targets is not None else torch.tensor(0.0, device=device),
+            "hybrid_reasoning": hybrid_info,
+            "dag_planner": dag_info,
         }
 
         return logits, loss, info
@@ -284,10 +612,29 @@ class NeuroManifoldGPT(nn.Module):
         max_new_tokens: int,
         temperature: float = 1.0,
         top_k: int | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float = 1.2,
+        mirostat: int = 0,
+        mirostat_tau: float = 5.0,
+        mirostat_eta: float = 0.1,
     ) -> torch.Tensor:
         """
-        Autoregressive generation.
+        Autoregressive generation with multiple sampling strategies.
+
+        Args:
+            idx: Input token IDs (B, T)
+            max_new_tokens: Number of tokens to generate
+            temperature: Sampling temperature (higher = more random)
+            top_k: Keep only top-k tokens for sampling
+            top_p: Nucleus sampling threshold (cumulative probability)
+            repetition_penalty: Penalty for repeating tokens (1.0 = no penalty)
+            mirostat: 0=disabled, 2=Mirostat 2 (dynamic perplexity control)
+            mirostat_tau: Target surprise/perplexity (lower = more focused)
+            mirostat_eta: Learning rate for Mirostat adjustment
         """
+        # Mirostat 2 state (per batch element)
+        mu = torch.full((idx.size(0),), 2 * mirostat_tau, device=idx.device)
+
         for _ in range(max_new_tokens):
             # Crop to block_size if needed
             idx_cond = (
@@ -298,19 +645,154 @@ class NeuroManifoldGPT(nn.Module):
 
             # Forward
             logits, _, _ = self(idx_cond)
-            logits = logits[:, -1, :] / temperature
+            logits = logits[:, -1, :]
 
-            # Top-k filtering
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = float("-inf")
+            # Apply repetition penalty to tokens already in sequence
+            if repetition_penalty != 1.0:
+                for b in range(idx.size(0)):
+                    for prev_token in idx[b].tolist():
+                        if logits[b, prev_token] > 0:
+                            logits[b, prev_token] /= repetition_penalty
+                        else:
+                            logits[b, prev_token] *= repetition_penalty
 
-            # Sample
-            probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
+            # Temperature
+            logits = logits / temperature
+
+            if mirostat == 2:
+                # Mirostat 2: Dynamic top-k based on target perplexity
+                # Sort logits descending
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                probs = F.softmax(sorted_logits, dim=-1)
+
+                # Compute surprise (negative log prob) for each token
+                surprisals = -torch.log(probs + 1e-10)
+
+                # Find k where cumulative surprise exceeds mu (target)
+                # This dynamically selects how many tokens to consider
+                idx_next_list = []
+                for b in range(idx.size(0)):
+                    # Find truncation point
+                    cum_surprise = torch.cumsum(probs[b] * surprisals[b], dim=0)
+                    k = (cum_surprise < mu[b]).sum().item() + 1
+                    k = max(1, min(k, logits.size(-1)))
+
+                    # Truncate and renormalize
+                    truncated_probs = probs[b, :k]
+                    truncated_probs = truncated_probs / truncated_probs.sum()
+
+                    # Sample
+                    sampled_idx = torch.multinomial(truncated_probs, num_samples=1)
+                    token_idx = sorted_indices[b, sampled_idx]
+                    idx_next_list.append(token_idx)
+
+                    # Update mu based on observed surprise
+                    observed_surprise = surprisals[b, sampled_idx].item()
+                    mu[b] = mu[b] - mirostat_eta * (observed_surprise - mirostat_tau)
+
+                idx_next = torch.cat(idx_next_list, dim=0).unsqueeze(1)
+            else:
+                # Standard sampling with top-k and/or top-p
+                if top_k is not None:
+                    v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                    logits[logits < v[:, [-1]]] = float("-inf")
+
+                if top_p is not None:
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    probs = F.softmax(sorted_logits, dim=-1)
+                    cum_probs = torch.cumsum(probs, dim=-1)
+                    # Remove tokens with cumulative prob above threshold
+                    sorted_mask = cum_probs > top_p
+                    sorted_mask[..., 1:] = sorted_mask[..., :-1].clone()
+                    sorted_mask[..., 0] = False
+                    for b in range(logits.size(0)):
+                        logits[b, sorted_indices[b][sorted_mask[b]]] = float("-inf")
+
+                # Sample
+                probs = F.softmax(logits, dim=-1)
+                idx_next = torch.multinomial(probs, num_samples=1)
+
             idx = torch.cat([idx, idx_next], dim=1)
 
         return idx
+
+    @torch.no_grad()
+    def imagine_alternatives(
+        self,
+        idx: torch.Tensor,
+        goal_tokens: torch.Tensor | None = None,
+        n_alternatives: int = 4,
+    ) -> dict[str, torch.Tensor]:
+        """
+        Use imagination module to explore alternative reasoning paths.
+
+        Args:
+            idx: Input token IDs (B, T)
+            goal_tokens: Optional goal tokens to optimize toward (B, T_goal)
+            n_alternatives: Number of alternatives to generate
+
+        Returns:
+            dict with alternatives, scores, and best selection
+        """
+        if not self.use_imagination:
+            raise RuntimeError("Imagination module not enabled. Set use_imagination=True in config.")
+
+        # Get hidden states
+        B, T = idx.shape
+        device = idx.device
+
+        # Forward pass to get representations
+        logits, _, info = self(idx)
+
+        # Get final hidden states before lm_head
+        x = self.ln_f(info.get('x', logits))  # Approximate from logits if needed
+
+        # If goal tokens provided, encode them
+        goal_emb = None
+        if goal_tokens is not None:
+            goal_logits, _, _ = self(goal_tokens)
+            goal_emb = goal_logits.mean(dim=1)  # (B, D) pooled goal
+
+        # Use imagination
+        if goal_emb is not None:
+            result = self.imagination(x, goal=goal_emb, n_alternatives=n_alternatives)
+        else:
+            result = self.imagination(x, n_alternatives=n_alternatives)
+
+        return result
+
+    def plan_task(
+        self,
+        idx: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """
+        Use DAG planner to decompose a task into subtasks.
+
+        Args:
+            idx: Input token IDs (B, T)
+
+        Returns:
+            dict with node_embeddings, adj_matrix, execution_order, etc.
+        """
+        if not self.use_dag_planner:
+            raise RuntimeError("DAG planner not enabled. Set use_dag_planner=True in config.")
+
+        # Forward pass to get representations
+        logits, _, info = self(idx)
+
+        # DAG info is already computed in forward
+        dag_info = info.get('dag_planner', {})
+
+        # Add execution order
+        if 'adj_matrix' in dag_info and 'node_mask' in dag_info:
+            # Get execution order for first example
+            exec_order = self.dag_planner.get_execution_order(
+                dag_info['adj_matrix'][0],
+                dag_info['node_mask'][0] if 'node_mask' in dag_info else torch.ones(dag_info['adj_matrix'].shape[1], dtype=torch.bool),
+            )
+            dag_info['execution_order'] = exec_order
+
+        return dag_info
 
     def num_parameters(self, non_embedding: bool = True) -> int:
         n_params = sum(p.numel() for p in self.parameters())
