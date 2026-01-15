@@ -17,6 +17,7 @@ import torch
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.utils.checkpoints import select_checkpoint
 
 # -----------------------------------------------------------------------------
 # Default sampling parameters
@@ -47,7 +48,11 @@ ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=
 
 # -----------------------------------------------------------------------------
 # Load model
-ckpt_path = os.path.join(out_dir, "ckpt.pt")
+ckpt_path = select_checkpoint(out_dir)
+if ckpt_path is None:
+    print(f"Error: No checkpoint found in {out_dir}")
+    exit(1)
+
 checkpoint = torch.load(ckpt_path, map_location=device)
 
 # Recreate config
