@@ -8,6 +8,7 @@ import torch
 import tiktoken
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.utils.checkpoints import select_checkpoint
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
@@ -35,7 +36,9 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 # model
 if init_from == 'resume':
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = select_checkpoint(out_dir)
+    if ckpt_path is None:
+        raise FileNotFoundError(f"No checkpoints found in {out_dir}")
     # Weights only load issue in PyTorch 2.6+ with custom configs (trust local source)
     checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
     
