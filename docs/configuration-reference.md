@@ -249,7 +249,164 @@ config = NeuroManifoldConfig(
 
 **Category:** Sparse Distributed Representation for biological plausibility and memory efficiency.
 
-*(This section will be expanded in subsequent subtasks)*
+SDR (Sparse Distributed Representation) encoding is inspired by biological neural systems where information is represented by sparse activation patterns. NeuroManifold uses **Semantic Folding** to transform tokens into high-dimensional binary vectors with ~2% active bits, similar to cortical columns in the mammalian brain.
+
+**Key Benefits:**
+- **Biological Plausibility:** Mimics sparse coding in cortex (~2% neuron activation)
+- **Semantic Similarity:** Overlap between SDR vectors measures semantic distance
+- **Robustness:** Noise-tolerant through distributed redundancy
+- **Memory Efficiency:** Enables infinite-context memory via SDR engram storage
+
+**Tradeoff:** SDR encoding adds computational overhead. For maximum speed, use `use_sdr=False` (dense embeddings).
+
+### use_sdr
+- **Type:** `bool`
+- **Default:** `False`
+- **Description:** Enable/disable Sparse Distributed Representation encoding
+- **Details:**
+  - When `True`: Tokens are encoded as sparse binary vectors via Semantic Folding
+  - When `False`: Standard dense embeddings (faster, less memory, standard transformer behavior)
+  - SDR mode enables biological plausibility and infinite-context memory via engrams
+  - Dense mode is recommended for faster iteration and baseline comparisons
+- **Interdependencies:**
+  - When `True`, all `sdr_*` parameters become active
+  - Affects memory module behavior (SDR engrams vs dense embeddings)
+  - SDR mode requires more compute for encoding/decoding
+- **Tuning Tips:**
+  - Start with `False` for fast prototyping
+  - Enable `True` when experimenting with biological plausibility or infinite context
+  - SDR provides semantic similarity matching for memory retrieval
+
+### sdr_size
+- **Type:** `int`
+- **Default:** `2048`
+- **Range:** 512-16384 (typical: 1024-4096)
+- **Description:** Size of SDR binary vectors (total number of bits)
+- **Details:**
+  - Dimensionality of the high-dimensional binary space
+  - Larger size = higher capacity for distinct representations
+  - Must be large enough to support sparse activation with low collision probability
+  - 2048 bits is inspired by minicolumn counts in cortical regions
+- **Interdependencies:**
+  - `sdr_n_active = int(sdr_size * sdr_sparsity)` (computed automatically)
+  - Larger `sdr_size` improves semantic resolution but increases memory
+  - Should be >> `sdr_n_active` for true sparsity
+- **Tuning Tips:**
+  - Use 1024 for small vocabularies or experimentation
+  - Use 2048-4096 for production (balances capacity and memory)
+  - Increase if seeing high SDR collision rates (similar tokens get identical SDRs)
+
+### sdr_sparsity
+- **Type:** `float`
+- **Default:** `0.02` (2%)
+- **Range:** 0.01-0.05 (typical: 0.015-0.03)
+- **Description:** Target sparsity ratio (fraction of active bits in SDR)
+- **Details:**
+  - Determines how many bits are "on" in each SDR vector
+  - 0.02 = 2% sparsity, matching biological cortex activation levels
+  - Lower sparsity = more selective representations (harder to match)
+  - Higher sparsity = more distributed representations (easier overlap)
+  - Affects semantic similarity matching and memory retrieval
+- **Interdependencies:**
+  - `sdr_n_active = int(sdr_size * sdr_sparsity)`
+  - Example: `2048 * 0.02 = 40` active bits
+  - Must be < 0.1 for meaningful sparse coding
+- **Tuning Tips:**
+  - 0.02 is biologically plausible (start here)
+  - Increase to 0.03-0.04 if too few memory matches
+  - Decrease to 0.015-0.02 if too many false positive matches
+  - Very sparse (0.01) = high selectivity but may miss semantic neighbors
+
+### sdr_n_active
+- **Type:** `int`
+- **Default:** Computed as `int(sdr_size * sdr_sparsity)` (≈41 for defaults)
+- **Range:** Auto-computed (do not set manually)
+- **Description:** Number of active bits in each SDR (computed field)
+- **Details:**
+  - Automatically calculated in `__post_init__` from `sdr_size` and `sdr_sparsity`
+  - Determines the actual sparsity of SDR vectors
+  - Used by semantic folding encoder to select which bits to activate
+  - Affects collision probability and semantic resolution
+- **Interdependencies:**
+  - Read-only field (computed from `sdr_size` and `sdr_sparsity`)
+  - Critical for memory overlap calculations (`engram_threshold`)
+- **Tuning Tips:**
+  - Tune via `sdr_sparsity`, not directly
+  - Typical values: 20-80 active bits
+  - Higher `sdr_n_active` = more robust but less selective
+
+### sdr_embed_dim
+- **Type:** `int`
+- **Default:** `256`
+- **Range:** 64-512 (should be ≤ `n_embd`)
+- **Description:** Embedding dimension for SDR projection into continuous space
+- **Details:**
+  - SDR vectors are binary; this projects them into continuous embeddings
+  - Acts as a bottleneck between sparse binary space and transformer embeddings
+  - Smaller values = stronger compression (may lose semantic information)
+  - Larger values = better preservation but higher memory
+- **Interdependencies:**
+  - Should be ≤ `n_embd` (typically `n_embd // 2` or `n_embd // 1.5`)
+  - Affects the SDR encoder/decoder module size
+  - Larger `sdr_embed_dim` closer to `n_embd` reduces information loss
+- **Tuning Tips:**
+  - Use `n_embd // 2` as a starting point (e.g., 192 for n_embd=384)
+  - Use `n_embd` for maximum information preservation (no bottleneck)
+  - Reduce to `n_embd // 4` if memory is tight
+
+### sdr_context_size
+- **Type:** `int`
+- **Default:** `5`
+- **Range:** 1-32 (typical: 3-10)
+- **Description:** Context window size for semantic folding encoder
+- **Details:**
+  - Number of neighboring tokens to consider when encoding SDR
+  - Semantic Folding uses local context to disambiguate word meanings
+  - Larger context = better disambiguation but more computation
+  - Similar to n-gram context in NLP (but with semantic overlap)
+- **Interdependencies:**
+  - Must be ≤ `block_size` (sequence length)
+  - Larger values increase SDR encoding time
+  - Affects the local attention mechanism in SDR encoder
+- **Tuning Tips:**
+  - Use 3-5 for fast encoding (bigram/trigram context)
+  - Use 7-10 for better semantic disambiguation
+  - Diminishing returns beyond 10
+  - Set to 1 to disable context (pure word2SDR mapping)
+
+### SDR Memory and Overlap Threshold
+
+When using SDR encoding, the following memory parameters become relevant:
+
+- **`engram_threshold`**: Minimum SDR overlap (0.0-1.0) for memory retrieval
+  - Default: 0.3 (30% bit overlap)
+  - Higher = stricter matching (only very similar SDRs retrieved)
+  - Lower = looser matching (more memory neighbors retrieved)
+  - With `sdr_sparsity=0.02` and `sdr_n_active=41`, 30% overlap = ~12 matching bits
+
+**Example Configuration:**
+
+```python
+# Enable SDR mode with biological parameters
+config = NeuroManifoldConfig(
+    use_sdr=True,           # Enable sparse encoding
+    sdr_size=2048,          # Cortical minicolumn count
+    sdr_sparsity=0.02,      # 2% activation (biological)
+    sdr_embed_dim=384,      # Match n_embd for no bottleneck
+    sdr_context_size=7,     # 7-token semantic context
+    engram_threshold=0.3,   # 30% overlap for memory retrieval
+)
+```
+
+**Fast Dense Mode (No SDR):**
+
+```python
+# Disable SDR for maximum speed (standard transformer)
+config = NeuroManifoldConfig(
+    use_sdr=False,          # Dense embeddings (default)
+    # All sdr_* parameters ignored
+)
+```
 
 ---
 
