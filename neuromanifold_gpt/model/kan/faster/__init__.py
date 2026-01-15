@@ -7,5 +7,6 @@ Based on: https://github.com/AthanasiosDelis/faster-kan
 """
 
 from .basis import RSWAFBasis
+from .layer import FasterKANLayer
 
-__all__ = ['RSWAFBasis']
+__all__ = ['RSWAFBasis', 'FasterKANLayer']
