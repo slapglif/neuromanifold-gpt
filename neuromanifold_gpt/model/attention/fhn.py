@@ -167,6 +167,7 @@ class FHNAttention(nn.Module):
         use_imex: bool = True,
         use_partitioning: bool = True,
         use_fused: bool = False,  # Deprecated
+        use_flash_fhn_fusion: bool = False,  # Use Flash Attention + output modulation
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -176,6 +177,7 @@ class FHNAttention(nn.Module):
         self.pulse_width_base = pulse_width_base
         self.n_fhn_steps = n_fhn_steps
         self.use_partitioning = use_partitioning
+        self.use_flash_fhn_fusion = use_flash_fhn_fusion
 
         assert embed_dim % n_heads == 0
 
@@ -225,8 +227,48 @@ class FHNAttention(nn.Module):
         pulse_widths = self.pulse_width_net(q.mean(dim=2))  # (B, H, 1)
         pulse_widths = self.pulse_width_base + pulse_widths.squeeze(-1)  # (B, H)
 
+        # === Flash Attention Fusion Path ===
+        # Use Flash Attention with output modulation when fusion is enabled
+        if self.use_flash_fhn_fusion and self.n_fhn_steps > 0:
+            # Use PyTorch's optimized scaled_dot_product_attention (Flash Attention)
+            out = torch.nn.functional.scaled_dot_product_attention(
+                q, key, v,
+                attn_mask=None,  # Use is_causal=True instead
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=True,
+            )
+
+            # Compute output variance/statistics as FHN stimulus proxy
+            # Use output statistics (cheaper than computing full attention weights)
+            out_variance = out.var(dim=-1, keepdim=True)  # (B, H, T, 1)
+            out_std = out.std(dim=-1, keepdim=True)  # (B, H, T, 1)
+
+            # Use output variance as FHN stimulus (proxy for attention "focus")
+            # Higher variance indicates more dynamic/focused attention
+            fhn_stimulus = out_variance.expand(-1, -1, -1, self.head_dim)
+            fhn_out, fhn_state = self.fhn(
+                fhn_stimulus,
+                n_steps=self.n_fhn_steps,
+            )
+
+            # Modulate output with FHN response
+            # Use sigmoid to bound the modulation gate
+            fhn_gate = torch.sigmoid(fhn_out)  # (B, H, T, D)
+
+            # Apply modulation (0.5 baseline + 0.5 * gate for stability)
+            out = out * (0.5 + 0.5 * fhn_gate)
+
+            fhn_state_val = fhn_state.mean()
+            attn_probs = None  # Not computed in flash attention
+
+            out_mean = out.mean(dim=-1, keepdim=True)
+            output_stats = {
+                "variance": out_variance.mean().item(),
+                "std": out_std.mean().item(),
+                "mean": out_mean.abs().mean().item(),
+            }
         # === Fast Path: Use Flash Attention when no FHN modulation ===
-        if self.n_fhn_steps == 0:
+        elif self.n_fhn_steps == 0:
             # Use PyTorch's optimized scaled_dot_product_attention (Flash Attention)
             # This is MUCH faster than manual einsum implementation
             out = torch.nn.functional.scaled_dot_product_attention(
@@ -251,6 +293,7 @@ class FHNAttention(nn.Module):
             }
         else:
             # === Standard Causal Scaled Dot-Product Attention (for FHN modulation) ===
+            # Legacy path: manual attention computation with FHN weight modulation
             # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
             attn_weights = einsum(q, key, "b h t d, b h s d -> b h t s")
             attn_weights = attn_weights / (self.head_dim**0.5)
