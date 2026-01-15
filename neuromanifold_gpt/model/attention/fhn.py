@@ -235,8 +235,20 @@ class FHNAttention(nn.Module):
                 dropout_p=self.dropout.p if self.training else 0.0,
                 is_causal=True,
             )
+
+            # Compute output variance/statistics as FHN stimulus proxy
+            # This provides a measure of attention "activity" without explicit attention weights
+            out_variance = out.var(dim=-1, keepdim=True)  # (B, H, T, 1)
+            out_std = out.std(dim=-1, keepdim=True)  # (B, H, T, 1)
+            out_mean = out.mean(dim=-1, keepdim=True)  # (B, H, T, 1)
+
             fhn_state_val = torch.tensor(0.0, device=x.device)
             attn_probs = None  # Not computed in flash attention
+            output_stats = {
+                "variance": out_variance.mean().item(),
+                "std": out_std.mean().item(),
+                "mean": out_mean.abs().mean().item(),
+            }
         else:
             # === Standard Causal Scaled Dot-Product Attention (for FHN modulation) ===
             # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
@@ -271,6 +283,17 @@ class FHNAttention(nn.Module):
 
             # Apply attention to values
             out = einsum(attn_probs, v, "b h t s, b h s d -> b h t d")
+
+            # Compute output variance/statistics as FHN stimulus proxy
+            out_variance = out.var(dim=-1, keepdim=True)  # (B, H, T, 1)
+            out_std = out.std(dim=-1, keepdim=True)  # (B, H, T, 1)
+            out_mean = out.mean(dim=-1, keepdim=True)  # (B, H, T, 1)
+            output_stats = {
+                "variance": out_variance.mean().item(),
+                "std": out_std.mean().item(),
+                "mean": out_mean.abs().mean().item(),
+            }
+
         out = rearrange(out, "b h t d -> b t (h d)")
         out = self.out_proj(out)
 
@@ -278,6 +301,7 @@ class FHNAttention(nn.Module):
             "pulse_widths": pulse_widths,
             "fhn_state": fhn_state_val,
             "attn_probs": attn_probs,
+            "output_stats": output_stats,
         }
 
         return out, info
