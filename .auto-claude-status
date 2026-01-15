@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "020-split-faster-py-kan-implementations-into-separate-",
+  "state": "building",
+  "subtasks": {
+    "completed": 11,
+    "total": 22,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Add ChebyKAN Subpackage",
+    "id": null,
+    "total": 3
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 13,
+    "started_at": "2026-01-15T12:56:57.723014"
+  },
+  "last_update": "2026-01-15T13:43:46.365565"
+}
