@@ -216,6 +216,7 @@ class FHNAttention(nn.Module):
         pos_emb_type: str = "learned",  # Position embedding type
         max_seq_len: int = 1024,  # For RoPE/ALiBi initialization
         chunk_size: int = 512,  # Chunk size for memory-efficient attention
+        use_chunked: bool = True,  # Enable chunked attention for long sequences
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -227,6 +228,7 @@ class FHNAttention(nn.Module):
         self.use_partitioning = use_partitioning
         self.pos_emb_type = pos_emb_type
         self.chunk_size = chunk_size
+        self.use_chunked = use_chunked
 
         assert embed_dim % n_heads == 0
 
@@ -409,7 +411,7 @@ class FHNAttention(nn.Module):
             # === Memory-Efficient Chunked Path for Long Sequences ===
             # Use chunking when sequence length exceeds chunk_size to reduce memory
             # from O(T²) to O(chunk_size²)
-            if T > self.chunk_size:
+            if self.use_chunked and T > self.chunk_size:
                 out, fhn_state_val = self._chunked_fhn_attention(
                     q, key, v, chunk_size=self.chunk_size
                 )

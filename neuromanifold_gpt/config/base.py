@@ -103,7 +103,7 @@ class NeuroManifoldConfig:
     use_fhn_parallel: bool = True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
 
     # Chunked attention for memory-efficient long sequences
-    use_fhn_chunked: bool = False  # Enable chunked attention for reduced memory usage
+    use_fhn_chunked: bool = True  # Enable chunked attention for reduced memory usage
     fhn_chunk_size: int = 512  # Chunk size for processing long sequences (trade-off: memory vs speed)
     
     # Spectral regularization
