@@ -8,16 +8,23 @@ Compares:
 Expected: FFT-based parallel scan is faster for T > 128
 """
 
+import sys
 import torch
 import time
+from dataclasses import dataclass
 from neuromanifold_gpt.model.kan.ema import ema_fft
+from neuromanifold_gpt.config.loader import load_config
 
 # -----------------------------------------------------------------------------
-# Configuration with defaults (can be overridden via command line)
-profile_memory = False  # enable memory profiling
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = 'float32'
-exec(open('configurator.py').read())  # overrides from command line or config file
+@dataclass
+class BenchmarkConfig:
+    """Configuration for EMA benchmark."""
+    profile_memory: bool = False  # enable memory profiling
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    dtype: str = 'float32'
+
+# Load config with CLI overrides
+config = load_config(BenchmarkConfig, show_help=True)
 # -----------------------------------------------------------------------------
 
 
@@ -53,8 +60,8 @@ def ema_naive(x: torch.Tensor, alpha: float) -> torch.Tensor:
 
 def benchmark_ema_implementations():
     """Benchmark FFT-based parallel scan vs naive sequential EMA."""
-    dev = device
-    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[dtype]
+    dev = config.device
+    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[config.dtype]
 
     print(f"EMA Implementation Benchmark")
     print(f"Device: {dev}")
@@ -125,8 +132,8 @@ def benchmark_ema_implementations():
 
 def benchmark_memory_usage():
     """Benchmark memory usage: O(T) parallel scan vs O(T²) matrix approach."""
-    dev = device
-    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[dtype]
+    dev = config.device
+    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[config.dtype]
 
     print(f"\n{'=' * 70}")
     print(f"Memory Complexity Analysis")
@@ -147,7 +154,7 @@ def benchmark_memory_usage():
     for T in T_values:
         # Calculate memory for O(T) parallel scan
         # Memory: input (B,T,D) + output (B,T,D) + FFT buffers ~O(BTD)
-        bytes_per_element = 4 if dtype == 'float32' else 2
+        bytes_per_element = 4 if config.dtype == 'float32' else 2
         mem_scan = (2 * B * T * D * bytes_per_element) / (1024 ** 2)  # MB
 
         # Calculate memory for O(T²) matrix approach (theoretical)
@@ -178,8 +185,8 @@ def benchmark_memory_usage():
 
 def benchmark_scaling():
     """Benchmark complexity scaling with sequence length."""
-    dev = device
-    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[dtype]
+    dev = config.device
+    dt = {'float32': torch.float32, 'float16': torch.float16, 'bfloat16': torch.bfloat16}[config.dtype]
 
     print(f"\n{'=' * 70}")
     print(f"Time Complexity Scaling Analysis")
@@ -237,7 +244,7 @@ def main():
     print("EMA Benchmark: Parallel Scan (FFT) vs Naive Sequential")
     print("=" * 70)
 
-    if profile_memory:
+    if config.profile_memory:
         print("\n[Memory Profiling Mode]")
         benchmark_memory_usage()
     else:

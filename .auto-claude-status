@@ -1,25 +1,25 @@
 {
-  "active": false,
-  "spec": null,
-  "state": "idle",
+  "active": true,
+  "spec": "070-replace-exec-open-config-loading-with-type-safe-co",
+  "state": "building",
   "subtasks": {
-    "completed": 0,
-    "total": 0,
-    "in_progress": 0,
+    "completed": 10,
+    "total": 17,
+    "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": null,
+    "current": "Migrate Files to New System",
     "id": null,
-    "total": 0
+    "total": 5
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 0,
-    "started_at": null
+    "number": 760,
+    "started_at": "2026-01-16T04:16:46.482350"
   },
-  "last_update": null
+  "last_update": "2026-01-16T08:10:40.627502"
 }
