@@ -1,26 +1,19 @@
-"""
-DAG Planner - Forced Directed Acyclic Graph planning.
+"""DAG Planner Module - Stub implementation."""
 
-Stub implementation.
-"""
 import torch
 import torch.nn as nn
 
 
 class ForcedDAGPlanner(nn.Module):
     """
-    Forced DAG planner for structured reasoning.
+    Stub implementation of forced DAG planner.
 
-    Stub implementation - allows imports to succeed until full implementation is ready.
+    This is a placeholder to allow the package to import correctly.
     """
 
-    def __init__(self, dim, max_depth=8, max_nodes=32, min_nodes=3):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        self.dim = dim
-        self.max_depth = max_depth
-        self.max_nodes = max_nodes
-        self.min_nodes = min_nodes
 
-    def forward(self, x):
-        """Stub forward pass - returns input unchanged."""
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Pass-through forward method."""
         return x

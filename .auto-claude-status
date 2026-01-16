@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "030-rotary-and-alibi-position-embeddings",
+  "spec": "014-add-attention-variant-benchmark-suite",
   "state": "building",
   "subtasks": {
-    "completed": 8,
-    "total": 11,
+    "completed": 2,
+    "total": 3,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Model Integration",
+    "current": "Validation",
     "id": null,
-    "total": 3
+    "total": 1
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 10,
-    "started_at": "2026-01-15T18:47:01.041593"
+    "number": 1,
+    "started_at": "2026-01-15T17:35:31.777902"
   },
-  "last_update": "2026-01-15T19:16:26.512754"
+  "last_update": "2026-01-15T17:35:31.837432"
 }

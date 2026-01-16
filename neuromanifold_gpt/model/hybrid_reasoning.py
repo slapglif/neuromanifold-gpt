@@ -1,23 +1,19 @@
-"""
-Hybrid Reasoning Module - Stub implementation.
+"""Hybrid Reasoning Module - Stub implementation."""
 
-Full implementation pending.
-"""
 import torch
 import torch.nn as nn
 
 
 class HybridReasoningModule(nn.Module):
     """
-    Hybrid reasoning module combining symbolic and neural processing.
+    Stub implementation of hybrid reasoning module.
 
-    Stub implementation - allows imports to succeed until full implementation is ready.
+    This is a placeholder to allow the package to import correctly.
     """
 
-    def __init__(self, config):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        self.config = config
 
-    def forward(self, x):
-        """Stub forward pass - returns input unchanged."""
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Pass-through forward method."""
         return x
