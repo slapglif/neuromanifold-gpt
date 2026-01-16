@@ -50,7 +50,48 @@ class SwiGLU(nn.Module):
 
 
 class NeuroManifoldBlock(nn.Module):
-    """Single transformer block with manifold-spectral-fhn attention."""
+    """Single transformer block with manifold-spectral-fhn attention.
+
+    This block implements a neuromorphic transformer architecture that combines:
+    - Sparse Distributed Representations (SDR) for encoding
+    - Manifold-constrained transformations for geometric structure
+    - Spectral decomposition for frequency-domain processing
+    - FitzHugh-Nagumo (FHN) dynamics for soliton wave attention
+    - KAN-based feed-forward networks for better function approximation
+    - Multi-stream hyper-connections (mHC) for training stability
+
+    Configuration is managed through a structured NeuroManifoldBlockConfig object
+    that composes five specialized sub-configs:
+
+    - **FHNConfig**: FitzHugh-Nagumo soliton wave dynamics for attention propagation
+      Controls threshold, time constants, integration scheme (IMEX), and parallelization
+
+    - **KANConfig**: Kolmogorov-Arnold Network configuration for FFN layers
+      Controls basis function type (faster/wave/cheby), degree, and layer coverage
+
+    - **MHCConfig**: Manifold-constrained hyper-connections for training stability
+      Controls residual routing, Sinkhorn-Knopp iterations, and parallel stream count
+
+    - **MLAConfig**: Multi-head latent attention for KV cache compression (optional)
+      Controls latent dimension and decoupled RoPE dimension for memory efficiency
+
+    - **MoEConfig**: Mixture of experts for conditional computation (optional)
+      Controls expert count, routing strategy, and shared expert configuration
+
+    Args:
+        config: NeuroManifoldBlockConfig instance containing all block hyperparameters
+                See neuromanifold_gpt.config.block_config for detailed configuration options
+
+    Example:
+        >>> from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
+        >>> config = NeuroManifoldBlockConfig(
+        ...     sdr_size=2048,
+        ...     embed_dim=384,
+        ...     n_heads=8,
+        ... )
+        >>> block = NeuroManifoldBlock(config)
+        >>> output, info = block(sdr_input)  # (B, T, sdr_size) -> (B, T, embed_dim)
+    """
 
     def __init__(self, config: NeuroManifoldBlockConfig):
         super().__init__()
