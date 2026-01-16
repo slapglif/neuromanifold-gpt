@@ -189,17 +189,61 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         - 'gpt2_scaled': std=0.02 with 1/sqrt(2*n_layer) scaling for residual projections
         - 'mup': Maximal Update Parametrization (width-invariant hyperparameters)
         """
+        import math
+
         # Get initialization strategy from config
         init_strategy = getattr(self.config, 'init_strategy', 'deepseek')
 
+        # muP-specific implementation
+        if init_strategy == 'mup':
+            # Get base width for muP scaling
+            base_width = getattr(self.config, 'mup_base_width', 128)
+            d_model = self.config.n_embd
+
+            if isinstance(module, nn.Linear):
+                # Find module name to determine layer type
+                module_name = None
+                for name, mod in self.named_modules():
+                    if mod is module:
+                        module_name = name
+                        break
+
+                # Output head (lm_head): std = 1 / sqrt(d_model)
+                # No width scaling for output to maintain feature learning
+                if module_name and 'lm_head' in module_name:
+                    std = 1.0 / math.sqrt(d_model)
+
+                # Residual projections: std = (1 / d_model) * sqrt(base_width / d_model)
+                # These include attention output and MLP output projections
+                elif module_name and any(
+                    module_name.endswith(suffix)
+                    for suffix in ['out_proj', 'c_proj', 'w_down', 'proj_out']
+                ):
+                    std = (1.0 / d_model) * math.sqrt(base_width / d_model)
+
+                # Hidden layers: std = 1 / d_model
+                # Width-independent scaling for consistent feature learning
+                else:
+                    std = 1.0 / d_model
+
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+            elif isinstance(module, nn.Embedding):
+                # Embeddings: std = 1 / sqrt(d_model)
+                # Standard scaling to maintain variance
+                std = 1.0 / math.sqrt(d_model)
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+
+            return
+
+        # Non-muP strategies
         # Determine base std based on strategy
         if init_strategy == 'deepseek':
             base_std = getattr(self.config, 'init_std', 0.006)
         elif init_strategy in ['gpt2', 'gpt2_scaled']:
             base_std = 0.02
-        elif init_strategy == 'mup':
-            # muP uses different scaling rules (implemented in subtask-2-2)
-            base_std = getattr(self.config, 'init_std', 0.006)
         else:
             # Fallback to deepseek for unknown strategies
             base_std = getattr(self.config, 'init_std', 0.006)
@@ -224,7 +268,6 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     for suffix in ['out_proj', 'c_proj', 'w_down', 'proj_out']
                 ):
                     # Scale down by 1/sqrt(2*n_layer) for gradient stability
-                    import math
                     std = base_std / math.sqrt(2 * self.config.n_layer)
 
             nn.init.normal_(module.weight, mean=0.0, std=std)
