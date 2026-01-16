@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "002-replace-o-t-2-ema-matrix-with-parallel-scan-for-mu",
+  "state": "building",
+  "subtasks": {
+    "completed": 11,
+    "total": 12,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Integration",
+    "id": null,
+    "total": 2
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 734,
+    "started_at": "2026-01-15T12:52:05.187829"
+  },
+  "last_update": "2026-01-15T17:00:02.345351"
+}
