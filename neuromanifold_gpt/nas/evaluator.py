@@ -10,26 +10,148 @@ Key features:
 - Parameter counting and speed measurement
 - Memory-efficient cleanup after evaluation
 - Configurable training budget and batch size
+- Compute budget tracking with early stopping
 
 Example:
     >>> from neuromanifold_gpt.nas.search_space import SearchSpace
-    >>> from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator
+    >>> from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator, ComputeBudget
     >>>
     >>> search_space = SearchSpace()
     >>> evaluator = ArchitectureEvaluator(vocab_size=65, device="cuda")
     >>>
+    >>> # Single architecture evaluation
     >>> arch = search_space.sample()
     >>> result = evaluator.evaluate(arch, n_iters=200)
     >>> print(f"Perplexity: {result.perplexity:.2f}")
+    >>>
+    >>> # Multiple architectures with budget
+    >>> architectures = [search_space.sample() for _ in range(100)]
+    >>> budget = ComputeBudget(max_evaluations=20, patience=5)
+    >>> results = evaluator.compare_architectures(architectures, data, budget=budget)
 """
 
 import torch
 import torch.nn as nn
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Tuple
 import time
 import math
 from loguru import logger
+
+
+@dataclass
+class ComputeBudget:
+    """Compute budget for Neural Architecture Search.
+
+    Tracks evaluation budget and enables early stopping based on various criteria:
+    - Maximum number of evaluations
+    - Maximum wall-clock time
+    - Target performance threshold
+    - Patience for no improvement
+
+    Attributes:
+        max_evaluations: Maximum number of architectures to evaluate (None = unlimited)
+        max_time_seconds: Maximum wall-clock time in seconds (None = unlimited)
+        min_perplexity_target: Stop if perplexity reaches this target (None = no target)
+        patience: Number of evaluations without improvement before stopping (None = no patience)
+        evaluations_done: Number of evaluations completed so far
+        time_spent: Total time spent in seconds
+        best_perplexity: Best perplexity seen so far
+        iterations_since_improvement: Iterations since last improvement
+        start_time: When the search started (set automatically)
+
+    Example:
+        >>> budget = ComputeBudget(max_evaluations=100, max_time_seconds=3600)
+        >>> budget.start()
+        >>> # ... evaluate architectures ...
+        >>> if budget.should_stop():
+        ...     print("Budget exhausted")
+    """
+    max_evaluations: Optional[int] = None
+    max_time_seconds: Optional[float] = None
+    min_perplexity_target: Optional[float] = None
+    patience: Optional[int] = None
+
+    # Tracking fields (not set in constructor)
+    evaluations_done: int = field(default=0, init=False)
+    time_spent: float = field(default=0.0, init=False)
+    best_perplexity: float = field(default=float('inf'), init=False)
+    iterations_since_improvement: int = field(default=0, init=False)
+    start_time: Optional[float] = field(default=None, init=False)
+
+    def start(self) -> None:
+        """Start the budget timer."""
+        self.start_time = time.time()
+        self.evaluations_done = 0
+        self.time_spent = 0.0
+        self.best_perplexity = float('inf')
+        self.iterations_since_improvement = 0
+
+    def update(self, perplexity: float) -> None:
+        """Update budget after an evaluation.
+
+        Args:
+            perplexity: Perplexity from the latest evaluation
+        """
+        self.evaluations_done += 1
+
+        if self.start_time is not None:
+            self.time_spent = time.time() - self.start_time
+
+        # Track improvement
+        if perplexity < self.best_perplexity:
+            self.best_perplexity = perplexity
+            self.iterations_since_improvement = 0
+        else:
+            self.iterations_since_improvement += 1
+
+    def should_stop(self) -> Tuple[bool, Optional[str]]:
+        """Check if search should stop based on budget.
+
+        Returns:
+            Tuple of (should_stop, reason)
+            - should_stop: True if any stopping criterion is met
+            - reason: Human-readable reason for stopping (None if continuing)
+        """
+        # Check max evaluations
+        if self.max_evaluations is not None and self.evaluations_done >= self.max_evaluations:
+            return True, f"Reached max evaluations ({self.max_evaluations})"
+
+        # Check max time
+        if self.max_time_seconds is not None and self.time_spent >= self.max_time_seconds:
+            return True, f"Reached max time ({self.max_time_seconds:.1f}s)"
+
+        # Check target perplexity
+        if self.min_perplexity_target is not None and self.best_perplexity <= self.min_perplexity_target:
+            return True, f"Reached target perplexity ({self.min_perplexity_target:.2f})"
+
+        # Check patience
+        if self.patience is not None and self.iterations_since_improvement >= self.patience:
+            return True, f"No improvement for {self.patience} evaluations"
+
+        return False, None
+
+    def get_status(self) -> str:
+        """Get a human-readable status string.
+
+        Returns:
+            Status string with evaluation count, time, and best perplexity
+        """
+        status_parts = [f"Evaluations: {self.evaluations_done}"]
+
+        if self.max_evaluations is not None:
+            status_parts[0] += f"/{self.max_evaluations}"
+
+        if self.start_time is not None:
+            time_str = f"Time: {self.time_spent:.1f}s"
+            if self.max_time_seconds is not None:
+                time_str += f"/{self.max_time_seconds:.1f}s"
+            status_parts.append(time_str)
+
+        if self.best_perplexity < float('inf'):
+            status_parts.append(f"Best PPL: {self.best_perplexity:.2f}")
+
+        return ", ".join(status_parts)
 
 
 @dataclass
@@ -252,6 +374,7 @@ class ArchitectureEvaluator:
         data: torch.Tensor,
         n_iters: int = 200,
         batch_size: int = 32,
+        budget: Optional[ComputeBudget] = None,
     ) -> list[EvaluationResult]:
         """Evaluate multiple architectures and return results.
 
@@ -260,19 +383,40 @@ class ArchitectureEvaluator:
             data: Training data tensor
             n_iters: Number of training iterations per architecture
             batch_size: Batch size for training
+            budget: Optional ComputeBudget for early stopping
 
         Returns:
             List of EvaluationResult objects, sorted by perplexity (best first)
 
+        Note:
+            If a budget is provided, evaluation may stop early based on:
+            - Maximum number of evaluations
+            - Maximum wall-clock time
+            - Target perplexity reached
+            - No improvement patience
+
         Example:
             >>> architectures = [search_space.sample() for _ in range(10)]
-            >>> results = evaluator.compare_architectures(architectures, data)
+            >>> budget = ComputeBudget(max_evaluations=5, patience=3)
+            >>> results = evaluator.compare_architectures(architectures, data, budget=budget)
             >>> best = results[0]
             >>> print(f"Best architecture: {best.architecture_id}, PPL: {best.perplexity:.2f}")
         """
         results = []
 
+        # Start budget tracking if provided
+        if budget is not None:
+            budget.start()
+
         for i, arch in enumerate(architectures):
+            # Check budget before evaluation
+            if budget is not None:
+                should_stop, reason = budget.should_stop()
+                if should_stop:
+                    logger.info(f"Early stopping: {reason}")
+                    logger.info(f"Budget status: {budget.get_status()}")
+                    break
+
             logger.info(f"Evaluating architecture {i+1}/{len(architectures)}: {arch.architecture_id}")
 
             result = self.evaluate(arch, data, n_iters, batch_size)
@@ -285,8 +429,22 @@ class ArchitectureEvaluator:
                     f"Params: {result.n_params:,}, "
                     f"Speed: {result.time_per_iter_ms:.1f}ms/iter"
                 )
+
+                # Update budget with result
+                if budget is not None:
+                    budget.update(result.perplexity)
+                    if i < len(architectures) - 1:  # Don't log on last iteration
+                        logger.debug(f"Budget status: {budget.get_status()}")
             else:
                 logger.warning(f"  Failed: {result.error_message}")
+
+                # Update budget even on failure (count as infinite perplexity)
+                if budget is not None:
+                    budget.update(float('inf'))
+
+        # Final budget status
+        if budget is not None:
+            logger.info(f"Final budget status: {budget.get_status()}")
 
         # Sort by perplexity (lower is better), failed architectures at the end
         results.sort(key=lambda r: (not r.success, r.perplexity))
