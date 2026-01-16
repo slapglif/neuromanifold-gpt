@@ -18,17 +18,14 @@ from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
-from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
-from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
-from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
-from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
 from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
+from neuromanifold_gpt.model.system_two_mixin import SystemTwoReasoningMixin
 
 
-class NeuroManifoldGPT(nn.Module):
+class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
     """Complete NeuroManifoldGPT model.
 
     Architecture:
@@ -191,53 +188,12 @@ class NeuroManifoldGPT(nn.Module):
             threshold=config.engram_threshold,
         )
 
-        # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
-        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
-        if self.use_hybrid_reasoning:
-            self.hybrid_reasoning = HybridReasoningModule(
-                embed_dim=config.n_embd,
-                n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
-                n_heads=config.n_heads,
-                dropout=config.dropout,
-                use_e7_prior=True,
-                thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
-            )
-
         # ========================================
-        # System 2 Reasoning Components
+        # System 2 Reasoning Components (via Mixin)
         # ========================================
-
-        # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
-        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
-        if self.use_dag_planner:
-            self.dag_planner = ForcedDAGPlanner(
-                embed_dim=config.n_embd,
-                manifold_dim=config.manifold_dim,
-                max_nodes=getattr(config, 'dag_max_nodes', 32),
-                min_nodes=getattr(config, 'dag_min_nodes', 3),
-            )
-
-        # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
-        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
-        if self.use_hierarchical_memory:
-            self.hierarchical_memory = HierarchicalEngramMemory(
-                sdr_size=config.sdr_size,
-                n_active=config.sdr_n_active,
-                content_dim=config.n_embd,
-                l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
-                l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
-                l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
-            )
-
-        # ConsistencyImaginationModule - Counterfactual exploration
-        self.use_imagination = getattr(config, 'use_imagination', False)
-        if self.use_imagination:
-            self.imagination = ConsistencyImaginationModule(
-                embed_dim=config.n_embd,
-                manifold_dim=config.manifold_dim,
-                n_imagination_steps=getattr(config, 'imagination_steps', 4),
-            )
-            self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
+        # Initialize all System 2 components (hybrid reasoning, DAG planner,
+        # hierarchical memory, imagination) through the mixin
+        self._init_system_two_components(config)
 
         # Memory Active Retrieval configuration
         self.memory_active_retrieval = getattr(config, 'memory_active_retrieval', False)
@@ -718,83 +674,7 @@ class NeuroManifoldGPT(nn.Module):
 
         return idx
 
-    @torch.no_grad()
-    def imagine_alternatives(
-        self,
-        idx: torch.Tensor,
-        goal_tokens: torch.Tensor | None = None,
-        n_alternatives: int = 4,
-    ) -> dict[str, torch.Tensor]:
-        """
-        Use imagination module to explore alternative reasoning paths.
-
-        Args:
-            idx: Input token IDs (B, T)
-            goal_tokens: Optional goal tokens to optimize toward (B, T_goal)
-            n_alternatives: Number of alternatives to generate
-
-        Returns:
-            dict with alternatives, scores, and best selection
-        """
-        if not self.use_imagination:
-            raise RuntimeError("Imagination module not enabled. Set use_imagination=True in config.")
-
-        # Get hidden states
-        B, T = idx.shape
-        device = idx.device
-
-        # Forward pass to get representations
-        logits, _, info = self(idx)
-
-        # Get final hidden states before lm_head
-        x = self.ln_f(info.get('x', logits))  # Approximate from logits if needed
-
-        # If goal tokens provided, encode them
-        goal_emb = None
-        if goal_tokens is not None:
-            goal_logits, _, _ = self(goal_tokens)
-            goal_emb = goal_logits.mean(dim=1)  # (B, D) pooled goal
-
-        # Use imagination
-        if goal_emb is not None:
-            result = self.imagination(x, goal=goal_emb, n_alternatives=n_alternatives)
-        else:
-            result = self.imagination(x, n_alternatives=n_alternatives)
-
-        return result
-
-    def plan_task(
-        self,
-        idx: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
-        """
-        Use DAG planner to decompose a task into subtasks.
-
-        Args:
-            idx: Input token IDs (B, T)
-
-        Returns:
-            dict with node_embeddings, adj_matrix, execution_order, etc.
-        """
-        if not self.use_dag_planner:
-            raise RuntimeError("DAG planner not enabled. Set use_dag_planner=True in config.")
-
-        # Forward pass to get representations
-        logits, _, info = self(idx)
-
-        # DAG info is already computed in forward
-        dag_info = info.get('dag_planner', {})
-
-        # Add execution order
-        if 'adj_matrix' in dag_info and 'node_mask' in dag_info:
-            # Get execution order for first example
-            exec_order = self.dag_planner.get_execution_order(
-                dag_info['adj_matrix'][0],
-                dag_info['node_mask'][0] if 'node_mask' in dag_info else torch.ones(dag_info['adj_matrix'].shape[1], dtype=torch.bool),
-            )
-            dag_info['execution_order'] = exec_order
-
-        return dag_info
+    # imagine_alternatives() and plan_task() methods are now provided by SystemTwoReasoningMixin
 
     def num_parameters(self, non_embedding: bool = True) -> int:
         n_params = sum(p.numel() for p in self.parameters())
