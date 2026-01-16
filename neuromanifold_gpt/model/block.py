@@ -127,16 +127,7 @@ class NeuroManifoldBlock(nn.Module):
         else:
             self.sdr_proj = nn.Identity()  # No projection needed in dense mode
 
-        # Manifold + Spectral (skip if requested for speed)
-        if not self.config.skip_manifold_spectral:
-            self.manifold = ManifoldProjection(self.config.sdr_size, self.config.manifold_dim)
-            self.spectral = SpectralDecomposition(self.config.manifold_dim, self.config.n_eigenvectors)
-        else:
-            self.manifold = None
-            self.spectral = None
-
-        # Attention: Standard, FHN, Knot, or Kaufmann (registry pattern)
-        # Support aliases for backward compatibility
+        # Determine attention type first (need it for manifold skip logic)
         attention_type = self.config.attention_type
         if attention_type == "soliton":
             attention_type = "fhn"  # Alias: soliton -> fhn (excitable dynamics)
@@ -145,6 +136,17 @@ class NeuroManifoldBlock(nn.Module):
         elif attention_type == "fast-spectral":
             attention_type = "fhn"  # Alias: fast-spectral -> fhn (uses spectral basis)
 
+        # Manifold + Spectral (skip if requested for speed)
+        # NOTE: KnotAttention and KaufmannAttention require manifold coords, so we cannot skip
+        skip_manifold = self.config.skip_manifold_spectral and attention_type not in ["knot", "kaufmann"]
+        if not skip_manifold:
+            self.manifold = ManifoldProjection(self.config.sdr_size, self.config.manifold_dim)
+            self.spectral = SpectralDecomposition(self.config.manifold_dim, self.config.n_eigenvectors)
+        else:
+            self.manifold = None
+            self.spectral = None
+
+        # Attention layer selection via registry pattern
         if attention_type == "standard":
             # Standard causal self-attention (baseline)
             self.attention = StandardAttention(
@@ -271,8 +273,9 @@ class NeuroManifoldBlock(nn.Module):
         # Project SDR
         x = self.sdr_proj(sdr)
 
-        # Manifold projection and spectral decomposition (skip if requested for speed)
-        if not self.config.skip_manifold_spectral:
+        # Manifold projection and spectral decomposition
+        # Skip only if requested AND attention type doesn't require it
+        if self.manifold is not None and self.spectral is not None:
             coords, metric = self.manifold(sdr)
             spectral_basis, spectral_freqs, ortho_loss = self.spectral(coords, metric)
         else:
@@ -284,20 +287,33 @@ class NeuroManifoldBlock(nn.Module):
             ortho_loss = torch.tensor(0.0, device=x.device)
 
         # Attention + residual with mHC
-        # Determine which parameter to pass based on attention type
-        # KnotAttention and KaufmannAttention need coords
-        # StandardAttention and FHNAttention need spectral_basis
-        attention_param = coords if isinstance(self.attention, (KnotAttention, KaufmannAttention)) else spectral_basis
-
         if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
-            attn_out, attn_info = self.attention(self.norm1(branch_input), attention_param)
+            normed_input = self.norm1(branch_input)
+
+            # Call attention with appropriate parameters based on type
+            if isinstance(self.attention, KaufmannAttention):
+                attn_out, attn_info = self.attention(normed_input, spectral_basis, coords)
+            elif isinstance(self.attention, KnotAttention):
+                attn_out, attn_info = self.attention(normed_input, coords)
+            else:  # StandardAttention or FHNAttention
+                attn_out, attn_info = self.attention(normed_input, spectral_basis)
+
             # Add residual via H_res + H_post
             x = add_residual_fn(attn_out)
         else:
             # Standard residual connection
-            attn_out, attn_info = self.attention(self.norm1(x), attention_param)
+            normed_input = self.norm1(x)
+
+            # Call attention with appropriate parameters based on type
+            if isinstance(self.attention, KaufmannAttention):
+                attn_out, attn_info = self.attention(normed_input, spectral_basis, coords)
+            elif isinstance(self.attention, KnotAttention):
+                attn_out, attn_info = self.attention(normed_input, coords)
+            else:  # StandardAttention or FHNAttention
+                attn_out, attn_info = self.attention(normed_input, spectral_basis)
+
             x = x + attn_out
 
         # MLP + residual with mHC
