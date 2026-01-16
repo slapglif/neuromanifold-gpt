@@ -4,6 +4,7 @@
 # See UPGRADE.md for upgrade instructions
 
 torch==2.2.2
+triton==2.2.0
 numpy==1.26.4
 einops==0.7.0
 xformers==0.0.25
