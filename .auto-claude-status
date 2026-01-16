@@ -1,15 +1,15 @@
 {
   "active": true,
-  "spec": "033-neuromanifold-attention-benchmarks",
-  "state": "complete",
+  "spec": "037-zero-shot-benchmark-evaluation-suite",
+  "state": "building",
   "subtasks": {
-    "completed": 13,
-    "total": 13,
-    "in_progress": 0,
+    "completed": 6,
+    "total": 9,
+    "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Documentation and Results",
+    "current": "Baseline Verification",
     "id": null,
     "total": 2
   },
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 13,
-    "started_at": "2026-01-15T21:53:37.855089"
+    "number": 8,
+    "started_at": "2026-01-16T01:08:31.153521"
   },
-  "last_update": "2026-01-15T23:16:54.605949"
+  "last_update": "2026-01-16T01:29:26.068179"
 }
