@@ -99,6 +99,7 @@ class TrainConfig:
     use_full_mhc: bool = True
     mhc_n_streams: int = 2
     use_kaufmann_attention: bool = False
+    attention: str = "standard"  # Attention mechanism: standard, soliton, sdr, fast-spectral
 
     # Speed optimization
     skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
@@ -926,7 +927,16 @@ if __name__ == "__main__":
         elif field_type == float:
             parser.add_argument(f"--{f}", type=float, default=None)
         elif field_type == str:
-            parser.add_argument(f"--{f}", type=str, default=None)
+            if f == "attention":
+                parser.add_argument(
+                    f"--{f}",
+                    type=str,
+                    default=None,
+                    choices=["standard", "soliton", "sdr", "fast-spectral"],
+                    help="Attention mechanism type: standard, soliton, sdr, fast-spectral"
+                )
+            else:
+                parser.add_argument(f"--{f}", type=str, default=None)
 
     args = parser.parse_args()
 

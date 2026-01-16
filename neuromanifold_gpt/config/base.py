@@ -38,7 +38,6 @@ class NeuroManifoldConfig:
         n_eigenvectors: Number of eigenvectors for spectral attention
         spectral_sigma: Bandwidth for spectral kernel
         n_heads: Number of attention heads
-        pos_emb_type: Position embedding type ("learned", "rotary", or "alibi")
         soliton_threshold: Firing threshold for soliton activation
         soliton_tau: Time constant for soliton dynamics
         soliton_velocity: Propagation velocity of soliton waves
@@ -61,9 +60,6 @@ class NeuroManifoldConfig:
         beta2: AdamW beta2 parameter (default 0.95, MiniMax: faster adaptation)
         optimizer_eps: AdamW epsilon (default 1e-15, MiniMax: handles tiny gradients)
         grad_clip: Gradient clipping norm (default 1.0)
-        init_strategy: Weight initialization strategy ('deepseek', 'gpt2', 'gpt2_scaled', 'mup')
-        mup_base_width: Base model width for muP scaling (default 128)
-        mup_scale_attn_by_d: Whether to scale attention by d vs sqrt(d) in muP (default True)
     """
 
     # Vocabulary and sequence
@@ -91,7 +87,7 @@ class NeuroManifoldConfig:
 
     # Attention configuration
     n_heads: int = 8
-    pos_emb_type: str = "learned"  # Position embedding type: "learned", "rotary", or "alibi"
+    attention_type: str = 'standard'  # Attention mechanism type ('standard', 'fhn', etc.)
 
     # FHN dynamics (Fitzhugh-Nagumo)
     fhn_threshold: float = 0.5  # Restored: stable excitability threshold
@@ -253,17 +249,6 @@ class NeuroManifoldConfig:
     # Weight initialization (DeepSeek-V3 style)
     # DeepSeek uses std=0.006 instead of typical 0.02 for faster early convergence
     init_std: float = 0.006
-
-    # Initialization strategy selection
-    # Options: 'deepseek' (default, std=0.006), 'gpt2' (std=0.02),
-    #          'gpt2_scaled' (GPT-2 with residual scaling), 'mup' (maximal update parametrization)
-    init_strategy: str = "deepseek"
-
-    # muP (Maximal Update Parametrization) parameters
-    # muP enables hyperparameter transfer across model scales
-    # Reference: "Tensor Programs V: Tuning Large Neural Networks via Zero-Shot Hyperparameter Transfer"
-    mup_base_width: int = 128  # Base model width for muP scaling calculations
-    mup_scale_attn_by_d: bool = True  # Scale attention logits by 1/d instead of 1/sqrt(d)
 
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""

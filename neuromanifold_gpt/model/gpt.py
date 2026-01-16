@@ -124,6 +124,8 @@ class NeuroManifoldGPT(nn.Module):
                 n_eigenvectors=config.n_eigenvectors,
                 n_heads=config.n_heads,
                 dropout=config.dropout,
+                # Attention configuration
+                attention_type=getattr(config, 'attention_type', 'standard'),
                 # FHN dynamics with semi-implicit IMEX scheme
                 fhn_threshold=config.fhn_threshold,
                 fhn_tau=config.fhn_tau,

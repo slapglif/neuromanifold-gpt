@@ -18,6 +18,7 @@ import torch.nn.functional as F
 
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
+from .attention.standard import StandardAttention
 from .attention.fhn import FHNAttention
 from .attention.knot import KnotAttention
 from .attention.kaufmann import KaufmannAttention
@@ -60,6 +61,8 @@ class NeuroManifoldBlock(nn.Module):
         n_heads: int = 8,
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
+        # Attention configuration
+        attention_type: str = "standard",  # "standard", "soliton", "sdr", "fast-spectral", "kaufmann"
         # FHN dynamics parameters
         fhn_threshold: float = 0.5,
         fhn_tau: float = 12.5,  # Fixed: proper slow-fast separation
@@ -69,9 +72,9 @@ class NeuroManifoldBlock(nn.Module):
         use_fhn_partitioning: bool = True,  # Enable energy balancing for stability
         use_fhn_fused: bool = True, # Enable Fused Triton Kernel
         # Knot attention
-        use_knot_attention: bool = False,
+        use_knot_attention: bool = False,  # Deprecated: use attention_type="sdr"
         # Kaufmann Trifecta Attention
-        use_kaufmann_attention: bool = False,
+        use_kaufmann_attention: bool = False,  # Deprecated: use attention_type="kaufmann"
         # mHC (Manifold-Constrained Hyper-Connections)
         use_mhc: bool = True,  # Enable mHC by default for stability
         use_full_mhc: bool = True,  # Use full multi-stream mHC (vs simplified)
@@ -110,6 +113,12 @@ class NeuroManifoldBlock(nn.Module):
     ):
         super().__init__()
 
+        # Backward compatibility: map deprecated flags to attention_type
+        if use_kaufmann_attention:
+            attention_type = "kaufmann"
+        elif use_knot_attention:
+            attention_type = "sdr"
+
         # SDR to embedding (skip if dimensions match for efficiency)
         if sdr_size != embed_dim:
             self.sdr_proj = nn.Linear(sdr_size, embed_dim)
@@ -125,47 +134,24 @@ class NeuroManifoldBlock(nn.Module):
             self.manifold = None
             self.spectral = None
 
-        # FHN attention (with semi-implicit IMEX scheme)
-        if use_kaufmann_attention:
-            # The Full Trifecta Model
-            self.attention = KaufmannAttention(embed_dim, n_heads, config=None) # We need to pass config or params
-            # Actually KaufmannAttention needs config for FHN params.
-            # We should pass individual params or a config object.
-            # Let's refactor KaufmannAttention to take params directly or construct config proxy.
-            # For now, assuming we handle this in __init__ logic below
-            pass
-        else:
-            self.attention = FHNAttention(
-                embed_dim=embed_dim,
-                n_heads=n_heads,
-                threshold=fhn_threshold,
-                tau=fhn_tau,
-                pulse_width_base=pulse_width_base,
-                dropout=dropout,
-                n_fhn_steps=n_fhn_steps,
-                use_imex=use_fhn_imex,
-                use_partitioning=use_fhn_partitioning,
-                use_fused=use_fhn_fused
-            )
+        # Create attention mechanism using factory
+        self.attention, self.use_knot_attention = self._create_attention(
+            attention_type=attention_type,
+            embed_dim=embed_dim,
+            n_heads=n_heads,
+            manifold_dim=manifold_dim,
+            dropout=dropout,
+            fhn_threshold=fhn_threshold,
+            fhn_tau=fhn_tau,
+            pulse_width_base=pulse_width_base,
+            n_fhn_steps=n_fhn_steps,
+            use_fhn_imex=use_fhn_imex,
+            use_fhn_partitioning=use_fhn_partitioning,
+            use_fhn_fused=use_fhn_fused,
+        )
 
-        # Knot attention (optional)
-        self.use_knot_attention = use_knot_attention
-        self.use_kaufmann_attention = use_kaufmann_attention
-        
-        if self.use_kaufmann_attention:
-             # Re-init attention with params
-             # We construct it using the params passed to block __init__
-             self.attention = KaufmannAttention(
-                 embed_dim, n_heads, 
-                 manifold_dim=manifold_dim,
-                 fhn_threshold=fhn_threshold,
-                 fhn_tau=fhn_tau,
-                 use_imex=use_fhn_imex,
-                 use_partitioning=use_fhn_partitioning,
-                 use_fused=use_fhn_fused
-             )
-
-        if self.use_knot_attention and not self.use_kaufmann_attention:
+        # Knot attention gating (only for "sdr" type)
+        if self.use_knot_attention:
             self.knot_attention = KnotAttention(
                 embed_dim=embed_dim,
                 manifold_dim=manifold_dim,
@@ -236,6 +222,113 @@ class NeuroManifoldBlock(nn.Module):
                 # Single-stream fallback (simple residual)
                 self.mhc_attn = Residual()
                 self.mhc_mlp = Residual()
+
+    def _create_attention(
+        self,
+        attention_type: str,
+        embed_dim: int,
+        n_heads: int,
+        manifold_dim: int,
+        dropout: float,
+        fhn_threshold: float,
+        fhn_tau: float,
+        pulse_width_base: int,
+        n_fhn_steps: int,
+        use_fhn_imex: bool,
+        use_fhn_partitioning: bool,
+        use_fhn_fused: bool,
+    ) -> tuple[nn.Module, bool]:
+        """Factory method to create attention mechanism based on type.
+
+        Args:
+            attention_type: Type of attention ("standard", "soliton", "sdr", "fast-spectral", "kaufmann")
+            embed_dim: Embedding dimension
+            n_heads: Number of attention heads
+            manifold_dim: Manifold dimension (for kaufmann/sdr)
+            dropout: Dropout rate
+            fhn_threshold: FHN threshold parameter
+            fhn_tau: FHN tau parameter
+            pulse_width_base: FHN pulse width base
+            n_fhn_steps: Number of FHN integration steps
+            use_fhn_imex: Use IMEX scheme for FHN
+            use_fhn_partitioning: Use energy partitioning for FHN
+            use_fhn_fused: Use fused Triton kernel for FHN
+
+        Returns:
+            attention: Attention module
+            use_knot_attention: Whether to use knot attention (for "sdr" type)
+        """
+        use_knot_attention = False
+
+        if attention_type == "standard":
+            # Standard causal self-attention (baseline)
+            attention = StandardAttention(
+                embed_dim=embed_dim,
+                n_heads=n_heads,
+                dropout=dropout,
+            )
+        elif attention_type == "soliton":
+            # FHN dynamics attention (soliton waves)
+            attention = FHNAttention(
+                embed_dim=embed_dim,
+                n_heads=n_heads,
+                threshold=fhn_threshold,
+                tau=fhn_tau,
+                pulse_width_base=pulse_width_base,
+                dropout=dropout,
+                n_fhn_steps=n_fhn_steps,
+                use_imex=use_fhn_imex,
+                use_partitioning=use_fhn_partitioning,
+                use_fused=use_fhn_fused,
+            )
+        elif attention_type == "sdr":
+            # SDR Memory: FHN + Knot attention
+            attention = FHNAttention(
+                embed_dim=embed_dim,
+                n_heads=n_heads,
+                threshold=fhn_threshold,
+                tau=fhn_tau,
+                pulse_width_base=pulse_width_base,
+                dropout=dropout,
+                n_fhn_steps=n_fhn_steps,
+                use_imex=use_fhn_imex,
+                use_partitioning=use_fhn_partitioning,
+                use_fused=use_fhn_fused,
+            )
+            use_knot_attention = True
+        elif attention_type == "fast-spectral":
+            # Fast spectral attention (FHN with spectral basis)
+            attention = FHNAttention(
+                embed_dim=embed_dim,
+                n_heads=n_heads,
+                threshold=fhn_threshold,
+                tau=fhn_tau,
+                pulse_width_base=pulse_width_base,
+                dropout=dropout,
+                n_fhn_steps=n_fhn_steps,
+                use_imex=use_fhn_imex,
+                use_partitioning=use_fhn_partitioning,
+                use_fused=use_fhn_fused,
+            )
+        elif attention_type == "kaufmann":
+            # Full Trifecta Model: FHN + Knot + Reaction-Diffusion
+            attention = KaufmannAttention(
+                embed_dim,
+                n_heads,
+                manifold_dim=manifold_dim,
+                fhn_threshold=fhn_threshold,
+                fhn_tau=fhn_tau,
+                use_imex=use_fhn_imex,
+                use_partitioning=use_fhn_partitioning,
+                use_fused=use_fhn_fused,
+            )
+        else:
+            raise ValueError(
+                f"Unknown attention_type: {attention_type}. "
+                f"Choose from: 'standard', 'soliton', 'sdr', 'fast-spectral', 'kaufmann'"
+            )
+
+        return attention, use_knot_attention
 
     def forward(self, sdr: torch.Tensor) -> tuple[torch.Tensor, dict]:
         """
