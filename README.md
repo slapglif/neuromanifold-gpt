@@ -208,6 +208,100 @@ For simple model benchmarking and profiling, `bench.py` might be useful. It's id
 
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
 
+## logging
+
+nanoGPT uses a unified logging module that combines [loguru](https://github.com/Delgan/loguru)'s structured logging with [rich](https://github.com/Textualize/rich)'s beautiful formatting for consistent, readable console output across all scripts.
+
+### Basic Usage
+
+```python
+from neuromanifold_gpt.utils.logging import get_logger
+
+logger = get_logger(__name__)
+logger.info("Training started")
+logger.warning("Learning rate is very high")
+logger.error("Failed to load checkpoint")
+```
+
+### Logging Methods
+
+The logger provides several specialized methods beyond standard logging:
+
+**Metrics** - Log performance metrics with formatted output:
+```python
+logger.metric("loss", 0.4251, unit="")
+logger.metric("tokens_per_second", 1250.5, unit="tokens/s")
+logger.metric("accuracy", 94.2, unit="%")
+```
+
+**Progress** - Track progress with percentage calculation:
+```python
+logger.progress("Training", current=500, total=1000)  # Shows: 500/1000 (50.0%)
+logger.progress("Evaluation", current=75, total=100)   # Shows: 75/100 (75.0%)
+```
+
+**Sections** - Create visual section breaks for better readability:
+```python
+logger.section("Model Initialization")
+# ... initialization code ...
+logger.section("Training Loop")
+# ... training code ...
+```
+
+**Tables** - Display rich formatted tables (useful for profiling results):
+```python
+from rich.table import Table
+
+table = Table(title="Benchmark Results")
+table.add_column("Metric", style="cyan")
+table.add_column("Value", style="green")
+table.add_row("Time per iter", "125ms")
+table.add_row("MFU", "42.3%")
+
+logger.table(table)
+```
+
+### Configuration
+
+Control log levels and formatting through environment variables or programmatically:
+
+**Environment Variables:**
+```sh
+# Set log level (DEBUG, INFO, WARNING, ERROR)
+export LOG_LEVEL=DEBUG
+python train.py
+
+# Custom format template
+export LOG_FORMAT="<green>{time:HH:mm:ss}</green> | <level>{message}</level>"
+python train.py
+```
+
+**Programmatic Configuration:**
+```python
+from neuromanifold_gpt.utils.logging import configure_logging
+
+# Set log level
+configure_logging(level="DEBUG")
+
+# Custom theme colors
+configure_logging(theme={
+    "metric": "bold magenta",
+    "progress": "cyan",
+    "section": "bold yellow"
+})
+```
+
+### Examples in Practice
+
+The logging module is used throughout nanoGPT scripts:
+
+- `train.py` - Uses loguru for detailed training metrics
+- `sample.py` - Uses logger for status messages and section breaks
+- `bench.py` - Uses logger.metric() for benchmarking results
+- `neuromanifold_gpt/profiling/*.py` - Uses logger for profiling output with rich tables
+
+You can see consistent, well-formatted output across all these scripts thanks to the unified logging module.
+
 ## todos
 
 - Investigate and add FSDP instead of DDP
