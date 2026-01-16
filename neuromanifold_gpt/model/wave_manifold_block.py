@@ -11,30 +11,41 @@ Combines:
 import torch
 import torch.nn as nn
 from neuromanifold_gpt.model.ssm.mamba import MambaBlock
+from neuromanifold_gpt.model.ssm.hyena_operator import HyenaOperator
 from neuromanifold_gpt.model.soliton.attention import SolitonAttention
 from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
 
 class WaveManifoldBlock(nn.Module):
     """
-    Hybrid block integrating SSM dynamics and Soliton physics.
+    Hybrid block integrating SSM/Hyena dynamics and Soliton physics.
     
     Structure:
-    x -> LayerNorm -> Mamba -> Residual
+    x -> LayerNorm -> Mamba/Hyena -> Residual
     x -> LayerNorm -> Soliton -> Residual
     """
-    def __init__(self, config: WaveManifoldConfig):
+    def __init__(self, config: WaveManifoldConfig, max_seq_len: int = 1024):
         super().__init__()
         self.config = config
         self.embed_dim = config.n_embd
         
-        # 1. SSM Backbone (Time Evolution)
+        # 1. SSM/Hyena Backbone (Time Evolution)
         self.norm1 = nn.LayerNorm(self.embed_dim)
-        self.mamba = MambaBlock(
-            embed_dim=self.embed_dim,
-            state_dim=config.mamba_state_dim,
-            expand_factor=config.mamba_expand,
-            dropout=config.dropout
-        )
+        
+        if config.backbone_type == "hyena":
+            self.mixer = HyenaOperator(
+                d_model=self.embed_dim,
+                l_max=max_seq_len,
+                order=2,
+                filter_order=64,
+                dropout=config.dropout
+            )
+        else: # Default to Mamba
+            self.mixer = MambaBlock(
+                embed_dim=self.embed_dim,
+                state_dim=config.mamba_state_dim,
+                expand_factor=config.mamba_expand,
+                dropout=config.dropout
+            )
         
         # 2. Soliton Interaction (Feature Physics)
         self.norm2 = nn.LayerNorm(self.embed_dim)
@@ -60,9 +71,9 @@ class WaveManifoldBlock(nn.Module):
         # For block level, we keep it simple.
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Mamba Path (Time mixing)
-        if self.config.use_mamba_backbone:
-            x = x + self.mamba(self.norm1(x))
+        # Time mixing (Mamba or Hyena)
+        if self.config.use_mamba_backbone: # Keep flag name for compatibility for now
+            x = x + self.mixer(self.norm1(x))
         
         # Soliton Path (Physics mixing)
         if self.config.use_soliton_mixing:

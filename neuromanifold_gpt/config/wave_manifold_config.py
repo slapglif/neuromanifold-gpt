@@ -25,9 +25,15 @@ class WaveManifoldConfig(RalphBaseConfig):
     fno_modes: int = 32
     
     # Backbone
-    use_mamba_backbone: bool = True
+    backbone_type: str = "hyena" # "mamba" or "hyena"
+    use_mamba_backbone: bool = False # Disabled in favor of Hyena
     mamba_state_dim: int = 16
     mamba_expand: int = 2
+    
+    # Hybrid Stack (Disabled for Pure Wave Network)
+    use_hybrid_stack: bool = False
+    hybrid_ratio: int = 7 
+    attention_layer_idx: list = field(default_factory=list)
     
     # Soliton Dynamics (Latent Physics)
     use_soliton_mixing: bool = True

@@ -51,7 +51,9 @@ from pytorch_lightning.loggers import WandbLogger
 from loguru import logger
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.model.wave_manifold_gpt import WaveManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
 from neuromanifold_gpt.config.loader import load_config
 from model import GPTConfig, GPT
 
@@ -107,6 +109,23 @@ class TrainingConfig:
     use_full_mhc: bool = True
     mhc_n_streams: int = 2
     use_kaufmann_attention: bool = False
+
+    # SSM (Mamba) Configuration
+    use_ssm: bool = False
+    ssm_state_dim: int = 16
+    ssm_conv_kernel: int = 4
+    ssm_expand: int = 2
+
+    # Wave Manifold (NS-WMN) Configuration
+    use_fno_encoder: bool = True
+    fno_modes: int = 32
+    use_mamba_backbone: bool = True
+    mamba_state_dim: int = 16
+    mamba_expand: int = 2
+    use_soliton_mixing: bool = True
+    soliton_type: str = "sine_gordon"
+    use_topological_loss: bool = False
+    use_continuous_head: bool = False
 
     # Speed optimization
     skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
@@ -297,7 +316,10 @@ class NeuroManifoldLitModule(pl.LightningModule):
         self.itos = itos
 
         # Build model
-        if isinstance(model_config, NeuroManifoldConfig):
+        if isinstance(model_config, WaveManifoldConfig):
+            self.model = WaveManifoldGPT(model_config)
+            logger.info("Initialized WaveManifoldGPT (NS-WMN)")
+        elif isinstance(model_config, NeuroManifoldConfig):
             self.model = NeuroManifoldGPT(model_config)
             logger.info("Initialized NeuroManifoldGPT")
         else:
@@ -574,6 +596,9 @@ class MFUCallback(Callback):
 # -----------------------------------------------------------------------------
 def train(config: TrainingConfig) -> None:
     """Main training entry point."""
+    # Set matmul precision for Tensor Cores (speed/memory trade-off)
+    torch.set_float32_matmul_precision('medium')
+    
     pl.seed_everything(1337)
 
     # Setup data
@@ -603,7 +628,27 @@ def train(config: TrainingConfig) -> None:
         data_module.vocab_size = config.vocab_size
 
     # Build model config
-    if config.model_type == "neuromanifold":
+    if config.model_type == "wave_manifold":
+        model_config = WaveManifoldConfig(
+            vocab_size=data_module.vocab_size,
+            block_size=config.block_size,
+            n_layer=config.n_layer,
+            n_head=config.n_head,
+            n_embd=config.n_embd,
+            dropout=config.dropout,
+            bias=config.bias,
+            # Wave specific
+            use_fno_encoder=config.use_fno_encoder,
+            fno_modes=config.fno_modes,
+            use_mamba_backbone=config.use_mamba_backbone,
+            mamba_state_dim=config.mamba_state_dim,
+            mamba_expand=config.mamba_expand,
+            use_soliton_mixing=config.use_soliton_mixing,
+            soliton_type=config.soliton_type,
+            use_topological_loss=config.use_topological_loss,
+            use_continuous_head=config.use_continuous_head,
+        )
+    elif config.model_type == "neuromanifold":
         model_config = NeuroManifoldConfig(
             vocab_size=data_module.vocab_size,
             block_size=config.block_size,
@@ -637,6 +682,11 @@ def train(config: TrainingConfig) -> None:
             mhc_n_streams=config.mhc_n_streams,
             # Attention
             use_kaufmann_attention=config.use_kaufmann_attention,
+            # SSM (Mamba)
+            use_ssm=config.use_ssm,
+            ssm_state_dim=config.ssm_state_dim,
+            ssm_conv_kernel=config.ssm_conv_kernel,
+            ssm_expand=config.ssm_expand,
             # Speed optimization
             skip_manifold_spectral=config.skip_manifold_spectral,
             # Training

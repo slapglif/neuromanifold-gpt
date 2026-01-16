@@ -13,3 +13,8 @@ rich==13.7.0
 typing-extensions==4.15.0
 tqdm==4.67.1
 optuna==3.6.1
+torchvision
+requests
+transformers
+optuna
+datasets
