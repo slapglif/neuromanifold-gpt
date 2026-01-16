@@ -287,33 +287,20 @@ class NeuroManifoldBlock(nn.Module):
             ortho_loss = torch.tensor(0.0, device=x.device)
 
         # Attention + residual with mHC
+        # Determine which parameter to pass based on attention type
+        # KnotAttention and KaufmannAttention need coords
+        # StandardAttention and FHNAttention need spectral_basis
+        attention_param = coords if isinstance(self.attention, (KnotAttention, KaufmannAttention)) else spectral_basis
+
         if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
-            normed_input = self.norm1(branch_input)
-
-            # Call attention with appropriate parameters based on type
-            if isinstance(self.attention, KaufmannAttention):
-                attn_out, attn_info = self.attention(normed_input, spectral_basis, coords)
-            elif isinstance(self.attention, KnotAttention):
-                attn_out, attn_info = self.attention(normed_input, coords)
-            else:  # StandardAttention or FHNAttention
-                attn_out, attn_info = self.attention(normed_input, spectral_basis)
-
+            attn_out, attn_info = self.attention(self.norm1(branch_input), attention_param)
             # Add residual via H_res + H_post
             x = add_residual_fn(attn_out)
         else:
             # Standard residual connection
-            normed_input = self.norm1(x)
-
-            # Call attention with appropriate parameters based on type
-            if isinstance(self.attention, KaufmannAttention):
-                attn_out, attn_info = self.attention(normed_input, spectral_basis, coords)
-            elif isinstance(self.attention, KnotAttention):
-                attn_out, attn_info = self.attention(normed_input, coords)
-            else:  # StandardAttention or FHNAttention
-                attn_out, attn_info = self.attention(normed_input, spectral_basis)
-
+            attn_out, attn_info = self.attention(self.norm1(x), attention_param)
             x = x + attn_out
 
         # MLP + residual with mHC
