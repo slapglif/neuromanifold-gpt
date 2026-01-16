@@ -249,3 +249,80 @@ def seed():
     Sets torch random seed to 42 when called.
     """
     torch.manual_seed(42)
+
+
+# -----------------------------------------------------------------------------
+# SDR Test Helper Fixtures
+# -----------------------------------------------------------------------------
+
+@pytest.fixture
+def sdr_zero_with_active():
+    """Fixture providing zero SDR with first 40 bits active.
+
+    Common pattern for SDR operations testing. Creates a 2048-dimensional
+    zero tensor with the first 40 bits set to 1.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with first 40 bits set to 1.
+    """
+    sdr = torch.zeros(2048)
+    sdr[:40] = 1
+    return sdr
+
+
+@pytest.fixture
+def sdr_zero_with_active_offset():
+    """Fixture providing zero SDR with 40 active bits at offset 20.
+
+    Creates a 2048-dimensional zero tensor with bits 20-59 set to 1.
+    Useful for testing overlap and intersection operations.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with bits 20-59 set to 1.
+    """
+    sdr = torch.zeros(2048)
+    sdr[20:60] = 1
+    return sdr
+
+
+@pytest.fixture
+def sdr_zero_with_active_disjoint():
+    """Fixture providing zero SDR with 40 active bits at offset 100.
+
+    Creates a 2048-dimensional zero tensor with bits 100-139 set to 1.
+    Useful for testing disjoint SDR operations with zero overlap.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with bits 100-139 set to 1.
+    """
+    sdr = torch.zeros(2048)
+    sdr[100:140] = 1
+    return sdr
+
+
+@pytest.fixture
+def sdr_zero_empty():
+    """Fixture providing empty SDR with no active bits.
+
+    Creates a 2048-dimensional zero tensor with all bits set to 0.
+    Useful for testing edge cases and empty SDR operations.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with all bits set to 0.
+    """
+    return torch.zeros(2048)
+
+
+@pytest.fixture
+def sdr_zero_batched():
+    """Fixture providing batched zero SDR with first 40 bits active.
+
+    Creates a batched 2048-dimensional zero tensor with the first 40 bits
+    set to 1 across all batch dimensions. Useful for testing batched operations.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2, 3, 2048) with first 40 bits set to 1.
+    """
+    sdr = torch.zeros(2, 3, 2048)
+    sdr[..., :40] = 1
+    return sdr
