@@ -3,7 +3,7 @@
   "spec": "025-merge-all-pending-tasks-to-masterr",
   "state": "building",
   "subtasks": {
-    "completed": 3,
+    "completed": 5,
     "total": 21,
     "in_progress": 1,
     "failed": 0
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 4,
+    "number": 7,
     "started_at": "2026-01-15T18:33:04.704417"
   },
-  "last_update": "2026-01-15T18:40:59.780150"
+  "last_update": "2026-01-15T18:45:51.272750"
 }
