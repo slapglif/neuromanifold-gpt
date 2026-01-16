@@ -1,76 +1,40 @@
 """
-Sample from a trained NeuroManifoldGPT model
+Sample from a trained NeuroManifoldGPT model.
+
+Follows Karpathy's exact nanoGPT sampling methodology.
+
+Usage:
+    python neuromanifold_gpt/sample_nanogpt.py --out_dir=out-neuromanifold
+    python neuromanifold_gpt/sample_nanogpt.py --prompt="Hello, world!"
+    python neuromanifold_gpt/sample_nanogpt.py --num_samples=5 --max_new_tokens=500
 """
 import os
-import sys
-from neuromanifold_gpt.cli.help_formatter import (
-    create_parser_from_defaults,
-    parse_args_with_config_override,
-)
-
-# -----------------------------------------------------------------------------
-# Default Configuration
-# -----------------------------------------------------------------------------
-defaults = {
-    # Model
-    'out_dir': 'out-neuromanifold',
-
-    # Sampling
-    'prompt': "\n",  # Start token or custom prompt
-    'num_samples': 1,  # number of samples to draw
-    'max_new_tokens': 500,  # number of tokens generated in each sample
-    'temperature': 0.8,  # 1.0 = no change, < 1.0 = less random, > 1.0 = more random
-    'top_k': 200,  # retain only the top_k most likely tokens, clamp others to have 0 probability
-    'seed': 1337,
-
-    # Hardware
-    'device': 'cuda',  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-    'dtype': 'bfloat16',  # 'float32' or 'bfloat16' or 'float16'
-    'compile': False,  # use PyTorch 2.0 to compile the model to be faster
-}
-
-# Create argument parser with rich formatting
-parser = create_parser_from_defaults(
-    defaults=defaults,
-    description="Sample from a trained NeuroManifoldGPT model",
-    groups={
-        'Model': ['out_dir'],
-        'Sampling': ['prompt', 'num_samples', 'max_new_tokens', 'temperature', 'top_k', 'seed'],
-        'Hardware': ['device', 'dtype', 'compile'],
-    },
-    examples=[
-        "python neuromanifold_gpt/sample_nanogpt.py",
-        "python neuromanifold_gpt/sample_nanogpt.py --num_samples=5 --temperature=1.0",
-        "python neuromanifold_gpt/sample_nanogpt.py --out_dir=out-neuromanifold",
-        "python neuromanifold_gpt/sample_nanogpt.py --prompt='Hello, world!'",
-    ],
-)
-
-# Parse arguments with config file override support
-args = parse_args_with_config_override(parser)
-
-# Extract configuration values
-out_dir = args.out_dir
-prompt = args.prompt
-num_samples = args.num_samples
-max_new_tokens = args.max_new_tokens
-temperature = args.temperature
-top_k = args.top_k
-seed = args.seed
-device = args.device
-dtype = args.dtype
-compile_model = args.compile
-
-# -----------------------------------------------------------------------------
-# Import heavy dependencies after argparse (so --help works without them)
-# -----------------------------------------------------------------------------
 import pickle
 from contextlib import nullcontext
-import torch
+
 import tiktoken
+import torch
+
 from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.utils.checkpoints import select_checkpoint
+
 # -----------------------------------------------------------------------------
+# Default sampling parameters
+out_dir = "out-neuromanifold"
+prompt = "\n"  # Start token or custom prompt
+num_samples = 1
+max_new_tokens = 500
+temperature = 0.8
+top_k = 200
+seed = 1337
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
+compile_model = False
+
+# -----------------------------------------------------------------------------
+# Parse command line
+exec(open(os.path.join(os.path.dirname(__file__), "configurator.py")).read())
 
 # -----------------------------------------------------------------------------
 # Setup
@@ -84,7 +48,11 @@ ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=
 
 # -----------------------------------------------------------------------------
 # Load model
-ckpt_path = os.path.join(out_dir, "ckpt.pt")
+ckpt_path = select_checkpoint(out_dir)
+if ckpt_path is None:
+    print(f"Error: No checkpoint found in {out_dir}")
+    exit(1)
+
 checkpoint = torch.load(ckpt_path, map_location=device)
 
 # Recreate config
