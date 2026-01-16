@@ -39,6 +39,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import WandbLogger
 from loguru import logger
 
+from neuromanifold_gpt.utils.logging import get_logger
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from model import GPTConfig, GPT

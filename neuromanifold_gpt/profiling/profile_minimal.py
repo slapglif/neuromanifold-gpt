@@ -10,8 +10,10 @@ import torch
 import torch.nn as nn
 from rich.console import Console
 from rich.table import Table
+from neuromanifold_gpt.utils.logging import get_logger
 
-console = Console()
+logger = get_logger(__name__)
+console = Console()  # Keep for table rendering
 
 # Very small test parameters
 BATCH_SIZE = 4
@@ -71,8 +73,9 @@ def profile_module(name, module, input_tensors, n_iters=5):
 
 
 def main():
-    console.print(f"\n[bold cyan]Minimal Component Profiler[/bold cyan]")
-    console.print(f"Device: {DEVICE}, Batch: {BATCH_SIZE}, SeqLen: {SEQ_LEN}\n")
+    logger.section("Minimal Component Profiler")
+    logger.info(f"Device: {DEVICE}")
+    logger.info(f"Batch Size: {BATCH_SIZE}, Seq Length: {SEQ_LEN}")
 
     results = []
 
@@ -86,81 +89,81 @@ def main():
     mlp_hidden = embed_dim * 4
 
     # 1. SDR Projection (simple linear)
-    console.print("1. SDR Projection...", end=" ")
+    logger.info("Profiling SDR Projection...")
     from neuromanifold_gpt.model.block import NeuroManifoldBlock
     sdr_proj = nn.Linear(sdr_size, embed_dim)
     x = torch.randn(BATCH_SIZE, SEQ_LEN, sdr_size, device=DEVICE)
     r = profile_module("SDR_Projection", sdr_proj, (x,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("SDR_Projection", r['mean_ms'], unit="ms")
 
     # 2. Manifold Encoder (the big 3-layer MLP)
-    console.print("2. Manifold Encoder...", end=" ")
+    logger.info("Profiling ManifoldProjection...")
     from neuromanifold_gpt.model.manifold import ManifoldProjection
     manifold = ManifoldProjection(sdr_size, manifold_dim)
     x = torch.randn(BATCH_SIZE, SEQ_LEN, sdr_size, device=DEVICE)
     r = profile_module("ManifoldProjection", manifold, (x,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("ManifoldProjection", r['mean_ms'], unit="ms")
 
     # 3. Spectral Decomposition
-    console.print("3. Spectral Decomposition...", end=" ")
+    logger.info("Profiling SpectralDecomposition...")
     from neuromanifold_gpt.model.spectral import SpectralDecomposition
     spectral = SpectralDecomposition(manifold_dim, n_eigenvectors)
     coords = torch.randn(BATCH_SIZE, SEQ_LEN, manifold_dim, device=DEVICE)
     r = profile_module("SpectralDecomp", spectral, (coords, None))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("SpectralDecomp", r['mean_ms'], unit="ms")
 
     # 4. FHN Dynamics Core - This is the suspected bottleneck
-    console.print("4. FHN Dynamics...", end=" ")
+    logger.info("Profiling FHNDynamics...")
     from neuromanifold_gpt.model.attention.fhn import FHNDynamics
     fhn = FHNDynamics(dim=head_dim, tau=12.5, threshold=0.5, use_imex=True)
     # Shape: (B, H, k, head_dim)
     stimulus = torch.randn(BATCH_SIZE, n_heads, n_eigenvectors, head_dim, device=DEVICE)
     r = profile_module("FHNDynamics", fhn, (stimulus, 2))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("FHNDynamics", r['mean_ms'], unit="ms")
 
     # 5. FHN Attention Full
-    console.print("5. FHN Attention...", end=" ")
+    logger.info("Profiling FHNAttention...")
     from neuromanifold_gpt.model.attention.fhn import FHNAttention
     fhn_attn = FHNAttention(embed_dim, n_heads, n_fhn_steps=2, use_imex=True, use_partitioning=True)
     x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
     spectral_basis = torch.randn(BATCH_SIZE, SEQ_LEN, n_eigenvectors, device=DEVICE)
     r = profile_module("FHNAttention", fhn_attn, (x, spectral_basis))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("FHNAttention", r['mean_ms'], unit="ms")
 
     # 6. WaveKAN FFN
-    console.print("6. WaveKAN FFN...", end=" ")
+    logger.info("Profiling WaveKAN FFN...")
     from neuromanifold_gpt.model.kan.wave import WaveKANFFN
     wavekan = WaveKANFFN(embed_dim, mlp_hidden, wavelet_type="dog", use_fast_wavekan=True)
     x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
     r = profile_module("WaveKAN_FFN", wavekan, (x,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("WaveKAN_FFN", r['mean_ms'], unit="ms")
 
     # 7. SwiGLU FFN
-    console.print("7. SwiGLU FFN...", end=" ")
+    logger.info("Profiling SwiGLU FFN...")
     from neuromanifold_gpt.model.block import SwiGLU
     swiglu = SwiGLU(embed_dim, int(mlp_hidden * 2 / 3))
     x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
     r = profile_module("SwiGLU_FFN", swiglu, (x,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("SwiGLU_FFN", r['mean_ms'], unit="ms")
 
     # 8. ChebyKAN FFN
-    console.print("8. ChebyKAN FFN...", end=" ")
+    logger.info("Profiling ChebyKAN FFN...")
     from neuromanifold_gpt.model.kan.cheby import ChebyKANFFN
     chebykan = ChebyKANFFN(embed_dim, mlp_hidden, degree=4)
     x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
     r = profile_module("ChebyKAN_FFN", chebykan, (x,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("ChebyKAN_FFN", r['mean_ms'], unit="ms")
 
     # 9. Full Block
-    console.print("9. Full Block...", end=" ")
+    logger.info("Profiling NeuroManifoldBlock...")
     block = NeuroManifoldBlock(
         sdr_size=sdr_size,
         embed_dim=embed_dim,
@@ -175,19 +178,18 @@ def main():
     sdr = torch.randn(BATCH_SIZE, SEQ_LEN, sdr_size, device=DEVICE)
     r = profile_module("NeuroManifoldBlock", block, (sdr,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("NeuroManifoldBlock", r['mean_ms'], unit="ms")
 
     # 10. SemanticFolding Encoder
-    console.print("10. SemanticFoldingEncoder...", end=" ")
+    logger.info("Profiling SemanticFoldingEncoder...")
     from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
     encoder = SemanticFoldingEncoder(vocab_size=65, sdr_size=sdr_size, n_active=40)
     tokens = torch.randint(0, 65, (BATCH_SIZE, SEQ_LEN), device=DEVICE)
     r = profile_module("SemanticFoldingEncoder", encoder, (tokens,))
     results.append(r)
-    console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
+    logger.metric("SemanticFoldingEncoder", r['mean_ms'], unit="ms")
 
     # Results
-    console.print("\n")
     table = Table(title="Component Profiling")
     table.add_column("Component", style="cyan")
     table.add_column("Time (ms)", justify="right")
@@ -200,19 +202,19 @@ def main():
         est = r["mean_ms"] * scale
         table.add_row(r["name"], f"{r['mean_ms']:.2f}", f"{r['mem_mb']:.1f}", f"{est:.2f}")
 
-    console.print(table)
+    logger.table(table)
 
     # Analysis
-    console.print("\n[bold yellow]===== ANALYSIS =====[/bold yellow]")
+    logger.section("Analysis")
 
     # Find bottleneck
     bottleneck = max(results, key=lambda x: x["mean_ms"])
-    console.print(f"\n[bold red]#1 Time Bottleneck: {bottleneck['name']}[/bold red]")
-    console.print(f"   {bottleneck['mean_ms']:.2f} ms")
+    logger.info(f"#1 Time Bottleneck: {bottleneck['name']}")
+    logger.info(f"   {bottleneck['mean_ms']:.2f} ms")
 
     mem_bottleneck = max(results, key=lambda x: x["mem_mb"])
-    console.print(f"\n[bold red]#1 Memory Bottleneck: {mem_bottleneck['name']}[/bold red]")
-    console.print(f"   {mem_bottleneck['mem_mb']:.1f} MB")
+    logger.info(f"#1 Memory Bottleneck: {mem_bottleneck['name']}")
+    logger.info(f"   {mem_bottleneck['mem_mb']:.1f} MB")
 
     # Estimate full model
     block_time = next(r["mean_ms"] for r in results if r["name"] == "NeuroManifoldBlock")
@@ -226,17 +228,17 @@ def main():
     est_full_fwd_bwd = est_full_fwd * 3  # ~3x for backward
     est_1000_iters = est_full_fwd_bwd  # ms -> seconds for 1000 iters
 
-    console.print(f"\n[bold]Estimated performance @ B=64, T=256:[/bold]")
-    console.print(f"   Per block: {est_block:.1f} ms")
-    console.print(f"   Full fwd:  {est_full_fwd:.1f} ms")
-    console.print(f"   Full fwd+bwd: {est_full_fwd_bwd:.1f} ms")
-    console.print(f"   1000 iters: {est_1000_iters:.1f} seconds")
+    logger.info("Estimated performance @ B=64, T=256:")
+    logger.info(f"   Per block: {est_block:.1f} ms")
+    logger.info(f"   Full fwd:  {est_full_fwd:.1f} ms")
+    logger.info(f"   Full fwd+bwd: {est_full_fwd_bwd:.1f} ms")
+    logger.info(f"   1000 iters: {est_1000_iters:.1f} seconds")
 
     if est_1000_iters > 120:
         speedup = est_1000_iters / 120
-        console.print(f"   [bold red]Need {speedup:.2f}x speedup for <120s target[/bold red]")
+        logger.warning(f"   Need {speedup:.2f}x speedup for <120s target")
     else:
-        console.print(f"   [bold green]Under 120s target![/bold green]")
+        logger.info("   Under 120s target!")
 
 
 if __name__ == "__main__":

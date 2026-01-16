@@ -2,73 +2,27 @@
 A much shorter version of train.py for benchmarking
 """
 import os
-import sys
-from neuromanifold_gpt.cli.help_formatter import (
-    create_parser_from_defaults,
-    parse_args_with_config_override,
-)
-
-# -----------------------------------------------------------------------------
-# Default Configuration
-# -----------------------------------------------------------------------------
-defaults = {
-    # Data
-    'batch_size': 12,
-    'block_size': 1024,
-    'real_data': True,
-
-    # Model
-    'bias': False,
-
-    # Hardware
-    'device': 'cuda',  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-    'dtype': 'bfloat16',  # 'float32' or 'bfloat16' or 'float16'
-    'compile': True,  # use PyTorch 2.0 to compile the model to be faster
-
-    # Benchmarking
-    'seed': 1337,
-    'profile': False,  # use pytorch profiler, or just simple benchmarking?
-}
-
-# Create argument parser with rich formatting
-parser = create_parser_from_defaults(
-    defaults=defaults,
-    description="Benchmark GPT model training performance",
-    groups={
-        'Data': ['batch_size', 'block_size', 'real_data'],
-        'Model': ['bias'],
-        'Hardware': ['device', 'dtype', 'compile'],
-        'Benchmarking': ['seed', 'profile'],
-    },
-    examples=[
-        "python bench.py",
-        "python bench.py --batch_size=16 --block_size=512",
-        "python bench.py config/bench_config.py --compile=False",
-        "python bench.py --profile=True",
-    ],
-)
-
-# Parse arguments with config file override support
-args = parse_args_with_config_override(parser)
-
-# Extract configuration values
-batch_size = args.batch_size
-block_size = args.block_size
-bias = args.bias
-real_data = args.real_data
-seed = args.seed
-device = args.device
-dtype = args.dtype
-compile = args.compile
-profile = args.profile
-
-# -----------------------------------------------------------------------------
-# Import heavy dependencies after argparse (so --help works without them)
-# -----------------------------------------------------------------------------
+from contextlib import nullcontext
 import numpy as np
 import time
 import torch
 from model import GPTConfig, GPT
+from neuromanifold_gpt.utils.logging import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
+# -----------------------------------------------------------------------------
+batch_size = 12
+block_size = 1024
+bias = False
+real_data = True
+seed = 1337
+device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
+compile = True # use PyTorch 2.0 to compile the model to be faster
+profile = False # use pytorch profiler, or just simple benchmarking?
+exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
 torch.manual_seed(seed)
@@ -110,7 +64,7 @@ model.to(device)
 optimizer = model.configure_optimizers(weight_decay=1e-2, learning_rate=1e-4, betas=(0.9, 0.95), device_type=device_type)
 
 if compile:
-    print("Compiling model...")
+    logger.info("Compiling model...")
     model = torch.compile(model) # pytorch 2.0
 
 if profile:
@@ -139,7 +93,8 @@ if profile:
             loss.backward()
             optimizer.step()
             lossf = loss.item()
-            print(f"{k}/{num_steps} loss: {lossf:.4f}")
+            logger.progress("Profiling", k + 1, num_steps)
+            logger.metric("loss", lossf)
 
             prof.step() # notify the profiler at end of each step
 
@@ -158,10 +113,13 @@ else:
             loss.backward()
             optimizer.step()
             lossf = loss.item()
-            print(f"{k}/{num_steps} loss: {lossf:.4f}")
+            stage_name = "Burn-in" if stage == 0 else "Benchmark"
+            logger.progress(stage_name, k + 1, num_steps)
+            logger.metric("loss", lossf)
         torch.cuda.synchronize()
         t1 = time.time()
         dt = t1-t0
         mfu = model.estimate_mfu(batch_size * 1 * num_steps, dt)
         if stage == 1:
-            print(f"time per iteration: {dt/num_steps*1000:.4f}ms, MFU: {mfu*100:.2f}%")
+            logger.metric("time_per_iteration", dt/num_steps*1000, unit="ms")
+            logger.metric("MFU", mfu*100, unit="%")

@@ -104,55 +104,6 @@ Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If y
 
 Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device=mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
 
-## attention mechanisms
-
-nanoGPT now supports multiple attention mechanisms that you can easily swap between using the `--attention` flag. This allows you to experiment with novel attention architectures without any code changes. By default, the repository uses standard attention for maximum compatibility.
-
-**Available attention types:**
-
-- **`standard`** (default) - Classic scaled dot-product attention with Flash Attention optimization when available. This is your baseline O(n²) attention mechanism, identical to the original GPT-2. Use this for maximum compatibility and well-understood behavior.
-
-- **`soliton`** - Attention via FitzHugh-Nagumo (FHN) excitable wave dynamics. Instead of computing attention weights directly, this mechanism propagates information through soliton waves—self-reinforcing pulses that travel through the sequence. The result is O(n) complexity with parallel scan, making it much faster for long sequences while maintaining biological plausibility.
-
-- **`sdr`** - SDR (Sparse Distributed Representation) Memory attention. Combines FHN dynamics with topological knot attention that leverages manifold structure to capture long-range dependencies. The sparse distributed encoding allows for compressed memory retrieval, making this particularly effective for tasks requiring associative memory.
-
-- **`fast-spectral`** - Spectral attention using learned eigenvector basis functions. Projects queries and keys into a low-rank spectral space before computing attention, achieving O(n·k) complexity where k is the number of eigenvectors (typically 32-64). This provides a sweet spot between efficiency and expressiveness for medium-length sequences.
-
-- **`kaufmann`** - The full NeuroManifold "Trifecta" combining FHN dynamics, topological knot attention, and reaction-diffusion propagation. This is the most sophisticated mechanism, incorporating principles from dynamical systems theory to model attention as an emergent phenomenon on a learned manifold. Most computationally intensive but potentially most powerful for complex reasoning tasks.
-
-**Usage examples:**
-
-Train with standard attention (default):
-```sh
-python train.py config/train_shakespeare_char.py
-# or explicitly:
-python train.py config/train_shakespeare_char.py --attention=standard
-```
-
-Experiment with soliton wave attention:
-```sh
-python train.py config/train_shakespeare_char.py --attention=soliton
-```
-
-Try fast spectral attention for efficiency:
-```sh
-python train.py config/train_shakespeare_char.py --attention=fast-spectral
-```
-
-Use the full trifecta model:
-```sh
-python train.py config/train_shakespeare_char.py --attention=kaufmann
-```
-
-**Which should I use?**
-
-- **Reproducing papers or baselines?** Use `standard`
-- **Want faster training on long sequences?** Try `soliton` or `fast-spectral`
-- **Exploring associative memory?** Experiment with `sdr`
-- **Maximum expressiveness for research?** Go for `kaufmann`
-
-All attention mechanisms work seamlessly with the existing position embeddings and model architectures. You can switch between them freely - they're true drop-in replacements that maintain the same interface.
-
 ## reproducing GPT-2
 
 A more serious deep learning professional may be more interested in reproducing GPT-2 results. So here we go - we first tokenize the dataset, in this case the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/), an open reproduction of OpenAI's (private) WebText:
@@ -238,68 +189,6 @@ Thou hast no right, no right, but to be sold.
 
 Whoa there, GPT, entering some dark place over there. I didn't really tune the hyperparameters in the config too much, feel free to try!
 
-## weight initialization
-
-Getting weight initialization right can make or break your training run. nanoGPT now supports multiple modern initialization strategies that you can configure with `--init_strategy`. The default `gpt2` strategy works well for most cases, but if you're seeing training instability or working with very deep/wide models, the other strategies can help.
-
-**Quick examples:**
-
-Standard GPT-2 initialization (default):
-```sh
-python train.py config/train_gpt2.py
-# or explicitly: --init_strategy=gpt2
-```
-
-GPT-2 scaled initialization (recommended for deep models >12 layers):
-```sh
-python train.py config/train_gpt2.py --init_strategy=gpt2_scaled
-```
-
-muP initialization for hyperparameter transfer across model sizes:
-```sh
-# Tune hyperparameters on a small model
-python train.py config/train_gpt2.py --n_embd=256 --init_strategy=mup --mup_base_width=256
-
-# Transfer the same hyperparameters to a large model - no retuning needed!
-python train.py config/train_gpt2.py --n_embd=1024 --init_strategy=mup --mup_base_width=256
-```
-
-DeepSeek initialization (default for NeuroManifoldGPT, more conservative):
-```python
-from neuromanifold_gpt.config.base import NeuroManifoldConfig
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
-
-config = NeuroManifoldConfig(
-    vocab_size=50304,
-    n_layer=12,
-    n_heads=8,
-    n_embd=768,
-    init_strategy='deepseek'  # Very small std=0.006, good for novel architectures
-)
-model = NeuroManifoldGPT(config)
-```
-
-**When to use each strategy:**
-
-- `gpt2`: Default, proven to work. Use when replicating GPT-2 or for standard transformers
-- `gpt2_scaled`: Deep models (>12 layers) or when you see gradient explosion/NaN losses
-- `mup`: When scaling up models and you want to transfer hyperparameters from small → large
-- `deepseek`: Default for NeuroManifoldGPT, very conservative initialization for complex architectures
-
-**Debugging initialization issues:**
-
-If your loss is not decreasing or you see NaN values early in training, check your weight distributions:
-
-```sh
-# Analyze weight statistics before training
-python neuromanifold_gpt/research/analyze_init.py --strategy gpt2_scaled --n-layer 12 --n-embd 768
-
-# Compare all strategies side-by-side
-python neuromanifold_gpt/research/analyze_init.py --compare-all --n-layer 12 --n-embd 768
-```
-
-For a deep dive into the theory, muP hyperparameter transfer workflow, and troubleshooting, see the [full initialization strategies documentation](docs/initialization_strategies.md).
-
 ## sampling / inference
 
 Use the script `sample.py` to sample either from pre-trained GPT-2 models released by OpenAI, or from a model you trained yourself. For example, here is a way to sample from the largest available `gpt2-xl` model:
@@ -319,81 +208,99 @@ For simple model benchmarking and profiling, `bench.py` might be useful. It's id
 
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
 
-## position embeddings
+## logging
 
-nanoGPT now supports multiple position embedding strategies, allowing you to experiment with different approaches for encoding positional information:
+nanoGPT uses a unified logging module that combines [loguru](https://github.com/Delgan/loguru)'s structured logging with [rich](https://github.com/Textualize/rich)'s beautiful formatting for consistent, readable console output across all scripts.
 
-- **Learned** (default): Traditional learned position embeddings (GPT-2 style)
-- **RoPE** (Rotary Position Embeddings): Rotation-based position encoding for better length extrapolation
-- **ALiBi** (Attention with Linear Biases): Position-aware attention biases, no explicit embeddings
+### Basic Usage
 
-### Using position embeddings
+```python
+from neuromanifold_gpt.utils.logging import get_logger
 
-You can specify the position embedding type when training or sampling:
-
-```sh
-# Train with RoPE
-python train.py config/train_shakespeare_char.py --pos_emb_type=rotary
-
-# Train with ALiBi
-python train.py config/train_shakespeare_char.py --pos_emb_type=alibi
-
-# Train with learned embeddings (default)
-python train.py config/train_shakespeare_char.py --pos_emb_type=learned
+logger = get_logger(__name__)
+logger.info("Training started")
+logger.warning("Learning rate is very high")
+logger.error("Failed to load checkpoint")
 ```
 
-For sampling from a model trained with a specific position embedding type, the model will automatically use the same type it was trained with.
+### Logging Methods
 
-### Performance
+The logger provides several specialized methods beyond standard logging:
 
-Performance overhead for RoPE and ALiBi position embeddings is minimal:
-
-```sh
-python bench_position_embeddings.py
+**Metrics** - Log performance metrics with formatted output:
+```python
+logger.metric("loss", 0.4251, unit="")
+logger.metric("tokens_per_second", 1250.5, unit="tokens/s")
+logger.metric("accuracy", 94.2, unit="%")
 ```
 
-**Benchmark Results** (12-layer, 768-dim model, batch_size=12, block_size=1024):
-
-| Position Embedding | Time per Iteration | Overhead vs Learned |
-| ------------------ | ------------------ | ------------------- |
-| Learned (baseline) | ~XXX ms           | -                   |
-| RoPE               | ~XXX ms           | < 5%                |
-| ALiBi              | ~XXX ms           | < 5%                |
-
-*Note: Run `python bench_position_embeddings.py` on your hardware to get actual timings.*
-
-Both RoPE and ALiBi meet the performance requirement of **< 5% overhead** compared to learned embeddings.
-
-### Length extrapolation
-
-One of the key advantages of RoPE is its ability to extrapolate to longer sequences than seen during training:
-
-- **Learned embeddings**: Limited to training context length (fixed positional vocabulary)
-- **RoPE**: Can extrapolate to 2x or more of the training context length
-- **ALiBi**: Can also handle longer sequences through its linear bias design
-
-Example training with shorter context and inference with longer context:
-
-```sh
-# Train with 512 tokens
-python train.py config/train_shakespeare_char.py --block_size=512 --pos_emb_type=rotary
-
-# Sample with 1024 tokens (2x training length)
-python sample.py --out_dir=out-shakespeare-char --max_new_tokens=1024
+**Progress** - Track progress with percentage calculation:
+```python
+logger.progress("Training", current=500, total=1000)  # Shows: 500/1000 (50.0%)
+logger.progress("Evaluation", current=75, total=100)   # Shows: 75/100 (75.0%)
 ```
 
-RoPE models maintain coherent generation even at 2x the training context length, while learned embeddings would require retraining or fine-tuning.
+**Sections** - Create visual section breaks for better readability:
+```python
+logger.section("Model Initialization")
+# ... initialization code ...
+logger.section("Training Loop")
+# ... training code ...
+```
 
-### Implementation details
+**Tables** - Display rich formatted tables (useful for profiling results):
+```python
+from rich.table import Table
 
-- **RoPE**: Applies rotations to query and key vectors in attention, encoding relative positions through geometric relationships
-- **ALiBi**: Adds learned linear biases to attention scores based on token distances, encouraging attention to nearby tokens
-- **Ramanujan**: Quasi-periodic position embeddings based on Ramanujan sums (available in `neuromanifold_gpt` variant)
+table = Table(title="Benchmark Results")
+table.add_column("Metric", style="cyan")
+table.add_column("Value", style="green")
+table.add_row("Time per iter", "125ms")
+table.add_row("MFU", "42.3%")
 
-For more details, see:
-- RoPE implementation: `neuromanifold_gpt/model/embeddings/rotary.py`
-- ALiBi implementation: `neuromanifold_gpt/model/embeddings/alibi.py`
-- Integration tests: `neuromanifold_gpt/tests/test_position_embeddings.py`
+logger.table(table)
+```
+
+### Configuration
+
+Control log levels and formatting through environment variables or programmatically:
+
+**Environment Variables:**
+```sh
+# Set log level (DEBUG, INFO, WARNING, ERROR)
+export LOG_LEVEL=DEBUG
+python train.py
+
+# Custom format template
+export LOG_FORMAT="<green>{time:HH:mm:ss}</green> | <level>{message}</level>"
+python train.py
+```
+
+**Programmatic Configuration:**
+```python
+from neuromanifold_gpt.utils.logging import configure_logging
+
+# Set log level
+configure_logging(level="DEBUG")
+
+# Custom theme colors
+configure_logging(theme={
+    "metric": "bold magenta",
+    "progress": "cyan",
+    "section": "bold yellow"
+})
+```
+
+### Examples in Practice
+
+The logging module is used throughout nanoGPT scripts:
+
+- `train.py` - Uses loguru for detailed training metrics
+- `sample.py` - Uses logger for status messages and section breaks
+- `bench.py` - Uses logger.metric() for benchmarking results
+- `neuromanifold_gpt/profiling/*.py` - Uses logger for profiling output with rich tables
+
+You can see consistent, well-formatted output across all these scripts thanks to the unified logging module.
 
 ## todos
 
@@ -401,6 +308,7 @@ For more details, see:
 - Eval zero-shot perplexities on standard evals (e.g. LAMBADA? HELM? etc.)
 - Finetune the finetuning script, I think the hyperparams are not great
 - Schedule for linear batch size increase during training
+- Incorporate other embeddings (rotary, alibi)
 - Separate out the optim buffers from model params in checkpoints I think
 - Additional logging around network health (e.g. gradient clip events, magnitudes)
 - Few more investigations around better init etc.

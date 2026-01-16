@@ -1,15 +1,10 @@
-"""Utility modules for memory optimization and monitoring."""
+"""
+Utility modules for NeuroManifoldGPT.
 
-from .memory_optimizer import (
-    detect_gpu_memory,
-    recommend_batch_size,
-    estimate_model_memory,
-)
-from .memory_monitor import GPUMemoryMonitor
+This package contains utility functions and classes for logging,
+configuration, and other common tasks.
+"""
 
-__all__ = [
-    "detect_gpu_memory",
-    "recommend_batch_size",
-    "estimate_model_memory",
-    "GPUMemoryMonitor",
-]
+from neuromanifold_gpt.utils.logging import get_logger, configure_logging, RichLogger
+
+__all__ = ["get_logger", "configure_logging", "RichLogger"]

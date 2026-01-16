@@ -1,15 +1,15 @@
 {
   "active": true,
-  "spec": "019-document-system-2-reasoning-components-api",
+  "spec": "010-consistent-logging-with-rich-formatted-output-acro",
   "state": "building",
   "subtasks": {
     "completed": 10,
-    "total": 11,
+    "total": 12,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Integration Verification",
+    "current": "Verification and Documentation",
     "id": null,
     "total": 3
   },
@@ -19,7 +19,7 @@
   },
   "session": {
     "number": 12,
-    "started_at": "2026-01-15T12:55:13.090881"
+    "started_at": "2026-01-15T12:53:59.828796"
   },
-  "last_update": "2026-01-15T14:12:08.137899"
+  "last_update": "2026-01-15T13:39:42.329948"
 }
