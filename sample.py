@@ -8,6 +8,8 @@ import torch
 import tiktoken
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.utils.checkpoints import select_checkpoint
+from neuromanifold_gpt.utils.progress import checkpoint_progress
 from neuromanifold_gpt.utils.logging import get_logger
 from model import GPT, GPTConfig
 
@@ -39,9 +41,12 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 # model
 if init_from == 'resume':
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = select_checkpoint(out_dir)
+    if ckpt_path is None:
+        raise FileNotFoundError(f"No checkpoints found in {out_dir}")
     # Weights only load issue in PyTorch 2.6+ with custom configs (trust local source)
-    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+    with checkpoint_progress("Loading checkpoint from disk"):
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
     
     # Check if it's a NeuroManifold checkpoint (has 'config' object) or legacy nanoGPT
     if 'config' in checkpoint and isinstance(checkpoint['config'], (NeuroManifoldConfig, type(None))):
@@ -59,7 +64,8 @@ if init_from == 'resume':
     for k,v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
+    with checkpoint_progress("Loading model weights"):
+        model.load_state_dict(state_dict)
 elif init_from.startswith('gpt2'):
     # init from a given GPT-2 model
     model = GPT.from_pretrained(init_from, dict(dropout=0.0))
