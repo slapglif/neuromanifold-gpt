@@ -264,6 +264,11 @@ class NeuroManifoldConfig:
     # DeepSeek uses std=0.006 instead of typical 0.02 for faster early convergence
     init_std: float = 0.006
 
+    # Initialization strategy selection
+    # Options: 'gpt2' (standard), 'gpt3' (scaled residual), 'mup' (maximal update parametrization)
+    init_strategy: str = "gpt2"  # Default to GPT-2 style for backward compatibility
+    mup_base_width: int = 128  # Base width for muP hyperparameter transfer
+
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""
         # Fast mode enables all fast-path optimizations

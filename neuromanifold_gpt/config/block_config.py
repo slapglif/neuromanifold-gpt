@@ -258,6 +258,7 @@ class NeuroManifoldBlockConfig:
 
     # Optimization flags
     skip_manifold_spectral: bool = False
+    use_mhc_fused: bool = False  # Use Triton-optimized fused mHC operations
 
     # Attention type (registry pattern)
     attention_type: str = "fhn"  # "fhn", "knot", or "kaufmann"
@@ -363,6 +364,7 @@ class NeuroManifoldBlockConfig:
             bias=config.bias,
             block_size=config.block_size,
             skip_manifold_spectral=config.skip_manifold_spectral,
+            use_mhc_fused=getattr(config, 'use_mhc_fused', False),
             attention_type=attention_type,
             fhn=fhn_cfg,
             kan=kan_cfg,
