@@ -15,7 +15,6 @@ This block wires together all components:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
@@ -53,119 +52,9 @@ class SwiGLU(nn.Module):
 class NeuroManifoldBlock(nn.Module):
     """Single transformer block with manifold-spectral-fhn attention."""
 
-    def __init__(
-        self,
-        config: Optional[NeuroManifoldBlockConfig] = None,
-        # Individual parameters for backward compatibility
-        sdr_size: Optional[int] = None,
-        embed_dim: Optional[int] = None,
-        manifold_dim: int = 64,
-        n_eigenvectors: int = 32,
-        n_heads: int = 8,
-        mlp_ratio: float = 4.0,
-        dropout: float = 0.0,
-        # FHN dynamics parameters
-        fhn_threshold: float = 0.5,
-        fhn_tau: float = 12.5,  # Fixed: proper slow-fast separation
-        pulse_width_base: int = 4,
-        n_fhn_steps: int = 2,  # IMEX allows 2 steps (was 5)
-        use_fhn_imex: bool = True,  # Use semi-implicit scheme
-        use_fhn_partitioning: bool = True,  # Enable energy balancing for stability
-        use_fhn_fused: bool = True, # Enable Fused Triton Kernel
-        # Knot attention
-        use_knot_attention: bool = False,
-        # Kaufmann Trifecta Attention
-        use_kaufmann_attention: bool = False,
-        # mHC (Manifold-Constrained Hyper-Connections)
-        use_mhc: bool = True,  # Enable mHC by default for stability
-        use_full_mhc: bool = True,  # Use full multi-stream mHC (vs simplified)
-        mhc_n_streams: int = 4,  # Number of streams for full mHC
-        mhc_residual_weight: float = 0.9,  # Initial identity bias
-        mhc_sinkhorn_iters: int = 10,  # Sinkhorn-Knopp iterations
-        mhc_sinkhorn_tau: float = 0.05,  # Sinkhorn temperature
-        # KAN configuration
-        use_kan: bool = True,  # Use KAN instead of SwiGLU
-        kan_type: str = "faster",  # "faster", "cheby", or "wave"
-        kan_degree: int = 4,  # For ChebyKAN
-        kan_wavelet: str = "mexican_hat", # For WaveKAN
-        use_fast_wavekan: bool = True, # For WaveKAN
-        kan_num_centers: int = 8,  # For FasterKAN RSWAF centers
-        # Speed optimization
-        skip_manifold_spectral: bool = False,  # Skip manifold/spectral for faster training
-        # MLA (Multi-Head Latent Attention) - DeepSeek style
-        use_mla: bool = False,
-        mla_latent_dim: int = 64,
-        mla_rope_dim: int = 32,
-        # MoE (Mixture of Experts) - DeepSeek style
-        use_moe: bool = False,
-        moe_n_experts: int = 8,
-        moe_n_active: int = 2,
-        use_shared_expert: bool = True,
-        use_e7_routing: bool = False,
-    ):
+    def __init__(self, config: NeuroManifoldBlockConfig):
         super().__init__()
-
-        # Store or create config
-        if config is not None:
-            self.config = config
-        else:
-            # Validate that required parameters are provided when not using config
-            if sdr_size is None or embed_dim is None:
-                raise ValueError(
-                    "Either 'config' must be provided, or both 'sdr_size' and 'embed_dim' "
-                    "must be specified as individual parameters."
-                )
-            # Create config from individual parameters for backward compatibility
-            from ..config.block_config import FHNConfig, KANConfig, MHCConfig, MLAConfig, MoEConfig
-            self.config = NeuroManifoldBlockConfig(
-                sdr_size=sdr_size,
-                embed_dim=embed_dim,
-                manifold_dim=manifold_dim,
-                n_eigenvectors=n_eigenvectors,
-                n_heads=n_heads,
-                mlp_ratio=mlp_ratio,
-                dropout=dropout,
-                skip_manifold_spectral=skip_manifold_spectral,
-                use_knot_attention=use_knot_attention,
-                use_kaufmann_attention=use_kaufmann_attention,
-                fhn=FHNConfig(
-                    fhn_threshold=fhn_threshold,
-                    fhn_tau=fhn_tau,
-                    pulse_width_base=pulse_width_base,
-                    n_fhn_steps=n_fhn_steps,
-                    use_fhn_imex=use_fhn_imex,
-                    use_fhn_partitioning=use_fhn_partitioning,
-                    use_fhn_fused=use_fhn_fused,
-                ),
-                kan=KANConfig(
-                    use_kan=use_kan,
-                    kan_type=kan_type,
-                    kan_degree=kan_degree,
-                    kan_wavelet=kan_wavelet,
-                    use_fast_wavekan=use_fast_wavekan,
-                    kan_num_centers=kan_num_centers,
-                ),
-                mhc=MHCConfig(
-                    use_mhc=use_mhc,
-                    use_full_mhc=use_full_mhc,
-                    mhc_n_streams=mhc_n_streams,
-                    mhc_residual_weight=mhc_residual_weight,
-                    mhc_sinkhorn_iters=mhc_sinkhorn_iters,
-                    mhc_sinkhorn_tau=mhc_sinkhorn_tau,
-                ),
-                mla=MLAConfig(
-                    use_mla=use_mla,
-                    mla_latent_dim=mla_latent_dim,
-                    mla_rope_dim=mla_rope_dim,
-                ),
-                moe=MoEConfig(
-                    use_moe=use_moe,
-                    moe_n_experts=moe_n_experts,
-                    moe_n_active=moe_n_active,
-                    use_shared_expert=use_shared_expert,
-                    use_e7_routing=use_e7_routing,
-                ),
-            )
+        self.config = config
 
         # SDR to embedding (skip if dimensions match for efficiency)
         if self.config.sdr_size != self.config.embed_dim:
