@@ -128,6 +128,69 @@ class SystemTwoReasoningMixin:
             }
         return dag_info
 
+    def _get_memory_for_retrieval(self, query_sdr, top_k, threshold=None):
+        """
+        Retrieve from hierarchical or basic memory based on configuration.
+
+        Encapsulates the memory retrieval pattern from gpt.py (lines 354-364).
+
+        Args:
+            query_sdr: Query SDR tensor (sdr_size,) for similarity matching
+            top_k: Number of top results to retrieve
+            threshold: Retrieval threshold (for hierarchical memory, optional)
+
+        Returns:
+            tuple: (contents, similarities, tier) if hierarchical memory enabled,
+                   (contents, similarities) if basic memory
+                - contents: Retrieved content tensors (n_results, content_dim)
+                - similarities: Similarity scores for each result (n_results,)
+                - tier: Memory tier indicator (only for hierarchical)
+        """
+        if self.use_hierarchical_memory:
+            # Use engram_threshold from config if not provided
+            if threshold is None:
+                threshold = self.config.engram_threshold
+            contents, sims, tier = self.hierarchical_memory.retrieve(
+                query_sdr,
+                top_k=top_k,
+                threshold=threshold,
+            )
+            return contents, sims, tier
+        else:
+            # Basic memory retrieval
+            contents, sims = self.memory.retrieve(
+                query_sdr,
+                top_k=top_k,
+            )
+            return contents, sims
+
+    def _store_to_memory(self, sdr, content):
+        """
+        Store SDR and content to hierarchical or basic memory.
+
+        Encapsulates the memory storage pattern from gpt.py (lines 484-489).
+
+        Args:
+            sdr: SDR tensor, either (sdr_size,) for single or (N, sdr_size) for batch
+            content: Content tensor, either (content_dim,) or (N, content_dim)
+        """
+        if self.use_hierarchical_memory:
+            # Hierarchical memory stores one at a time
+            if sdr.dim() == 1:
+                # Single item
+                self.hierarchical_memory.store(sdr, content)
+            else:
+                # Batch - iterate (capped at 100 per step as in gpt.py)
+                for i in range(min(sdr.shape[0], 100)):
+                    self.hierarchical_memory.store(sdr[i], content[i])
+        else:
+            # Basic memory supports batch storage
+            if sdr.dim() == 1:
+                # Add batch dimension for single items
+                sdr = sdr.unsqueeze(0)
+                content = content.unsqueeze(0)
+            self.memory.store_batch(sdr, content)
+
     def imagine_alternatives(
         self,
         idx: torch.Tensor,
