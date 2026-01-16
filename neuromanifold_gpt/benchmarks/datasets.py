@@ -1,7 +1,7 @@
 """
 Benchmark dataset downloader and preprocessor.
 
-Downloads standard NLP benchmark datasets (LAMBADA, HellaSwag, PIQA, WinoGrande)
+Downloads standard NLP benchmark datasets (LAMBADA, HellaSwag, MMLU, PIQA, WinoGrande)
 and caches them locally for evaluation. Follows the pattern from data/shakespeare_char/prepare.py.
 """
 import os
@@ -101,6 +101,55 @@ def download_hellaswag(cache_dir: Optional[str] = None) -> str:
     return output_file
 
 
+def download_mmlu(cache_dir: Optional[str] = None) -> str:
+    """
+    Download the MMLU dataset for multitask language understanding evaluation.
+
+    MMLU is a multiple-choice dataset covering 57 subjects for evaluating
+    multitask accuracy across diverse knowledge domains.
+
+    Args:
+        cache_dir: Optional custom cache directory. Defaults to data/benchmarks/mmlu
+
+    Returns:
+        Path to the downloaded dataset directory
+    """
+    import tarfile
+    import io
+
+    ensure_benchmark_dir()
+
+    if cache_dir is None:
+        cache_dir = os.path.join(BENCHMARK_DIR, 'mmlu')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    # Check if data already exists (look for dev directory)
+    dev_dir = os.path.join(cache_dir, 'dev')
+
+    if not os.path.exists(dev_dir):
+        # Download from original Berkeley repository
+        data_url = 'https://people.eecs.berkeley.edu/~hendrycks/data.tar'
+
+        print(f"Downloading MMLU dataset from {data_url}...")
+        response = requests.get(data_url)
+        response.raise_for_status()
+
+        print("Extracting MMLU dataset...")
+        with tarfile.open(fileobj=io.BytesIO(response.content), mode='r') as tar:
+            tar.extractall(path=cache_dir)
+
+        # Count subjects in dev set
+        if os.path.exists(dev_dir):
+            num_subjects = len([f for f in os.listdir(dev_dir) if f.endswith('.csv')])
+            print(f"MMLU dataset extracted: {num_subjects} subjects")
+        else:
+            print("MMLU dataset extracted")
+    else:
+        print(f"MMLU dataset already cached at {cache_dir}")
+
+    return cache_dir
+
+
 def download_piqa(cache_dir: Optional[str] = None) -> Dict[str, str]:
     """
     Download the PIQA dataset for physical commonsense reasoning evaluation.
@@ -147,6 +196,70 @@ def download_piqa(cache_dir: Optional[str] = None) -> Dict[str, str]:
             print(f"PIQA {file_type} already cached at {output_file}")
 
     return output_paths
+
+
+def download_arc(cache_dir: Optional[str] = None) -> Dict[str, str]:
+    """
+    Download the ARC dataset for question answering evaluation.
+
+    ARC (AI2 Reasoning Challenge) is a multiple-choice question answering dataset
+    with two difficulty levels: Challenge and Easy.
+
+    Args:
+        cache_dir: Optional custom cache directory. Defaults to data/benchmarks/arc
+
+    Returns:
+        Dictionary with paths to 'challenge' and 'easy' dataset files
+    """
+    import zipfile
+    import io
+
+    ensure_benchmark_dir()
+
+    if cache_dir is None:
+        cache_dir = os.path.join(BENCHMARK_DIR, 'arc')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    # ARC test set files
+    challenge_file = os.path.join(cache_dir, 'ARC-Challenge-Test.jsonl')
+    easy_file = os.path.join(cache_dir, 'ARC-Easy-Test.jsonl')
+
+    if not os.path.exists(challenge_file) or not os.path.exists(easy_file):
+        # Download and extract from zip file
+        zip_url = 'https://s3-us-west-2.amazonaws.com/ai2-website/data/ARC-V1-Feb2018.zip'
+
+        print(f"Downloading ARC dataset from {zip_url}...")
+        response = requests.get(zip_url)
+        response.raise_for_status()
+
+        print("Extracting ARC dataset...")
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_file:
+            # Extract Challenge test set
+            challenge_path = 'ARC-V1-Feb2018-2/ARC-Challenge/ARC-Challenge-Test.jsonl'
+            with zip_file.open(challenge_path) as source:
+                with open(challenge_file, 'wb') as target:
+                    target.write(source.read())
+
+            # Extract Easy test set
+            easy_path = 'ARC-V1-Feb2018-2/ARC-Easy/ARC-Easy-Test.jsonl'
+            with zip_file.open(easy_path) as source:
+                with open(easy_file, 'wb') as target:
+                    target.write(source.read())
+
+        # Count examples
+        with open(challenge_file, 'r', encoding='utf-8') as f:
+            challenge_examples = len(f.read().strip().split('\n'))
+        with open(easy_file, 'r', encoding='utf-8') as f:
+            easy_examples = len(f.read().strip().split('\n'))
+
+        print(f"ARC dataset extracted: {challenge_examples} challenge examples, {easy_examples} easy examples")
+    else:
+        print(f"ARC dataset already cached at {cache_dir}")
+
+    return {
+        'challenge': challenge_file,
+        'easy': easy_file,
+    }
 
 
 def download_winogrande(cache_dir: Optional[str] = None, size: str = 'xl') -> Dict[str, str]:

@@ -76,7 +76,7 @@ def compute_cooccurrence_embeddings(
 
     # k must be < min(shape)
     k = min(embedding_dim, vocab_size - 1)
-    print(f"Computing SVD with k={k}...")
+    # print(f"Computing SVD with k={k}...") # REMOVE: Duplicate
 
     # SVD
     U, S, Vh = linalg.svds(log_cooc, k=k)

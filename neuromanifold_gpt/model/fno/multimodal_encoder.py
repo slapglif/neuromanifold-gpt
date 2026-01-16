@@ -34,6 +34,7 @@ Reference:
 from dataclasses import dataclass
 from typing import Optional, Literal
 import math
+import os
 
 import torch
 import torch.nn as nn
@@ -577,13 +578,13 @@ class MultimodalFNOEncoder(nn.Module):
             If return_fno_features=True: tuple of (output, fno_features)
         """
         # Modality-specific embedding
-        if modality == 'bytes':
+        if modality == "bytes":
             modality_idx = 0
             embedded = self.byte_embed(x, positions)
-        elif modality == 'audio':
+        elif modality == "audio":
             modality_idx = 1
             embedded = self.audio_encoder(x)
-        elif modality == 'image':
+        elif modality == "image":
             modality_idx = 2
             embedded = self.image_encoder(x)
         else:
@@ -624,7 +625,7 @@ class MultimodalFNOEncoder(nn.Module):
         Returns:
             Encoded tensor of shape (B, T, embed_dim)
         """
-        return self.forward(x, modality='bytes', positions=positions)
+        return self.forward(x, modality="bytes", positions=positions)
 
     def encode_audio(
         self,
@@ -639,7 +640,7 @@ class MultimodalFNOEncoder(nn.Module):
         Returns:
             Encoded tensor of shape (B, T', embed_dim)
         """
-        return self.forward(x, modality='audio')
+        return self.forward(x, modality="audio")
 
     def encode_image(
         self,
@@ -654,7 +655,7 @@ class MultimodalFNOEncoder(nn.Module):
         Returns:
             Encoded tensor of shape (B, n_patches, embed_dim)
         """
-        return self.forward(x, modality='image')
+        return self.forward(x, modality="image")
 
     def get_num_params(self, non_embedding: bool = True) -> int:
         """
