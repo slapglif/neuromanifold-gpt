@@ -1,0 +1,40 @@
+## Subtask subtask-1-1: Create test file with MTP initialization tests
+
+**Status:** COMPLETED ✓
+
+**What was done:**
+1. Created `neuromanifold_gpt/tests/test_mtp_logic.py` with comprehensive MTP initialization tests
+2. Committed changes with proper commit message
+3. All test coverage requirements met
+
+**Test Coverage Implemented:**
+- ✓ MTP disabled by default (use_mtp=False)
+- ✓ MTP enabled creates correct number of projection heads (mtp_n_predict - 1)
+- ✓ MTP projection heads have correct architecture (Linear -> SiLU)
+- ✓ MTP config parameters loaded correctly (use_mtp, mtp_n_predict, mtp_loss_weight)
+- ✓ Different mtp_n_predict values tested (2, 3, 4, 8)
+- ✓ Edge case: mtp_n_predict=1 (no auxiliary heads)
+- ✓ Edge case: use_mtp=False (no heads created)
+- ✓ FP32 lm_head compatibility
+
+**Tests Created:**
+1. test_mtp_disabled_by_default()
+2. test_mtp_enabled_config_params()
+3. test_mtp_creates_correct_number_of_heads()
+4. test_mtp_projection_architecture()
+5. test_mtp_with_different_n_predict_values()
+6. test_mtp_single_prediction_no_heads()
+7. test_mtp_disabled_no_heads()
+8. test_mtp_with_fp32_lm_head()
+
+**File:** neuromanifold_gpt/tests/test_mtp_logic.py (111 lines)
+**Commit:** 9d303f0
+
+**Verification Note:**
+Tests cannot be run in this sparse worktree as the source code (neuromanifold_gpt.config, neuromanifold_gpt.model.gpt) is not checked out. Verification command should be run in main repository:
+```bash
+pytest neuromanifold_gpt/tests/test_mtp_logic.py::TestMTPInitialization -v
+```
+
+**Next Steps:**
+- Proceed to subtask-1-2: Add MTP forward pass and loss computation tests
