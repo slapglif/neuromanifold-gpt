@@ -45,3 +45,38 @@ class FHNConfig:
     use_fhn_partitioning: bool = True
     use_fhn_fused: bool = False
     use_fhn_parallel: bool = True
+
+
+@dataclass
+class KANConfig:
+    """Configuration for KAN (Kolmogorov-Arnold Network) FFN.
+
+    KAN replaces traditional MLPs with learnable basis functions for better
+    function approximation. Uses RSWAF (Rational + SiLU + Wavelet + Adaptive Fusion)
+    basis for FFN layers, aligning with FHN soliton wave dynamics conceptually.
+
+    Attributes:
+        use_kan: Enable KAN for FFN layers (default True)
+        kan_type: Type of KAN basis ("faster" for RSWAF, "wave" for wavelet, "cheby" for Chebyshev)
+                  Default "faster" uses RSWAF for optimal speed/stability
+        kan_degree: Polynomial degree for ChebyKAN (default 4)
+                    Only used when kan_type="cheby"
+        kan_wavelet: Wavelet type for WaveKAN (default "dog")
+                     "dog" (Difference of Gaussians) is fastest and most stable
+                     Only used when kan_type="wave"
+        use_fast_wavekan: Use efficient WaveKAN with shared scale/translation (default True)
+                          Reduces parameters significantly
+        kan_num_centers: Number of RSWAF basis centers for FasterKAN (default 3)
+                         Trade-off between expressivity and efficiency
+        use_kan_everywhere: Replace ALL nn.Linear layers with KAN (default False)
+                            When False, only FFN uses KAN; projections use Linear
+                            WARNING: Enabling causes parameter explosion
+    """
+
+    use_kan: bool = True
+    kan_type: str = "faster"
+    kan_degree: int = 4
+    kan_wavelet: str = "dog"
+    use_fast_wavekan: bool = True
+    kan_num_centers: int = 3
+    use_kan_everywhere: bool = False
