@@ -251,6 +251,7 @@ class NeuroManifoldBlockConfig:
     mlp_ratio: float = 4.0
     dropout: float = 0.0
     bias: bool = False
+    block_size: int = 1024  # Maximum sequence length for causal mask
 
     # Optimization flags
     skip_manifold_spectral: bool = False
@@ -356,6 +357,7 @@ class NeuroManifoldBlockConfig:
             # mlp_ratio uses default value (not in model config)
             dropout=config.dropout,
             bias=config.bias,
+            block_size=config.block_size,
             skip_manifold_spectral=config.skip_manifold_spectral,
             attention_type=attention_type,
             fhn=fhn_cfg,

@@ -8,6 +8,7 @@ Exports:
     KdVSolver: Dispersive wave solver (Korteweg-de Vries equation)
     HeimburgJacksonSolver: Thermodynamic soliton solver
     SolitonAttention: Attention mechanism combining PDE dynamics
+    MultiHeadSolitonAttention: Multi-head variant with grouped physics
 
 Solitons are stable, self-reinforcing wave packets that propagate without
 changing shape. They are ideal for modeling semantic units in language:

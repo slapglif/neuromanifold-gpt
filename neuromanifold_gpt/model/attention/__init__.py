@@ -42,6 +42,9 @@ def get_attention_class(attention_type: str):
             - "knot": Topological knot-theory based attention
             - "kaufmann": Combined FHN + Knot reaction-diffusion system
             - "mla": DeepSeek-style KV cache compression attention
+            - "soliton": Alias for "fhn" (excitable wave dynamics)
+            - "sdr": Alias for "knot" (SDR memory with knot attention)
+            - "fast-spectral": Alias for "fhn" (uses spectral basis)
 
     Returns:
         Attention class constructor
@@ -49,6 +52,14 @@ def get_attention_class(attention_type: str):
     Raises:
         ValueError: If attention_type is unknown
     """
+    # Handle aliases
+    if attention_type == "soliton":
+        attention_type = "fhn"
+    elif attention_type == "sdr":
+        attention_type = "knot"
+    elif attention_type == "fast-spectral":
+        attention_type = "fhn"
+
     if attention_type == "standard":
         return StandardAttention
     elif attention_type == "fhn":

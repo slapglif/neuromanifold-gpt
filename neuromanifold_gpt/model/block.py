@@ -18,6 +18,7 @@ import torch.nn.functional as F
 
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
+from .attention.standard import StandardAttention
 from .attention.fhn import FHNAttention
 from .attention.knot import KnotAttention
 from .attention.kaufmann import KaufmannAttention
@@ -111,8 +112,25 @@ class NeuroManifoldBlock(nn.Module):
             self.manifold = None
             self.spectral = None
 
-        # Attention: FHN, Knot, or Kaufmann (registry pattern)
-        if self.config.attention_type == "fhn":
+        # Attention: Standard, FHN, Knot, or Kaufmann (registry pattern)
+        # Support aliases for backward compatibility
+        attention_type = self.config.attention_type
+        if attention_type == "soliton":
+            attention_type = "fhn"  # Alias: soliton -> fhn (excitable dynamics)
+        elif attention_type == "sdr":
+            attention_type = "knot"  # Alias: sdr -> knot (SDR memory uses knot attention)
+        elif attention_type == "fast-spectral":
+            attention_type = "fhn"  # Alias: fast-spectral -> fhn (uses spectral basis)
+
+        if attention_type == "standard":
+            # Standard causal self-attention (baseline)
+            self.attention = StandardAttention(
+                embed_dim=self.config.embed_dim,
+                n_heads=self.config.n_heads,
+                dropout=self.config.dropout,
+                block_size=self.config.block_size
+            )
+        elif attention_type == "fhn":
             # FHN attention with semi-implicit IMEX scheme
             self.attention = FHNAttention(
                 embed_dim=self.config.embed_dim,
@@ -126,14 +144,14 @@ class NeuroManifoldBlock(nn.Module):
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
                 use_fused=self.config.fhn.use_fhn_fused
             )
-        elif self.config.attention_type == "knot":
+        elif attention_type == "knot":
             # Knot attention with topological awareness
             self.attention = KnotAttention(
                 embed_dim=self.config.embed_dim,
                 manifold_dim=self.config.manifold_dim,
                 n_heads=self.config.n_heads
             )
-        elif self.config.attention_type == "kaufmann":
+        elif attention_type == "kaufmann":
             # The Full Trifecta Model (FHN + Knot + Manifold)
             self.attention = KaufmannAttention(
                 self.config.embed_dim,
@@ -146,7 +164,10 @@ class NeuroManifoldBlock(nn.Module):
                 use_fused=self.config.fhn.use_fhn_fused
             )
         else:
-            raise ValueError(f"Unknown attention type: {self.config.attention_type}")
+            raise ValueError(
+                f"Unknown attention type: {attention_type} "
+                f"(original: {self.config.attention_type})"
+            )
 
         # FFN: SwiGLU or ChebyKAN or WaveKAN or FasterKAN
         if self.config.kan.use_kan:
@@ -240,15 +261,20 @@ class NeuroManifoldBlock(nn.Module):
             ortho_loss = torch.tensor(0.0, device=x.device)
 
         # Attention + residual with mHC
+        # Determine which parameter to pass based on attention type
+        # KnotAttention and KaufmannAttention need coords
+        # StandardAttention and FHNAttention need spectral_basis
+        attention_param = coords if isinstance(self.attention, (KnotAttention, KaufmannAttention)) else spectral_basis
+
         if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
-            attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
+            attn_out, attn_info = self.attention(self.norm1(branch_input), attention_param)
             # Add residual via H_res + H_post
             x = add_residual_fn(attn_out)
         else:
             # Standard residual connection
-            attn_out, attn_info = self.attention(self.norm1(x), spectral_basis)
+            attn_out, attn_info = self.attention(self.norm1(x), attention_param)
             x = x + attn_out
 
         # MLP + residual with mHC

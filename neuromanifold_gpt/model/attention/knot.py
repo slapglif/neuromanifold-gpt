@@ -72,11 +72,11 @@ class KnotAttention(nn.Module):
         # Simplified: net crossing score
         return crossings[..., 0] - crossings[..., 1]
 
-    def forward(self, x: torch.Tensor, coords: torch.Tensor) -> tuple[torch.Tensor, dict]:
+    def forward(self, x: torch.Tensor, coords: torch.Tensor = None) -> tuple[torch.Tensor, dict]:
         """
         Args:
             x: (B, T, D) token features
-            coords: (B, T, M) manifold coordinates
+            coords: (B, T, M) manifold coordinates (optional, will use input projection if None)
 
         Returns:
             out: (B, T, D)
@@ -86,6 +86,11 @@ class KnotAttention(nn.Module):
         H = self.n_heads
         HD = self.head_dim
 
+        # If coords not provided, create simple projection from input
+        if coords is None:
+            # Use a learned projection to create pseudo-coordinates
+            coords = x[:, :, :self.manifold_dim]  # Use first manifold_dim features as proxy
+
         # Project features
         q = self.to_q(x).view(B, T, H, HD).transpose(1, 2) # (B, H, T, HD)
         k = self.to_k(x).view(B, T, H, HD).transpose(1, 2)
@@ -94,18 +99,18 @@ class KnotAttention(nn.Module):
         # Prepare pairwise inputs for crossing net
         # This is O(T^2), but T is usually block_size (256-1024)
         # Optimization: Could use block-sparse or local window + random long-range
-        
+
         # Expand for pairwise: (B, H, T, T, HD*2 + M*2)
         # We process heads in parallel but share crossing net weights (or could group)
-        # To save memory, we might need to chunk or loop if T is large. 
+        # To save memory, we might need to chunk or loop if T is large.
         # For T=256, T^2=65k, acceptable.
-        
+
         # Let's use the Q and K as the feature proxies for "crossing prediction"
         # q_i: (B, H, T, 1, HD)
         # k_j: (B, H, 1, T, HD)
         q_exp = q.unsqueeze(3).expand(-1, -1, -1, T, -1)
         k_exp = k.unsqueeze(2).expand(-1, -1, T, -1, -1)
-        
+
         # Coords: (B, T, M) -> (B, 1, T, M) -> expand
         c_i = coords.unsqueeze(1).unsqueeze(3).expand(-1, H, -1, T, -1)
         c_j = coords.unsqueeze(1).unsqueeze(2).expand(-1, H, T, -1, -1)
@@ -160,6 +165,7 @@ class KnotAttention(nn.Module):
         writhe = self.compute_writhe(crossings)
 
         info = {
+            'attention_type': 'knot',
             'knot_writhe': writhe,
             'knot_linking_mean': linking.abs().mean()
         }

@@ -309,6 +309,7 @@ class FHNAttention(nn.Module):
         out = self.out_proj(out)
 
         info = {
+            "attention_type": "fhn",
             "pulse_widths": pulse_widths,
             "fhn_state": fhn_state_val,
             "attn_probs": attn_probs,
