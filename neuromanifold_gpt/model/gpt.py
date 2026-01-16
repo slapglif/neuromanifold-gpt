@@ -306,18 +306,17 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 total_retrieved = 0
 
                 for b in range(B):
-                    # Select memory to query
+                    # Memory retrieval - via mixin helper
+                    retrieval_result = self._get_memory_for_retrieval(
+                        query_sdr[b],
+                        top_k=self.memory_retrieval_top_k,
+                        threshold=self.config.engram_threshold,
+                    )
+                    # Unpack results (hierarchical returns 3 values, basic returns 2)
                     if self.use_hierarchical_memory:
-                        contents, sims, tier = self.hierarchical_memory.retrieve(
-                            query_sdr[b],
-                            top_k=self.memory_retrieval_top_k,
-                            threshold=self.config.engram_threshold,
-                        )
+                        contents, sims, tier = retrieval_result
                     else:
-                        contents, sims = self.memory.retrieve(
-                            query_sdr[b],
-                            top_k=self.memory_retrieval_top_k,
-                        )
+                        contents, sims = retrieval_result
 
                     if len(contents) > 0:
                         # Aggregate retrieved content weighted by similarity
@@ -409,26 +408,14 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         if self.mhc_enabled:
             x = self.reduce_stream(x)
 
-        # Hybrid Reasoning (thinking/non-thinking modes)
-        hybrid_info = {}
-        if self.use_hybrid_reasoning:
-            # Get E7 tier if available (set by trainer based on curriculum)
-            e7_tier = getattr(self, '_e7_tier', None)
-            x, hybrid_info = self.hybrid_reasoning(x, e7_tier=e7_tier)
+        # Hybrid Reasoning (thinking/non-thinking modes) - via mixin
+        x, hybrid_info = self._apply_hybrid_reasoning(x)
 
         # Final norm
         x = self.ln_f(x)
 
-        # DAG Planner - System 2 task decomposition
-        dag_info = {}
-        if self.use_dag_planner:
-            dag_output = self.dag_planner(x, deterministic=not self.training)
-            dag_info = {
-                'node_embeddings': dag_output['node_embeddings'],
-                'adj_matrix': dag_output['adj_matrix'],
-                'surface_area': dag_output['surface_area'],
-                'complexities': dag_output['complexities'],
-            }
+        # DAG Planner - System 2 task decomposition - via mixin
+        dag_info = self._apply_dag_planner(x)
 
         # Store final representations as engrams (during training only)
         if self.training:
@@ -436,13 +423,8 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             flat_sdr = sdr.view(-1, sdr.size(-1))
             flat_x = x.view(-1, x.size(-1))
 
-            # Use hierarchical memory if enabled, otherwise use basic memory
-            if self.use_hierarchical_memory:
-                # Batch store to hierarchical memory
-                for i in range(min(flat_sdr.shape[0], 100)):  # Cap at 100 per step
-                    self.hierarchical_memory.store(flat_sdr[i], flat_x[i].detach())
-            else:
-                self.memory.store_batch(flat_sdr, flat_x.detach())
+            # Memory storage - via mixin helper
+            self._store_to_memory(flat_sdr, flat_x.detach())
 
         # Compute logits
         # Use FP32 computation for lm_head if enabled (MiniMax/DeepSeek recipe)
