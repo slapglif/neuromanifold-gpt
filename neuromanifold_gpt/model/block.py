@@ -2,15 +2,26 @@
 """
 NeuroManifold Transformer Block.
 
-Combines: SDR -> Manifold -> Spectral -> FHN Attention -> SwiGLU
+Combines: SDR -> Manifold -> Spectral -> Attention -> SwiGLU
 
 This block wires together all components:
 1. SDR projection to embedding space
 2. ManifoldProjection (SDR -> manifold coordinates + metric)
 3. SpectralDecomposition (coords -> eigenvectors)
-4. FHNAttention (attention via excitable wave dynamics)
+4. Attention layer (selected via attention_type: "fhn", "kaufmann", "knot", "standard", or "mla")
 5. SwiGLU MLP (LLaMA-style gated linear unit)
 6. Pre-norm architecture (layer norms before attention/MLP)
+
+Attention Selection:
+  Use the attention_type parameter in NeuroManifoldConfig to select the attention mechanism:
+  - "fhn": FitzHugh-Nagumo neural dynamics attention (default)
+  - "kaufmann": Combined FHN + Knot reaction-diffusion system
+  - "knot": Topological knot-theory based attention
+  - "standard": Standard causal self-attention
+  - "mla": DeepSeek-style KV cache compression attention
+
+  DEPRECATED: The boolean flags use_kaufmann_attention and use_knot_attention
+  are deprecated. Use attention_type instead.
 """
 import torch
 import torch.nn as nn
@@ -18,7 +29,6 @@ import torch.nn.functional as F
 
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
-from .attention.standard import StandardAttention
 from .attention.fhn import FHNAttention
 from .attention.knot import KnotAttention
 from .attention.kaufmann import KaufmannAttention
@@ -51,15 +61,26 @@ class SwiGLU(nn.Module):
 
 
 class NeuroManifoldBlock(nn.Module):
-    """Single transformer block with manifold-spectral-fhn attention.
+    """Single transformer block with manifold-spectral attention.
 
     This block implements a neuromorphic transformer architecture that combines:
     - Sparse Distributed Representations (SDR) for encoding
     - Manifold-constrained transformations for geometric structure
     - Spectral decomposition for frequency-domain processing
-    - FitzHugh-Nagumo (FHN) dynamics for soliton wave attention
+    - Configurable attention mechanisms via attention_type parameter
     - KAN-based feed-forward networks for better function approximation
     - Multi-stream hyper-connections (mHC) for training stability
+
+    Attention Selection:
+      The attention mechanism is configured via the attention_type parameter:
+      - "fhn": FitzHugh-Nagumo neural dynamics (default)
+      - "kaufmann": Combined FHN + Knot reaction-diffusion system
+      - "knot": Topological knot-theory based attention
+      - "standard": Standard causal self-attention
+      - "mla": DeepSeek-style KV cache compression
+
+      DEPRECATED: use_kaufmann_attention and use_knot_attention boolean flags
+      are deprecated. Use attention_type instead.
 
     Configuration is managed through a structured NeuroManifoldBlockConfig object
     that composes five specialized sub-configs:
@@ -89,6 +110,7 @@ class NeuroManifoldBlock(nn.Module):
         ...     sdr_size=2048,
         ...     embed_dim=384,
         ...     n_heads=8,
+        ...     attention_type="fhn",
         ... )
         >>> block = NeuroManifoldBlock(config)
         >>> output, info = block(sdr_input)  # (B, T, sdr_size) -> (B, T, embed_dim)
@@ -105,33 +127,29 @@ class NeuroManifoldBlock(nn.Module):
             self.sdr_proj = nn.Identity()  # No projection needed in dense mode
 
         # Manifold + Spectral (skip if requested for speed)
-        if not self.config.skip_manifold_spectral:
+        # NOTE: KaufmannAttention and KnotAttention require manifold coords, so we cannot skip
+        skip_manifold = self.config.skip_manifold_spectral and not self.config.use_kaufmann_attention and not self.config.use_knot_attention
+        if not skip_manifold:
             self.manifold = ManifoldProjection(self.config.sdr_size, self.config.manifold_dim)
             self.spectral = SpectralDecomposition(self.config.manifold_dim, self.config.n_eigenvectors)
         else:
             self.manifold = None
             self.spectral = None
 
-        # Attention: Standard, FHN, Knot, or Kaufmann (registry pattern)
-        # Support aliases for backward compatibility
-        attention_type = self.config.attention_type
-        if attention_type == "soliton":
-            attention_type = "fhn"  # Alias: soliton -> fhn (excitable dynamics)
-        elif attention_type == "sdr":
-            attention_type = "knot"  # Alias: sdr -> knot (SDR memory uses knot attention)
-        elif attention_type == "fast-spectral":
-            attention_type = "fhn"  # Alias: fast-spectral -> fhn (uses spectral basis)
-
-        if attention_type == "standard":
-            # Standard causal self-attention (baseline)
-            self.attention = StandardAttention(
-                embed_dim=self.config.embed_dim,
-                n_heads=self.config.n_heads,
-                dropout=self.config.dropout,
-                block_size=self.config.block_size
+        # FHN attention (with semi-implicit IMEX scheme)
+        if self.config.use_kaufmann_attention:
+            # The Full Trifecta Model
+            self.attention = KaufmannAttention(
+                self.config.embed_dim,
+                self.config.n_heads,
+                manifold_dim=self.config.manifold_dim,
+                fhn_threshold=self.config.fhn.fhn_threshold,
+                fhn_tau=self.config.fhn.fhn_tau,
+                use_imex=self.config.fhn.use_fhn_imex,
+                use_partitioning=self.config.fhn.use_fhn_partitioning,
+                use_fused=self.config.fhn.use_fhn_fused
             )
-        elif attention_type == "fhn":
-            # FHN attention with semi-implicit IMEX scheme
+        else:
             self.attention = FHNAttention(
                 embed_dim=self.config.embed_dim,
                 n_heads=self.config.n_heads,
@@ -144,30 +162,16 @@ class NeuroManifoldBlock(nn.Module):
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
                 use_fused=self.config.fhn.use_fhn_fused
             )
-        elif attention_type == "knot":
-            # Knot attention with topological awareness
-            self.attention = KnotAttention(
+
+        # Knot attention (optional)
+        if self.config.use_knot_attention and not self.config.use_kaufmann_attention:
+            self.knot_attention = KnotAttention(
                 embed_dim=self.config.embed_dim,
                 manifold_dim=self.config.manifold_dim,
                 n_heads=self.config.n_heads
             )
-        elif attention_type == "kaufmann":
-            # The Full Trifecta Model (FHN + Knot + Manifold)
-            self.attention = KaufmannAttention(
-                self.config.embed_dim,
-                self.config.n_heads,
-                manifold_dim=self.config.manifold_dim,
-                fhn_threshold=self.config.fhn.fhn_threshold,
-                fhn_tau=self.config.fhn.fhn_tau,
-                use_imex=self.config.fhn.use_fhn_imex,
-                use_partitioning=self.config.fhn.use_fhn_partitioning,
-                use_fused=self.config.fhn.use_fhn_fused
-            )
-        else:
-            raise ValueError(
-                f"Unknown attention type: {attention_type} "
-                f"(original: {self.config.attention_type})"
-            )
+            # Gating for combining FHN and Knot attention
+            self.attn_gate = nn.Linear(self.config.embed_dim, 2)
 
         # FFN: SwiGLU or ChebyKAN or WaveKAN or FasterKAN
         if self.config.kan.use_kan:
@@ -249,7 +253,9 @@ class NeuroManifoldBlock(nn.Module):
         x = self.sdr_proj(sdr)
 
         # Manifold projection and spectral decomposition (skip if requested for speed)
-        if not self.config.skip_manifold_spectral:
+        # NOTE: KaufmannAttention and KnotAttention require manifold coords, so we cannot skip
+        skip_manifold = self.config.skip_manifold_spectral and not self.config.use_kaufmann_attention and not self.config.use_knot_attention
+        if not skip_manifold:
             coords, metric = self.manifold(sdr)
             spectral_basis, spectral_freqs, ortho_loss = self.spectral(coords, metric)
         else:
@@ -260,21 +266,39 @@ class NeuroManifoldBlock(nn.Module):
             spectral_freqs = None
             ortho_loss = torch.tensor(0.0, device=x.device)
 
-        # Attention + residual with mHC
-        # Determine which parameter to pass based on attention type
-        # KnotAttention and KaufmannAttention need coords
-        # StandardAttention and FHNAttention need spectral_basis
-        attention_param = coords if isinstance(self.attention, (KnotAttention, KaufmannAttention)) else spectral_basis
-
+        # FHN attention + residual with mHC
         if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
-            attn_out, attn_info = self.attention(self.norm1(branch_input), attention_param)
+            # KaufmannAttention needs coords, others only need spectral_basis
+            if self.config.use_kaufmann_attention:
+                attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis, coords)
+            else:
+                attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
+
+            # Knot attention (if enabled)
+            if self.config.use_knot_attention:
+                knot_out, knot_info = self.knot_attention(self.norm1(branch_input), coords)
+                attn_info.update(knot_info)
+                gate = F.softmax(self.attn_gate(branch_input), dim=-1)
+                attn_out = gate[..., 0:1] * attn_out + gate[..., 1:2] * knot_out
+
             # Add residual via H_res + H_post
             x = add_residual_fn(attn_out)
         else:
             # Standard residual connection
-            attn_out, attn_info = self.attention(self.norm1(x), attention_param)
+            # KaufmannAttention needs coords, others only need spectral_basis
+            if self.config.use_kaufmann_attention:
+                attn_out, attn_info = self.attention(self.norm1(x), spectral_basis, coords)
+            else:
+                attn_out, attn_info = self.attention(self.norm1(x), spectral_basis)
+
+            if self.config.use_knot_attention:
+                knot_out, knot_info = self.knot_attention(self.norm1(x), coords)
+                attn_info.update(knot_info)
+                gate = F.softmax(self.attn_gate(x), dim=-1)
+                attn_out = gate[..., 0:1] * attn_out + gate[..., 1:2] * knot_out
+
             x = x + attn_out
 
         # MLP + residual with mHC

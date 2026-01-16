@@ -1,6 +1,18 @@
 # neuromanifold_gpt/model/attention/__init__.py
 """Attention mechanisms for NeuroManifoldGPT.
 
+This module provides a registry-based attention selection system. Use the
+`attention_type` parameter in NeuroManifoldConfig to select the mechanism:
+
+  - "standard": Standard causal self-attention (baseline)
+  - "fhn": FitzHugh-Nagumo neural dynamics attention (default)
+  - "knot": Topological knot-theory based attention
+  - "kaufmann": Combined FHN + Knot reaction-diffusion system
+  - "mla": DeepSeek-style KV cache compression attention
+
+  DEPRECATED: Boolean flags use_kaufmann_attention and use_knot_attention
+  are deprecated. Use attention_type instead.
+
 Exports:
     StandardAttention: Standard causal self-attention (baseline)
     FHNAttention: FitzHugh-Nagumo neural dynamics attention
@@ -8,6 +20,7 @@ Exports:
     KnotAttention: Topological knot-theory based attention
     KaufmannAttention: Combined FHN + Knot reaction-diffusion system
     RMSNorm: Root Mean Square Layer Normalization
+    get_attention_class: Registry function for attention type selection
 
 The attention mechanisms implement biologically-inspired neural dynamics
 rather than standard softmax attention, enabling wave-like information
