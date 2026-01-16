@@ -154,6 +154,50 @@ class FHNDynamics(nn.Module):
 class FHNAttention(nn.Module):
     """
     Attention via FHN excitable wave propagation.
+
+    Implements biologically-inspired attention using FitzHugh-Nagumo (FHN)
+    dynamics to modulate attention patterns. The model simulates excitable
+    wave propagation in neural media, creating soliton-like activation patterns.
+
+    Memory-Efficient Chunked Processing:
+    For long sequences (T > chunk_size), this implementation automatically uses
+    chunked processing to reduce memory from O(T²) to O(chunk_size²). This
+    enables training on sequences up to 8192+ tokens with reduced memory footprint.
+
+    Three Execution Paths:
+    1. Flash Attention Path (n_fhn_steps=0, no ALiBi):
+       - Uses PyTorch's optimized Flash Attention kernel
+       - Fastest execution, lowest memory usage
+       - No FHN modulation applied
+
+    2. Chunked FHN Path (T > chunk_size with n_fhn_steps > 0):
+       - Processes sequence in chunks to reduce memory
+       - Applies FHN modulation at chunk granularity
+       - Maintains causality across chunk boundaries
+       - Memory: O(chunk_size²) instead of O(T²)
+       - Recommended for sequences longer than 2048 tokens
+
+    3. Standard FHN Path (T <= chunk_size with n_fhn_steps > 0 or ALiBi enabled):
+       - Full attention matrix with FHN modulation
+       - Best for short sequences (T < 2048)
+       - Supports ALiBi position bias
+
+    Usage Examples:
+        # Default: Flash Attention (no FHN modulation)
+        attn = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=0)
+
+        # FHN modulation with automatic chunking for long sequences
+        attn = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, chunk_size=512)
+
+        # Smaller chunks for memory-constrained GPUs
+        attn = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, chunk_size=256)
+
+    Configuration Guidelines:
+        - chunk_size=512: Good balance for most GPUs (4096+ token sequences)
+        - chunk_size=256: Use with limited GPU memory (8GB or less)
+        - chunk_size=1024: For high-memory GPUs with very long sequences (8192+)
+        - n_fhn_steps=0: Disable FHN for fastest training (uses Flash Attention)
+        - n_fhn_steps=2: Enable FHN dynamics (default, biologically-inspired)
     """
 
     def __init__(
