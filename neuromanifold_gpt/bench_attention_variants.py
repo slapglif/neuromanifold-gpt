@@ -285,7 +285,7 @@ def main():
         ).to(device)
         parallel_scan_attn = ParallelScanAttention(embed_dim, n_heads).to(device)
         mla_attn = MultiHeadLatentAttention(
-            embed_dim, n_heads, latent_dim=embed_dim // 8
+            embed_dim, n_heads, latent_dim=embed_dim // 8, rope_dim=8
         ).to(device)
 
         # Count parameters
