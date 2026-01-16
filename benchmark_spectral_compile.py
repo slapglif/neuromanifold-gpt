@@ -2,8 +2,9 @@
 """
 Benchmark SpectralDecomposition with torch.compile optimization.
 
-Measures the performance improvement from using torch.compile on the
-spectral decomposition forward pass by comparing compiled vs uncompiled versions.
+Measures the performance improvement from using torch.compile on the full
+spectral decomposition module, including the spectral_proj layers for
+end-to-end kernel fusion.
 """
 
 import time
@@ -11,7 +12,7 @@ import torch
 import torch.nn as nn
 from contextlib import nullcontext
 
-from neuromanifold_gpt.model.spectral import SpectralDecomposition, _spectral_decomposition_forward
+from neuromanifold_gpt.model.spectral import SpectralDecomposition, _spectral_forward
 
 
 def benchmark_spectral_decomposition(
@@ -25,7 +26,7 @@ def benchmark_spectral_decomposition(
     n_iters: int = 100,
     warmup: int = 10,
 ):
-    """Benchmark SpectralDecomposition forward and backward pass."""
+    """Benchmark SpectralDecomposition forward and backward pass with full module compilation."""
 
     # Create spectral decomposition module
     spectral = SpectralDecomposition(
@@ -35,12 +36,12 @@ def benchmark_spectral_decomposition(
         ortho_weight=0.01,
     )
 
-    # Override with compiled or uncompiled version
+    # Override with uncompiled version for baseline comparison
     if not use_compile:
-        # Replace with uncompiled version for baseline
+        # Replace with uncompiled version to measure baseline performance
         import neuromanifold_gpt.model.spectral as spectral_module
-        original_fn = spectral_module.spectral_decomposition_forward
-        spectral_module.spectral_decomposition_forward = _spectral_decomposition_forward
+        original_fn = spectral_module.spectral_forward
+        spectral_module.spectral_forward = _spectral_forward
 
     spectral.to(device)
     spectral.train()
@@ -92,7 +93,7 @@ def benchmark_spectral_decomposition(
 
     # Restore original function if we changed it
     if not use_compile:
-        spectral_module.spectral_decomposition_forward = original_fn
+        spectral_module.spectral_forward = original_fn
 
     return forward_time, backward_time
 
@@ -210,14 +211,15 @@ def main():
             torch.cuda.empty_cache()
 
     print("=" * 80)
-    print("Benchmark complete!")
+    print("Benchmark complete")
     print()
     print("Summary:")
     print("-" * 80)
-    print("torch.compile successfully optimizes the SpectralDecomposition forward pass")
-    print("by fusing operations (Linear layers, L2 norm, bmm for ortho loss).")
+    print("torch.compile successfully optimizes the full SpectralDecomposition module")
+    print("by fusing the spectral_proj layers (Linear -> SiLU -> Linear) with")
+    print("subsequent operations (L2 norm, bmm for ortho loss).")
     print()
-    print("Expected improvement: 10-30% speedup from kernel fusion")
+    print("Expected improvement: 15-40% speedup from end-to-end kernel fusion")
     print("Actual results documented above.")
     print("=" * 80)
 

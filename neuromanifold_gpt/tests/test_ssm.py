@@ -180,9 +180,10 @@ def test_diagonal_hippo_learnable():
 # ============================================================================
 
 
-def test_selective_scan_output_shape():
-    """SelectiveScan output should match input dimensions."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_output_shape(scan_class):
+    """SelectiveScan/ParallelSelectiveScan output should match input dimensions."""
+    ssm = scan_class(embed_dim=64, state_dim=16, use_hippo_init=False)
     x = torch.randn(2, 32, 64)  # (batch, seq_len, embed_dim)
 
     y = ssm(x)
@@ -190,9 +191,10 @@ def test_selective_scan_output_shape():
     assert y.shape == x.shape
 
 
-def test_selective_scan_batch_independence():
-    """SelectiveScan should process batches independently."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_batch_independence(scan_class):
+    """SelectiveScan/ParallelSelectiveScan should process batches independently."""
+    ssm = scan_class(embed_dim=64, state_dim=16, use_hippo_init=False)
 
     x1 = torch.randn(1, 16, 64)
     x2 = torch.randn(1, 16, 64)
@@ -206,9 +208,10 @@ def test_selective_scan_batch_independence():
     assert torch.allclose(y2, y_combined[1:2], atol=1e-5)
 
 
-def test_selective_scan_step_shape():
-    """SelectiveScan step should output correct shapes."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_step_shape(scan_class):
+    """SelectiveScan/ParallelSelectiveScan step should output correct shapes."""
+    ssm = scan_class(embed_dim=64, state_dim=16, use_hippo_init=False)
     x = torch.randn(2, 64)  # (batch, embed_dim) - single step
 
     state = ssm.init_state(2, x.device, x.dtype)
@@ -218,18 +221,20 @@ def test_selective_scan_step_shape():
     assert new_state.shape == (2, 64, 16)  # (batch, embed_dim, state_dim)
 
 
-def test_selective_scan_state_init():
-    """SelectiveScan init_state should return zeros."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_state_init(scan_class):
+    """SelectiveScan/ParallelSelectiveScan init_state should return zeros."""
+    ssm = scan_class(embed_dim=64, state_dim=16)
     state = ssm.init_state(4, torch.device("cpu"), torch.float32)
 
     assert state.shape == (4, 64, 16)
     assert (state == 0).all()
 
 
-def test_selective_scan_no_nan_without_hippo():
-    """SelectiveScan without HiPPO init should not produce NaN."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_no_nan_without_hippo(scan_class):
+    """SelectiveScan/ParallelSelectiveScan without HiPPO init should not produce NaN."""
+    ssm = scan_class(embed_dim=64, state_dim=16, use_hippo_init=False)
     x = torch.randn(2, 32, 64)
 
     y = ssm(x)
@@ -238,19 +243,21 @@ def test_selective_scan_no_nan_without_hippo():
     assert not torch.isinf(y).any()
 
 
-def test_selective_scan_different_state_dims():
-    """SelectiveScan should work with different state dimensions."""
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_different_state_dims(scan_class):
+    """SelectiveScan/ParallelSelectiveScan should work with different state dimensions."""
     for state_dim in [8, 16, 32]:
-        ssm = SelectiveScan(embed_dim=64, state_dim=state_dim, use_hippo_init=False)
+        ssm = scan_class(embed_dim=64, state_dim=state_dim, use_hippo_init=False)
         x = torch.randn(2, 16, 64)
         y = ssm(x)
 
-        assert y.shape == x.shape, f"Failed for state_dim={state_dim}"
+        assert y.shape == x.shape, f"Failed for {scan_class.__name__} with state_dim={state_dim}"
 
 
-def test_selective_scan_autoregressive_consistency():
-    """SelectiveScan full forward and step-by-step should produce similar results."""
-    ssm = SelectiveScan(embed_dim=32, state_dim=8, use_hippo_init=False)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_autoregressive_consistency(scan_class):
+    """SelectiveScan/ParallelSelectiveScan full forward and step-by-step should produce similar results."""
+    ssm = scan_class(embed_dim=32, state_dim=8, use_hippo_init=False)
     seq_len = 8
     x = torch.randn(1, seq_len, 32)
 
@@ -269,18 +276,20 @@ def test_selective_scan_autoregressive_consistency():
     assert torch.allclose(y_full, y_step, atol=1e-4)
 
 
-def test_selective_scan_dt_rank_auto():
-    """SelectiveScan should auto-compute dt_rank correctly."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16, dt_rank="auto")
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_dt_rank_auto(scan_class):
+    """SelectiveScan/ParallelSelectiveScan should auto-compute dt_rank correctly."""
+    ssm = scan_class(embed_dim=64, state_dim=16, dt_rank="auto")
 
     # Auto sets to ceil(embed_dim / 16)
     expected_dt_rank = max(1, (64 + 15) // 16)  # ceil(64/16) = 4
     assert ssm.dt_rank == expected_dt_rank
 
 
-def test_selective_scan_dt_rank_explicit():
-    """SelectiveScan should accept explicit dt_rank."""
-    ssm = SelectiveScan(embed_dim=64, state_dim=16, dt_rank=8)
+@pytest.mark.parametrize("scan_class", [SelectiveScan, ParallelSelectiveScan])
+def test_selective_scan_dt_rank_explicit(scan_class):
+    """SelectiveScan/ParallelSelectiveScan should accept explicit dt_rank."""
+    ssm = scan_class(embed_dim=64, state_dim=16, dt_rank=8)
 
     assert ssm.dt_rank == 8
 
@@ -316,9 +325,10 @@ def test_parallel_selective_scan_no_nan():
 # ============================================================================
 
 
-def test_mamba_block_output_shape():
-    """MambaBlock output should match input dimensions."""
-    block = MambaBlock(embed_dim=384, state_dim=64, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_output_shape(use_parallel_scan):
+    """MambaBlock output should match input dimensions (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=384, state_dim=64, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(2, 32, 384)
 
     y = block(x)
@@ -326,9 +336,10 @@ def test_mamba_block_output_shape():
     assert y.shape == x.shape
 
 
-def test_mamba_block_residual_connection():
-    """MambaBlock should include residual connection."""
-    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_residual_connection(use_parallel_scan):
+    """MambaBlock should include residual connection (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(2, 16, 128)
 
     y = block(x)
@@ -348,19 +359,21 @@ def test_mamba_block_expand_factor():
     assert block_4x.inner_dim == 512
 
 
-def test_mamba_block_conv_kernel_size():
-    """MambaBlock should support different conv kernel sizes."""
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_conv_kernel_size(use_parallel_scan):
+    """MambaBlock should support different conv kernel sizes (both sequential and parallel)."""
     for kernel_size in [2, 4, 8]:
-        block = MambaBlock(embed_dim=128, conv_kernel_size=kernel_size, use_hippo_init=False)
+        block = MambaBlock(embed_dim=128, conv_kernel_size=kernel_size, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
         x = torch.randn(1, 32, 128)
         y = block(x)
 
         assert y.shape == x.shape
 
 
-def test_mamba_block_step_shape():
-    """MambaBlock step should output correct shapes."""
-    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_step_shape(use_parallel_scan):
+    """MambaBlock step should output correct shapes (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(2, 128)  # Single token per batch
 
     ssm_state, conv_state = block.init_state(2, x.device, x.dtype)
@@ -381,9 +394,10 @@ def test_mamba_block_init_state():
     assert conv_state.shape == (4, block.inner_dim, 3)  # kernel_size - 1
 
 
-def test_mamba_block_autoregressive_generation():
-    """MambaBlock step-by-step should work for autoregressive generation."""
-    block = MambaBlock(embed_dim=64, state_dim=8, conv_kernel_size=4, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_autoregressive_generation(use_parallel_scan):
+    """MambaBlock step-by-step should work for autoregressive generation (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=64, state_dim=8, conv_kernel_size=4, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     seq_len = 10
     batch_size = 2
 
@@ -399,9 +413,10 @@ def test_mamba_block_autoregressive_generation():
     assert y.shape == (batch_size, seq_len, 64)
 
 
-def test_mamba_block_dropout():
-    """MambaBlock with dropout should differ in train/eval mode."""
-    block = MambaBlock(embed_dim=128, dropout=0.5, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_dropout(use_parallel_scan):
+    """MambaBlock with dropout should differ in train/eval mode (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=128, dropout=0.5, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(4, 32, 128)
 
     block.train()
@@ -423,9 +438,10 @@ def test_mamba_block_normalization():
     assert not hasattr(block_no_norm, "norm") or not block_no_norm.use_norm
 
 
-def test_mamba_block_gradient_flow():
-    """MambaBlock should allow gradients to flow through."""
-    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_mamba_block_gradient_flow(use_parallel_scan):
+    """MambaBlock should allow gradients to flow through (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(2, 16, 128, requires_grad=True)
 
     y = block(x)
@@ -481,9 +497,10 @@ def test_mamba_residual_block_has_mamba():
 # ============================================================================
 
 
-def test_bidirectional_mamba_output_shape():
-    """BidirectionalMamba output should match input dimensions."""
-    block = BidirectionalMamba(embed_dim=256, state_dim=32, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_bidirectional_mamba_output_shape(use_parallel_scan):
+    """BidirectionalMamba output should match input dimensions (both sequential and parallel)."""
+    block = BidirectionalMamba(embed_dim=256, state_dim=32, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(2, 32, 256)
 
     y = block(x)
@@ -491,10 +508,11 @@ def test_bidirectional_mamba_output_shape():
     assert y.shape == x.shape
 
 
-def test_bidirectional_mamba_merge_modes():
-    """BidirectionalMamba should support all merge modes."""
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_bidirectional_mamba_merge_modes(use_parallel_scan):
+    """BidirectionalMamba should support all merge modes (both sequential and parallel)."""
     for merge_mode in ["concat", "sum", "gate"]:
-        block = BidirectionalMamba(embed_dim=128, merge_mode=merge_mode, use_hippo_init=False)
+        block = BidirectionalMamba(embed_dim=128, merge_mode=merge_mode, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
         x = torch.randn(2, 16, 128)
         y = block(x)
 
@@ -517,9 +535,10 @@ def test_bidirectional_mamba_gate_has_gate():
     assert hasattr(block, "gate")
 
 
-def test_bidirectional_mamba_bidirectional_context():
-    """BidirectionalMamba should capture both forward and backward context."""
-    block = BidirectionalMamba(embed_dim=64, merge_mode="concat", use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_bidirectional_mamba_bidirectional_context(use_parallel_scan):
+    """BidirectionalMamba should capture both forward and backward context (both sequential and parallel)."""
+    block = BidirectionalMamba(embed_dim=64, merge_mode="concat", use_hippo_init=False, use_parallel_scan=use_parallel_scan)
 
     # Create input where first and last positions have distinct patterns
     x = torch.zeros(1, 10, 64)
@@ -593,9 +612,10 @@ def test_ssm_config_all_fields():
 # ============================================================================
 
 
-def test_ssm_components_with_tiny_input():
-    """SSM components should handle very short sequences."""
-    block = MambaBlock(embed_dim=64, state_dim=8, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_ssm_components_with_tiny_input(use_parallel_scan):
+    """SSM components should handle very short sequences (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=64, state_dim=8, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(1, 1, 64)  # Single token
 
     y = block(x)
@@ -604,9 +624,10 @@ def test_ssm_components_with_tiny_input():
     assert not torch.isnan(y).any()
 
 
-def test_ssm_components_with_long_sequence():
-    """SSM components should handle long sequences efficiently."""
-    block = MambaBlock(embed_dim=64, state_dim=8, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_ssm_components_with_long_sequence(use_parallel_scan):
+    """SSM components should handle long sequences efficiently (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=64, state_dim=8, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     x = torch.randn(1, 512, 64)  # Long sequence
 
     y = block(x)
@@ -615,9 +636,10 @@ def test_ssm_components_with_long_sequence():
     assert not torch.isnan(y).any()
 
 
-def test_ssm_numerical_stability():
-    """SSM components should be numerically stable."""
-    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_ssm_numerical_stability(use_parallel_scan):
+    """SSM components should be numerically stable (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=128, state_dim=16, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
 
     # Test with various input scales
     for scale in [0.01, 1.0, 10.0]:
@@ -628,9 +650,10 @@ def test_ssm_numerical_stability():
         assert not torch.isinf(y).any(), f"Inf detected at scale {scale}"
 
 
-def test_ssm_deterministic():
-    """SSM components should be deterministic in eval mode."""
-    block = MambaBlock(embed_dim=128, state_dim=16, dropout=0.0, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_ssm_deterministic(use_parallel_scan):
+    """SSM components should be deterministic in eval mode (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=128, state_dim=16, dropout=0.0, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
     block.eval()
 
     x = torch.randn(2, 32, 128)
@@ -641,9 +664,10 @@ def test_ssm_deterministic():
     assert torch.allclose(y1, y2)
 
 
-def test_ssm_different_batch_sizes():
-    """SSM components should handle different batch sizes."""
-    block = MambaBlock(embed_dim=64, state_dim=8, use_hippo_init=False)
+@pytest.mark.parametrize("use_parallel_scan", [False, True])
+def test_ssm_different_batch_sizes(use_parallel_scan):
+    """SSM components should handle different batch sizes (both sequential and parallel)."""
+    block = MambaBlock(embed_dim=64, state_dim=8, use_hippo_init=False, use_parallel_scan=use_parallel_scan)
 
     for batch_size in [1, 2, 4, 8]:
         x = torch.randn(batch_size, 16, 64)

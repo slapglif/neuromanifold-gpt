@@ -16,9 +16,9 @@ Usage:
 
 import os
 import sys
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Union
 from loguru import logger as loguru_logger
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.theme import Theme
 
 
@@ -157,7 +157,7 @@ class RichLogger:
         self._logger = self._logger.bind(**kwargs)
         return self
 
-    def table(self, renderable: Any) -> None:
+    def table(self, renderable: RenderableType) -> None:
         """
         Print a Rich renderable object (e.g., Table, Panel, etc.).
 

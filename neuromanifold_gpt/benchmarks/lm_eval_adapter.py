@@ -28,7 +28,7 @@ References:
 """
 
 import os
-from typing import List, Dict, Tuple, Union, Optional, Any
+from typing import List, Dict, Tuple, Union, Optional, Any, Protocol
 import torch
 import torch.nn.functional as F
 import tiktoken
@@ -43,6 +43,18 @@ except ImportError:
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+
+
+class Tokenizer(Protocol):
+    """Protocol for tokenizer objects used in lm-evaluation."""
+
+    def encode(self, text: str) -> List[int]:
+        """Encode text to token IDs."""
+        ...
+
+    def decode(self, tokens: List[int]) -> str:
+        """Decode token IDs to text."""
+        ...
 
 
 class NeuroManifoldLM(LM):
@@ -68,7 +80,7 @@ class NeuroManifoldLM(LM):
     def __init__(
         self,
         model: NeuroManifoldGPT,
-        tokenizer: Any,
+        tokenizer: Tokenizer,
         device: str = 'cuda',
         batch_size: int = 1,
         max_length: Optional[int] = None,
@@ -203,7 +215,7 @@ class NeuroManifoldLM(LM):
         if hasattr(self.tokenizer, 'encode'):
             return self.tokenizer.encode(text)
         elif hasattr(self.tokenizer, 'encode_ordinary'):
-            return self.tokenizer.encode_ordinary(text)
+            return self.tokenizer.encode_ordinary(text)  # type: ignore[no-any-return]
         else:
             raise NotImplementedError("Tokenizer must have encode or encode_ordinary method")
 
@@ -235,7 +247,7 @@ class NeuroManifoldLM(LM):
         with torch.no_grad():
             # NeuroManifoldGPT returns (logits, loss, auxiliary_losses)
             logits, _, _ = self.model(tokens)
-        return logits
+        return logits  # type: ignore[no-any-return]
 
     def _collate(self, inputs: List[Tuple[str, str]]) -> Tuple[torch.Tensor, List[int]]:
         """
@@ -423,7 +435,7 @@ class NeuroManifoldLM(LM):
             x = torch.tensor([tokens], dtype=torch.long, device=self._device)
 
             # Generate tokens
-            generated = []
+            generated: List[int] = []
             for _ in range(max_gen_toks):
                 # Crop to block size if needed
                 x_cond = x if x.size(1) <= self._max_length else x[:, -self._max_length:]
@@ -443,7 +455,7 @@ class NeuroManifoldLM(LM):
 
                 # Append to sequence
                 x = torch.cat([x, next_token], dim=1)
-                generated.append(next_token.item())
+                generated.append(int(next_token.item()))
 
                 # Check stopping conditions
                 decoded = self.tok_decode(generated)

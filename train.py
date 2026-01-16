@@ -51,7 +51,10 @@ from pytorch_lightning.loggers import WandbLogger
 from loguru import logger
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.model.wave_manifold_gpt import WaveManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
+from neuromanifold_gpt.config.loader import load_config
 from model import GPTConfig, GPT
 
 
@@ -59,7 +62,7 @@ from model import GPTConfig, GPT
 # Default Configuration
 # -----------------------------------------------------------------------------
 @dataclass
-class TrainConfig:
+class TrainingConfig:
     """Training configuration with all hyperparameters."""
     # I/O
     out_dir: str = "out-shakespeare-char"
@@ -106,6 +109,23 @@ class TrainConfig:
     use_full_mhc: bool = True
     mhc_n_streams: int = 2
     use_kaufmann_attention: bool = False
+
+    # SSM (Mamba) Configuration
+    use_ssm: bool = False
+    ssm_state_dim: int = 16
+    ssm_conv_kernel: int = 4
+    ssm_expand: int = 2
+
+    # Wave Manifold (NS-WMN) Configuration
+    use_fno_encoder: bool = True
+    fno_modes: int = 32
+    use_mamba_backbone: bool = True
+    mamba_state_dim: int = 16
+    mamba_expand: int = 2
+    use_soliton_mixing: bool = True
+    soliton_type: str = "sine_gordon"
+    use_topological_loss: bool = False
+    use_continuous_head: bool = False
 
     # Speed optimization
     skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
@@ -285,7 +305,7 @@ class NeuroManifoldLitModule(pl.LightningModule):
     def __init__(
         self,
         model_config: NeuroManifoldConfig | GPTConfig,
-        train_config: TrainConfig,
+        train_config: TrainingConfig,
         itos: Optional[Dict[int, str]] = None,
     ):
         super().__init__()
@@ -296,7 +316,10 @@ class NeuroManifoldLitModule(pl.LightningModule):
         self.itos = itos
 
         # Build model
-        if isinstance(model_config, NeuroManifoldConfig):
+        if isinstance(model_config, WaveManifoldConfig):
+            self.model = WaveManifoldGPT(model_config)
+            logger.info("Initialized WaveManifoldGPT (NS-WMN)")
+        elif isinstance(model_config, NeuroManifoldConfig):
             self.model = NeuroManifoldGPT(model_config)
             logger.info("Initialized NeuroManifoldGPT")
         else:
@@ -571,8 +594,11 @@ class MFUCallback(Callback):
 # -----------------------------------------------------------------------------
 # Main Training Function
 # -----------------------------------------------------------------------------
-def train(config: TrainConfig) -> None:
+def train(config: TrainingConfig) -> None:
     """Main training entry point."""
+    # Set matmul precision for Tensor Cores (speed/memory trade-off)
+    torch.set_float32_matmul_precision('medium')
+    
     pl.seed_everything(1337)
 
     # Setup data
@@ -602,7 +628,27 @@ def train(config: TrainConfig) -> None:
         data_module.vocab_size = config.vocab_size
 
     # Build model config
-    if config.model_type == "neuromanifold":
+    if config.model_type == "wave_manifold":
+        model_config = WaveManifoldConfig(
+            vocab_size=data_module.vocab_size,
+            block_size=config.block_size,
+            n_layer=config.n_layer,
+            n_head=config.n_head,
+            n_embd=config.n_embd,
+            dropout=config.dropout,
+            bias=config.bias,
+            # Wave specific
+            use_fno_encoder=config.use_fno_encoder,
+            fno_modes=config.fno_modes,
+            use_mamba_backbone=config.use_mamba_backbone,
+            mamba_state_dim=config.mamba_state_dim,
+            mamba_expand=config.mamba_expand,
+            use_soliton_mixing=config.use_soliton_mixing,
+            soliton_type=config.soliton_type,
+            use_topological_loss=config.use_topological_loss,
+            use_continuous_head=config.use_continuous_head,
+        )
+    elif config.model_type == "neuromanifold":
         model_config = NeuroManifoldConfig(
             vocab_size=data_module.vocab_size,
             block_size=config.block_size,
@@ -636,6 +682,11 @@ def train(config: TrainConfig) -> None:
             mhc_n_streams=config.mhc_n_streams,
             # Attention
             use_kaufmann_attention=config.use_kaufmann_attention,
+            # SSM (Mamba)
+            use_ssm=config.use_ssm,
+            ssm_state_dim=config.ssm_state_dim,
+            ssm_conv_kernel=config.ssm_conv_kernel,
+            ssm_expand=config.ssm_expand,
             # Speed optimization
             skip_manifold_spectral=config.skip_manifold_spectral,
             # Training
@@ -767,40 +818,8 @@ def train(config: TrainConfig) -> None:
 # Entry Point
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Train NeuroManifoldGPT")
-    parser.add_argument("--config", type=str, help="Path to config file")
-
-    # Allow overriding any config value - defaults to None so config file takes precedence
-    for f in TrainConfig.__dataclass_fields__:
-        field_type = TrainConfig.__dataclass_fields__[f].type
-        if field_type == bool:
-            parser.add_argument(f"--{f}", type=lambda x: x.lower() == "true", default=None)
-        elif field_type == int:
-            parser.add_argument(f"--{f}", type=int, default=None)
-        elif field_type == float:
-            parser.add_argument(f"--{f}", type=float, default=None)
-        elif field_type == str:
-            parser.add_argument(f"--{f}", type=str, default=None)
-
-    args = parser.parse_args()
-
-    # Start with defaults
-    config = TrainConfig()
-
-    # Load config file if provided (overrides defaults)
-    if args.config:
-        config_globals = {}
-        exec(open(args.config).read(), config_globals)
-        for k, v in config_globals.items():
-            if hasattr(config, k):
-                setattr(config, k, v)
-
-    # CLI args override config file (only if explicitly provided)
-    for k, v in vars(args).items():
-        if k != "config" and v is not None and hasattr(config, k):
-            setattr(config, k, v)
+    # Load configuration with type-safe CLI overrides
+    config = load_config(TrainingConfig, sys.argv[1:])
 
     # Run training
     train(config)

@@ -33,9 +33,9 @@ class WaveManifoldGPT(nn.Module):
             self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
             self.drop_emb = nn.Dropout(config.dropout)
 
-        # 2. Backbone
+        # 2. Backbone (Pure Wave/Hyena/Mamba - No Hybrid Attention)
         self.blocks = nn.ModuleList([
-            WaveManifoldBlock(config) for _ in range(config.n_layer)
+            WaveManifoldBlock(config, max_seq_len=config.block_size) for _ in range(config.n_layer)
         ])
         self.norm_f = nn.LayerNorm(config.n_embd)
 

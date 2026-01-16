@@ -259,6 +259,135 @@ class TestRuntimeError:
         assert "DAG planner" in exc_info.value.problem
 
 
+class TestCheckpointError:
+    """Test suite for CheckpointError class."""
+
+    def test_checkpoint_error_inherits_from_base(self):
+        """Test that CheckpointError inherits from NeuroManifoldError."""
+        from neuromanifold_gpt.errors import CheckpointError, NeuroManifoldError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            error = CheckpointError(problem="Test")
+
+        assert isinstance(error, NeuroManifoldError)
+        assert isinstance(error, Exception)
+
+    def test_checkpoint_error_with_checkpoint_loading_scenario(self):
+        """Test CheckpointError with typical checkpoint loading scenario."""
+        from neuromanifold_gpt.errors import CheckpointError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            error = CheckpointError(
+                problem="Cannot load checkpoint 'out/ckpt.pt'",
+                cause="Checkpoint file is corrupted or incompatible",
+                recovery="Use a valid checkpoint file or start training from scratch with --init_from=scratch",
+            )
+
+        assert "Cannot load checkpoint" in error.problem
+        assert "corrupted or incompatible" in error.cause
+        assert "--init_from=scratch" in error.recovery
+
+    def test_checkpoint_error_can_be_raised(self):
+        """Test that CheckpointError can be raised and caught."""
+        from neuromanifold_gpt.errors import CheckpointError
+
+        with pytest.raises(CheckpointError) as exc_info:
+            with patch("neuromanifold_gpt.errors.console.print"):
+                raise CheckpointError(
+                    problem="Checkpoint file not found",
+                    cause="File 'out/ckpt.pt' does not exist",
+                    recovery="Check the checkpoint path or start training from scratch",
+                )
+
+        assert "Checkpoint file not found" in exc_info.value.problem
+
+
+class TestDataError:
+    """Test suite for DataError class."""
+
+    def test_data_error_inherits_from_base(self):
+        """Test that DataError inherits from NeuroManifoldError."""
+        from neuromanifold_gpt.errors import DataError, NeuroManifoldError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            error = DataError(problem="Test")
+
+        assert isinstance(error, NeuroManifoldError)
+        assert isinstance(error, Exception)
+
+    def test_data_error_with_data_loading_scenario(self):
+        """Test DataError with typical data loading scenario."""
+        from neuromanifold_gpt.errors import DataError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            error = DataError(
+                problem="Failed to load training data from 'data/train.bin'",
+                cause="Data file is corrupted or has invalid format",
+                recovery="Regenerate the data file using prepare.py or verify the data source",
+            )
+
+        assert "Failed to load training data" in error.problem
+        assert "corrupted or has invalid format" in error.cause
+        assert "prepare.py" in error.recovery
+
+    def test_data_error_can_be_raised(self):
+        """Test that DataError can be raised and caught."""
+        from neuromanifold_gpt.errors import DataError
+
+        with pytest.raises(DataError) as exc_info:
+            with patch("neuromanifold_gpt.errors.console.print"):
+                raise DataError(
+                    problem="Data file not found",
+                    cause="File 'data/train.bin' does not exist",
+                    recovery="Run prepare.py to generate the data file",
+                )
+
+        assert "Data file not found" in exc_info.value.problem
+
+
+class TestMemoryError:
+    """Test suite for MemoryError class."""
+
+    def test_memory_error_inherits_from_base(self):
+        """Test that MemoryError inherits from NeuroManifoldError."""
+        from neuromanifold_gpt.errors import MemoryError, NeuroManifoldError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            error = MemoryError(problem="Test")
+
+        assert isinstance(error, NeuroManifoldError)
+        assert isinstance(error, Exception)
+
+    def test_memory_error_with_gpu_memory_scenario(self):
+        """Test MemoryError with typical GPU memory exhaustion scenario."""
+        from neuromanifold_gpt.errors import MemoryError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            error = MemoryError(
+                problem="GPU memory exhausted during model initialization",
+                cause="Model requires 8GB but only 4GB available on device cuda:0",
+                recovery="Use a smaller model, reduce batch_size, or use gradient_checkpointing=True",
+            )
+
+        assert "GPU memory exhausted" in error.problem
+        assert "8GB" in error.cause
+        assert "gradient_checkpointing=True" in error.recovery
+
+    def test_memory_error_can_be_raised(self):
+        """Test that MemoryError can be raised and caught."""
+        from neuromanifold_gpt.errors import MemoryError
+
+        with pytest.raises(MemoryError) as exc_info:
+            with patch("neuromanifold_gpt.errors.console.print"):
+                raise MemoryError(
+                    problem="KV cache memory overflow",
+                    cause="Sequence length 8192 exceeds maximum cache size of 4096",
+                    recovery="Reduce max_seq_length or increase cache_size in config",
+                )
+
+        assert "KV cache memory overflow" in exc_info.value.problem
+
+
 class TestErrorFormatting:
     """Test suite for error message formatting."""
 
@@ -416,3 +545,63 @@ class TestErrorUsagePatterns:
 
         assert "Imagination" in exc_info.value.problem
         assert "use_imagination=True" in exc_info.value.recovery
+
+    def test_checkpoint_loading_error_pattern(self):
+        """Test typical checkpoint loading error pattern."""
+        from neuromanifold_gpt.errors import CheckpointError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            with pytest.raises(CheckpointError) as exc_info:
+                checkpoint_path = "out/ckpt.pt"
+                # Simulate checkpoint loading failure
+                checkpoint_exists = False
+                if not checkpoint_exists:
+                    raise CheckpointError(
+                        problem=f"Cannot load checkpoint '{checkpoint_path}'",
+                        cause="Checkpoint file does not exist or is corrupted",
+                        recovery="Check the checkpoint path or start training from scratch with --init_from=scratch",
+                    )
+
+        assert "out/ckpt.pt" in exc_info.value.problem
+        assert "does not exist" in exc_info.value.cause
+        assert "--init_from=scratch" in exc_info.value.recovery
+
+    def test_data_loading_error_pattern(self):
+        """Test typical data loading error pattern."""
+        from neuromanifold_gpt.errors import DataError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            with pytest.raises(DataError) as exc_info:
+                data_path = "data/train.bin"
+                # Simulate data loading failure
+                data_format_valid = False
+                if not data_format_valid:
+                    raise DataError(
+                        problem=f"Failed to load training data from '{data_path}'",
+                        cause="Data file has invalid format or is corrupted",
+                        recovery="Regenerate the data file using prepare.py or verify the data source",
+                    )
+
+        assert "data/train.bin" in exc_info.value.problem
+        assert "invalid format" in exc_info.value.cause
+        assert "prepare.py" in exc_info.value.recovery
+
+    def test_oom_error_pattern(self):
+        """Test typical OOM (out of memory) error pattern."""
+        from neuromanifold_gpt.errors import MemoryError
+
+        with patch("neuromanifold_gpt.errors.console.print"):
+            with pytest.raises(MemoryError) as exc_info:
+                available_memory = 4
+                required_memory = 8
+                if required_memory > available_memory:
+                    raise MemoryError(
+                        problem="GPU memory exhausted during model initialization",
+                        cause=f"Model requires {required_memory}GB but only {available_memory}GB available on device cuda:0",
+                        recovery="Use a smaller model, reduce batch_size, or use gradient_checkpointing=True",
+                    )
+
+        assert "GPU memory exhausted" in exc_info.value.problem
+        assert "8GB" in exc_info.value.cause
+        assert "4GB" in exc_info.value.cause
+        assert "gradient_checkpointing=True" in exc_info.value.recovery
