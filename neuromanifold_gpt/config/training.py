@@ -253,3 +253,80 @@ class EvalConfig:
     wandb_log: bool = False
     wandb_project: str = 'neuromanifold-eval'
     wandb_run_name: Optional[str] = None
+
+
+@dataclass
+class BenchConfig:
+    """Configuration for performance benchmarking (bench.py).
+
+    This configuration captures settings for benchmarking model training speed:
+    - Data loading parameters (batch size, dataset)
+    - Model architecture hyperparameters
+    - Optimization settings (learning rate, weight decay, betas)
+    - Hardware settings (device, precision, compilation)
+    - Profiling configuration (PyTorch profiler)
+    - Benchmarking parameters (burn-in, measurement steps)
+
+    Attributes:
+        batch_size: Batch size for benchmarking
+        block_size: Maximum sequence length (context window)
+        bias: Whether to use bias in linear layers
+        real_data: Use real data (openwebtext) vs random synthetic data
+        seed: Random seed for reproducibility
+        device: Device to run on ('cpu', 'cuda', 'cuda:0', etc.)
+        dtype: Precision for benchmarking ('float32', 'bfloat16', or 'float16')
+        compile: Whether to compile model with torch.compile (PyTorch 2.0+)
+        profile: Use PyTorch profiler (True) or simple timing (False)
+        dataset: Dataset name (default 'openwebtext')
+        data_dir: Data directory path (computed from dataset)
+        n_layer: Number of transformer layers
+        n_head: Number of attention heads
+        n_embd: Embedding dimension (must be divisible by n_head)
+        dropout: Dropout probability (0 for determinism in benchmarking)
+        weight_decay: Weight decay for AdamW optimizer
+        learning_rate: Learning rate for optimizer
+        beta1: AdamW beta1 parameter (momentum)
+        beta2: AdamW beta2 parameter (variance)
+        profiler_wait: Profiler wait steps before measurement
+        profiler_warmup: Profiler warmup steps
+        profiler_active: Profiler active measurement steps
+        burnin_steps: Burn-in steps for simple benchmarking
+        benchmark_steps: Measurement steps for simple benchmarking
+    """
+
+    # Data
+    batch_size: int = 12
+    block_size: int = 1024
+    real_data: bool = True
+    dataset: str = 'openwebtext'
+
+    # Model
+    n_layer: int = 12
+    n_head: int = 12
+    n_embd: int = 768
+    dropout: float = 0.0
+    bias: bool = False
+
+    # Optimization
+    learning_rate: float = 1e-4
+    weight_decay: float = 1e-2
+    beta1: float = 0.9
+    beta2: float = 0.95
+
+    # Hardware
+    device: str = 'cuda'
+    dtype: str = 'bfloat16'
+    compile: bool = True
+
+    # Profiling
+    profile: bool = False
+    profiler_wait: int = 5
+    profiler_warmup: int = 5
+    profiler_active: int = 5
+
+    # Benchmarking
+    burnin_steps: int = 10
+    benchmark_steps: int = 20
+
+    # Reproducibility
+    seed: int = 1337
