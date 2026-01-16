@@ -178,3 +178,68 @@ class GPUMemoryMonitor:
             return "CPU"
 
         return torch.cuda.get_device_name(self.device)
+
+    def get_history_stats(self) -> dict:
+        """
+        Calculate min/max/avg statistics from memory history.
+
+        Computes rolling statistics across all recorded memory samples.
+        Useful for profiling memory usage patterns over time.
+
+        Returns:
+            dict: Statistics with keys:
+                - min_allocated_gb: Minimum allocated memory in GB
+                - max_allocated_gb: Maximum allocated memory in GB
+                - avg_allocated_gb: Average allocated memory in GB
+                - min_reserved_gb: Minimum reserved memory in GB
+                - max_reserved_gb: Maximum reserved memory in GB
+                - avg_reserved_gb: Average reserved memory in GB
+                - min_utilization: Minimum memory utilization (0.0-1.0)
+                - max_utilization: Maximum memory utilization (0.0-1.0)
+                - avg_utilization: Average memory utilization (0.0-1.0)
+                - sample_count: Number of samples in history
+
+        Example:
+            >>> monitor = GPUMemoryMonitor()
+            >>> monitor.record_sample()
+            >>> monitor.record_sample()
+            >>> stats = monitor.get_history_stats()
+            >>> print(f"Avg Memory: {stats['avg_allocated_gb']:.2f}GB")
+        """
+        if not self.memory_history:
+            # Return zeros if no history available
+            return {
+                "min_allocated_gb": 0.0,
+                "max_allocated_gb": 0.0,
+                "avg_allocated_gb": 0.0,
+                "min_reserved_gb": 0.0,
+                "max_reserved_gb": 0.0,
+                "avg_reserved_gb": 0.0,
+                "min_utilization": 0.0,
+                "max_utilization": 0.0,
+                "avg_utilization": 0.0,
+                "sample_count": 0,
+            }
+
+        # Convert deque to list for processing
+        history_list = list(self.memory_history)
+        sample_count = len(history_list)
+
+        # Extract individual metric lists
+        allocated_values = [sample['allocated_gb'] for sample in history_list]
+        reserved_values = [sample['reserved_gb'] for sample in history_list]
+        utilization_values = [sample['utilization'] for sample in history_list]
+
+        # Calculate statistics for each metric
+        return {
+            "min_allocated_gb": round(min(allocated_values), 2),
+            "max_allocated_gb": round(max(allocated_values), 2),
+            "avg_allocated_gb": round(sum(allocated_values) / sample_count, 2),
+            "min_reserved_gb": round(min(reserved_values), 2),
+            "max_reserved_gb": round(max(reserved_values), 2),
+            "avg_reserved_gb": round(sum(reserved_values) / sample_count, 2),
+            "min_utilization": round(min(utilization_values), 3),
+            "max_utilization": round(max(utilization_values), 3),
+            "avg_utilization": round(sum(utilization_values) / sample_count, 3),
+            "sample_count": sample_count,
+        }
