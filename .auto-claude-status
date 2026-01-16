@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "031-intelligent-default-configurations",
+  "spec": "033-neuromanifold-attention-benchmarks",
   "state": "building",
   "subtasks": {
-    "completed": 6,
-    "total": 12,
+    "completed": 11,
+    "total": 13,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Tested Default Configurations",
+    "current": "Documentation and Results",
     "id": null,
-    "total": 3
+    "total": 2
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 6,
-    "started_at": "2026-01-15T21:55:59.992426"
+    "number": 12,
+    "started_at": "2026-01-15T21:53:37.855089"
   },
-  "last_update": "2026-01-15T22:06:04.274494"
+  "last_update": "2026-01-15T22:39:49.816195"
 }

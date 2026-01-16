@@ -3,6 +3,9 @@ name = "neuromanifold-gpt"
 version = "0.1.0"
 description = "NeuroManifoldGPT: Soliton-Spectral Attention with SDR Memory"
 requires-python = ">=3.10"
+# NOTE: For reproducible builds with pinned versions, use requirements.txt
+# The >= constraints below provide flexibility for library users
+# See COMPATIBILITY.md for tested configurations and UPGRADE.md for upgrade guidance
 dependencies = [
     "torch>=2.0",
     "einops>=0.7",
@@ -13,6 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# NOTE: For reproducible builds with pinned dev dependencies, use requirements-dev.txt
 dev = ["pytest>=7.0", "pytest-cov", "ruff", "black"]
 
 [build-system]

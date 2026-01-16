@@ -1,5 +1,4 @@
-"""Planning module for System 2 reasoning."""
+"""Planning module."""
+from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
 
-from .dag_planner import ForcedDAGPlanner, DAGExecutor
-
-__all__ = ["ForcedDAGPlanner", "DAGExecutor"]
+__all__ = ["ForcedDAGPlanner"]

@@ -18,9 +18,14 @@ from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
+from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
+from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -117,6 +122,7 @@ class NeuroManifoldGPT(nn.Module):
                 mhc_n_streams=config.mhc_n_streams,
                 mhc_residual_weight=config.mhc_residual_weight,
                 mhc_sinkhorn_iters=getattr(config, 'mhc_sinkhorn_iters', 5),
+                mhc_sinkhorn_tau=getattr(config, 'mhc_sinkhorn_tau', 0.05),
                 # Speed optimization
                 skip_manifold_spectral=config.skip_manifold_spectral,
                 # MLA (Multi-Head Latent Attention) - DeepSeek style
@@ -140,8 +146,8 @@ class NeuroManifoldGPT(nn.Module):
         )
         self.mhc_enabled = config.use_mhc and config.mhc_n_streams > 1
 
-        # Final layer norm
-        self.ln_f = nn.LayerNorm(config.n_embd)
+        # Final layer norm - RMSNorm is ~15% faster than LayerNorm (no mean computation)
+        self.ln_f = RMSNorm(config.n_embd)
 
         # Language model head
         # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
@@ -188,7 +194,6 @@ class NeuroManifoldGPT(nn.Module):
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
         self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
         if self.use_hybrid_reasoning:
-            from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
             self.hybrid_reasoning = HybridReasoningModule(
                 embed_dim=config.n_embd,
                 n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
@@ -205,7 +210,6 @@ class NeuroManifoldGPT(nn.Module):
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
         self.use_dag_planner = getattr(config, 'use_dag_planner', False)
         if self.use_dag_planner:
-            from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
             self.dag_planner = ForcedDAGPlanner(
                 embed_dim=config.n_embd,
                 manifold_dim=config.manifold_dim,
@@ -216,7 +220,6 @@ class NeuroManifoldGPT(nn.Module):
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
         self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
         if self.use_hierarchical_memory:
-            from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
             self.hierarchical_memory = HierarchicalEngramMemory(
                 sdr_size=config.sdr_size,
                 n_active=config.sdr_n_active,
@@ -229,7 +232,6 @@ class NeuroManifoldGPT(nn.Module):
         # ConsistencyImaginationModule - Counterfactual exploration
         self.use_imagination = getattr(config, 'use_imagination', False)
         if self.use_imagination:
-            from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
             self.imagination = ConsistencyImaginationModule(
                 embed_dim=config.n_embd,
                 manifold_dim=config.manifold_dim,
@@ -296,10 +298,11 @@ class NeuroManifoldGPT(nn.Module):
         discrimination_loss = torch.tensor(0.0, device=device)
         contrastive_loss = torch.tensor(0.0, device=device)
         if self.use_sdr:
-            # Semantic folding to SDR with topographic, discrimination, and contrastive losses
-            sdr, sdr_scores, topographic_loss, discrimination_loss, contrastive_loss = self.encoder(
+            # Semantic folding to SDR with topographic and discrimination losses
+            sdr, sdr_scores, topographic_loss, discrimination_loss = self.encoder(
                 tokens
             )
+            contrastive_loss = torch.tensor(0.0, device=tokens.device)
             x = None  # Initial x comes from first block processing SDR
         else:
             # Standard embedding

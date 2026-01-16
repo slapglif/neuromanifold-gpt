@@ -1,20 +1,27 @@
-"""Hierarchical Engram Memory - stub for import compatibility."""
+"""
+Hierarchical Engram Memory - Stub implementation.
 
+This is a placeholder for future L1/L2/L3 tiered memory system.
+Currently not implemented but imported by gpt.py for future use.
+"""
 import torch
 import torch.nn as nn
 
 
 class HierarchicalEngramMemory(nn.Module):
-    """Placeholder for HierarchicalEngramMemory to enable imports.
-
-    This is a stub implementation to allow the package to import successfully.
-    Full implementation will be added in a future task.
     """
+    Stub for HierarchicalEngramMemory.
 
-    def __init__(self, *args, **kwargs):
+    This will be implemented in a future update to provide
+    L1/L2/L3 tiered memory consolidation.
+    """
+    def __init__(self, sdr_size, n_active, content_dim,
+                 l1_capacity=64, l2_capacity=512, l3_capacity=4096):
         super().__init__()
-        pass
+        self.sdr_size = sdr_size
+        self.n_active = n_active
+        self.content_dim = content_dim
 
-    def forward(self, x):
-        """Stub forward pass."""
-        return x
+    def forward(self, sdr, content):
+        """Stub forward pass - returns input unchanged."""
+        return content

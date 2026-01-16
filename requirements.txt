@@ -1,0 +1,14 @@
+# NeuroManifoldGPT Runtime Dependencies
+# Pinned versions for reproducibility and stability
+# See COMPATIBILITY.md for tested configurations
+# See UPGRADE.md for upgrade instructions
+
+torch==2.2.2
+numpy==1.26.4
+einops==0.7.0
+lightning==2.2.0
+scipy==1.11.4
+loguru==0.7.2
+rich==13.7.0
+typing-extensions==4.15.0
+tqdm==4.67.1
