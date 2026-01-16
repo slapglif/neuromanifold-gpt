@@ -30,26 +30,19 @@ from .kdv import KdVSolver
 from .heimburg_jackson import HeimburgJacksonSolver
 
 
-class SolitonAttention(nn.Module):
+class SolitonInteractionLayer(nn.Module):
     """
-    Attention mechanism based on soliton PDE dynamics.
+    Pure Soliton Interaction Layer (Linear O(N)).
 
-    Combines three types of soliton physics:
-    1. Sine-Gordon (topological): Detects semantic boundaries/transitions
-    2. KdV (dispersive): Propagates information across sequence
-    3. Heimburg-Jackson (thermodynamic): Maintains stable coherence
-
-    The mechanism:
-    - Projects input to Q, K, V
-    - Computes attention scores via dot product
-    - Applies soliton dynamics to modulate attention patterns
-    - Uses wave interference for attention aggregation
-
-    Example:
-        >>> attn = SolitonAttention(384, n_heads=8)
-        >>> x = torch.randn(2, 32, 384)
-        >>> out, info = attn(x)
-        >>> assert out.shape == x.shape
+    Replaces quadratic attention with physics-based elastic scattering.
+    
+    Mechanism:
+    1. Input U represents the wave field state.
+    2. Hyena/SSM block (external) moves information globally.
+    3. This layer applies the local non-linear PDE dynamics (collision logic).
+    4. Solitons interact via the non-linearity (e.g. sin(u)) but preserve shape.
+    
+    Complexity: O(N) (Linear)
     """
 
     def __init__(
@@ -64,238 +57,109 @@ class SolitonAttention(nn.Module):
         dt: float = 0.05,
         causal: bool = True,
     ):
-        """
-        Initialize SolitonAttention.
-
-        Args:
-            embed_dim: Model embedding dimension
-            n_heads: Number of attention heads
-            dropout: Dropout probability for attention weights
-            n_pde_steps: Number of PDE integration steps per forward pass
-            use_sine_gordon: Enable Sine-Gordon dynamics (topological)
-            use_kdv: Enable KdV dynamics (dispersive)
-            use_heimburg_jackson: Enable Heimburg-Jackson dynamics (thermodynamic)
-            dt: Time step for PDE integration
-            causal: Use causal masking (for autoregressive models)
-        """
         super().__init__()
-        assert embed_dim % n_heads == 0, f"embed_dim {embed_dim} must be divisible by n_heads {n_heads}"
-
+        # No head division needed for pure interaction, but kept for compatibility
         self.embed_dim = embed_dim
-        self.n_heads = n_heads
-        self.head_dim = embed_dim // n_heads
         self.n_pde_steps = n_pde_steps
-        self.causal = causal
-        self.scale = 1.0 / math.sqrt(self.head_dim)
-
-        # Feature flags for ablation studies
+        
+        # Feature flags
         self.use_sine_gordon = use_sine_gordon
         self.use_kdv = use_kdv
         self.use_heimburg_jackson = use_heimburg_jackson
 
-        # Count active solvers for mixing weights
-        self.n_active_solvers = sum([use_sine_gordon, use_kdv, use_heimburg_jackson])
-        if self.n_active_solvers == 0:
-            # Default to at least one solver
-            self.use_sine_gordon = True
-            self.n_active_solvers = 1
-
-        # Q, K, V projections
-        self.qkv = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
-
-        # PDE Solvers - one per head group
-        # We use shared solvers across heads for efficiency
+        # Solvers
         if self.use_sine_gordon:
             self.sine_gordon = SineGordonSolver(
-                dim=self.head_dim,
+                dim=embed_dim, # Full dimension
                 dt=dt,
                 n_steps=n_pde_steps,
                 wave_speed=1.0,
                 use_rk4=True,
-                damping=0.01,  # Small damping for stability
+                damping=0.5, # High damping for stability/locality
+                causal=causal
             )
 
         if self.use_kdv:
             self.kdv = KdVSolver(
-                dim=self.head_dim,
-                dt=dt * 0.5,  # KdV needs smaller dt for stability
+                dim=embed_dim,
+                dt=dt * 0.5,
                 n_steps=n_pde_steps,
-                nonlin_coeff=6.0,
-                disp_coeff=1.0,
                 use_rk4=True,
-                damping=0.01,
+                damping=0.5,
+                causal=causal
             )
 
         if self.use_heimburg_jackson:
             self.heimburg_jackson = HeimburgJacksonSolver(
-                dim=self.head_dim,
+                dim=embed_dim,
                 dt=dt * 0.5,
                 n_steps=n_pde_steps,
-                c0_squared=1.0,
-                p_coeff=-1.0,  # Scaled down from biophysical values
-                q_coeff=1.0,
-                h_disp=0.1,
                 use_rk4=True,
-                damping=0.01,
+                damping=0.5,
+                causal=causal
             )
 
-        # Learnable mixing weights for combining solver outputs
-        self.solver_mix = nn.Parameter(torch.ones(self.n_active_solvers) / self.n_active_solvers)
-
-        # Soliton gating: controls how much PDE dynamics affects attention
-        self.soliton_gate = nn.Sequential(
-            nn.Linear(self.head_dim, self.head_dim // 2),
-            nn.SiLU(),
-            nn.Linear(self.head_dim // 2, 1),
-            nn.Sigmoid(),
-        )
-
-        # Dropout
+        # Gating/Mixing weights
+        n_solvers = sum([use_sine_gordon, use_kdv, use_heimburg_jackson])
+        self.solver_mix = nn.Parameter(torch.ones(max(1, n_solvers)) / max(1, n_solvers))
+        
+        # Output projection
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
+        self.norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout)
-
-    def _apply_soliton_dynamics(
-        self,
-        x: torch.Tensor,
-    ) -> tuple[torch.Tensor, dict]:
-        """
-        Apply soliton PDE dynamics to input tensor.
-
-        Args:
-            x: Input tensor (B, H, T, D) where D is head_dim
-
-        Returns:
-            Tuple of (evolved_x, info_dict)
-        """
-        B, H, T, D = x.shape
-        info = {}
-
-        # Normalize input to prevent numerical instability
-        x_norm = x / (x.abs().amax(dim=-1, keepdim=True).clamp(min=1e-6) + 1e-6)
-        x_norm = x_norm * 2.0  # Scale to [-2, 2] range for PDE stability
-
-        # Flatten batch and heads for PDE processing: (B*H, T, D)
-        x_flat = rearrange(x_norm, 'b h t d -> (b h) t d')
-
-        # Collect outputs from active solvers
-        outputs = []
-        mix_weights = F.softmax(self.solver_mix, dim=0)
-        mix_idx = 0
-
-        if self.use_sine_gordon:
-            # Sine-Gordon: topological solitons
-            sg_out, sg_info = self.sine_gordon(x_flat, n_steps=self.n_pde_steps)
-            outputs.append(sg_out * mix_weights[mix_idx])
-            info['sine_gordon_energy'] = sg_info.get('energy', 0.0)
-            info['sine_gordon_charge'] = sg_info.get('topological_charge', 0.0)
-            mix_idx += 1
-
-        if self.use_kdv:
-            # KdV: dispersive wave dynamics
-            kdv_out, kdv_info = self.kdv(x_flat, n_steps=self.n_pde_steps)
-            outputs.append(kdv_out * mix_weights[mix_idx])
-            info['kdv_mass'] = kdv_info.get('mass', 0.0)
-            info['kdv_momentum'] = kdv_info.get('momentum', 0.0)
-            mix_idx += 1
-
-        if self.use_heimburg_jackson:
-            # Heimburg-Jackson: thermodynamic solitons
-            hj_out, hj_info = self.heimburg_jackson(x_flat, n_steps=self.n_pde_steps)
-            outputs.append(hj_out * mix_weights[mix_idx])
-            info['hj_enthalpy'] = hj_info.get('enthalpy', 0.0)
-            info['hj_wave_speed'] = hj_info.get('wave_speed', 0.0)
-
-        # Combine solver outputs (weighted sum)
-        combined = sum(outputs)
-
-        # Reshape back to (B, H, T, D)
-        combined = rearrange(combined, '(b h) t d -> b h t d', b=B, h=H)
-
-        # Store mixing weights in info
-        info['solver_mix_weights'] = mix_weights.detach()
-
-        return combined, info
 
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None, # Unused, PDE is local/causal
     ) -> tuple[torch.Tensor, dict]:
         """
-        Forward pass with soliton-modulated attention.
-
+        Apply soliton elastic scattering.
+        
         Args:
-            x: Input tensor (B, T, D)
-            mask: Optional attention mask (B, T) or (B, 1, T, T)
-
+            x: (B, T, D) Wave field
+            
         Returns:
-            Tuple of (output, info) where:
-            - output: Tensor (B, T, D) same shape as input
-            - info: Dictionary with soliton dynamics statistics
+            out: (B, T, D) Evolved field
         """
         B, T, D = x.shape
-        H = self.n_heads
-
-        # QKV projection: (B, T, 3*D) -> Q, K, V each (B, H, T, head_dim)
-        qkv = self.qkv(x)
-        q, k, v = rearrange(
-            qkv, 'b t (three h d) -> three b h t d',
-            three=3, h=self.n_heads
-        )
-
-        # Apply soliton dynamics to values
-        # This modulates the "information content" being attended to
-        v_evolved, pde_info = self._apply_soliton_dynamics(v)
-
-        # Compute soliton gate: how much PDE evolution to use
-        # (B, H, T, 1) gating factor
-        gate = self.soliton_gate(v.mean(dim=2, keepdim=True))  # Global gate per head
-        gate = gate.expand(-1, -1, T, -1)
-
-        # Blend original values with evolved values
-        v_blended = gate * v_evolved + (1 - gate) * v
-
-        # Standard scaled dot-product attention
-        # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-        attn_scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-
-        # Causal mask: prevent attending to future positions
-        if self.causal:
-            causal_mask = torch.triu(
-                torch.ones(T, T, device=x.device, dtype=torch.bool),
-                diagonal=1
-            )
-            attn_scores = attn_scores.masked_fill(
-                causal_mask.unsqueeze(0).unsqueeze(0),
-                float('-inf')
-            )
-
-        # Optional external mask
-        if mask is not None:
-            if mask.dim() == 2:
-                # (B, T) -> (B, 1, 1, T)
-                mask = mask.unsqueeze(1).unsqueeze(2)
-            attn_scores = attn_scores.masked_fill(mask == 0, float('-inf'))
-
-        # Softmax and dropout
-        attn_weights = F.softmax(attn_scores, dim=-1)
-        attn_weights = self.dropout(attn_weights)
-
-        # Apply attention to soliton-modulated values
-        # (B, H, T, T) @ (B, H, T, D) -> (B, H, T, D)
-        out = torch.matmul(attn_weights, v_blended)
-
-        # Reshape and project output: (B, H, T, D) -> (B, T, H*D)
-        out = rearrange(out, 'b h t d -> b t (h d)')
-        out = self.out_proj(out)
-
-        # Compile info dictionary
-        info = {
-            'soliton_gate': gate.mean().item(),
-            'attn_entropy': -(attn_weights * (attn_weights + 1e-8).log()).sum(dim=-1).mean().item(),
-            **pde_info,
-        }
-
+        info = {}
+        
+        # 1. Prepare Field (Normalize for PDE stability range [-pi, pi])
+        # Soft clamp to keep dynamics valid
+        x_field = torch.tanh(x) * 2.0 
+        
+        outputs = []
+        mix_weights = F.softmax(self.solver_mix, dim=0)
+        idx = 0
+        
+        # 2. Parallel Physics Evolution
+        if self.use_sine_gordon:
+            sg_out, sg_info = self.sine_gordon(x_field)
+            outputs.append(sg_out * mix_weights[idx])
+            idx += 1
+            
+        if self.use_kdv:
+            kdv_out, kdv_info = self.kdv(x_field)
+            outputs.append(kdv_out * mix_weights[idx])
+            idx += 1
+            
+        if self.use_heimburg_jackson:
+            hj_out, hj_info = self.heimburg_jackson(x_field)
+            outputs.append(hj_out * mix_weights[idx])
+            idx += 1
+            
+        # 3. Combine Results
+        if outputs:
+            evolved = sum(outputs)
+        else:
+            evolved = x_field
+            
+        # 4. Project and Residual
+        # Note: The block usually handles residual, but we project here
+        out = self.out_proj(evolved)
+        out = self.dropout(out)
+        
         return out, info
 
     def extra_repr(self) -> str:

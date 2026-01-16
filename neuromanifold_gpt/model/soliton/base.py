@@ -71,6 +71,7 @@ class PDESolver(nn.Module, ABC):
         dx: float = 1.0,
         n_steps: int = 5,
         use_spectral: bool = True,
+        causal: bool = False,
         clamp_min: float = -10.0,
         clamp_max: float = 10.0,
         dropout: float = 0.0,
@@ -84,6 +85,7 @@ class PDESolver(nn.Module, ABC):
             dx: Spatial step for finite differences
             n_steps: Number of integration steps per forward pass
             use_spectral: Use FFT-based spectral derivatives (more accurate)
+            causal: Force causal derivatives (backward differences only)
             clamp_min: Minimum value for clamping (numerical stability)
             clamp_max: Maximum value for clamping (numerical stability)
             dropout: Dropout probability for regularization
@@ -93,7 +95,8 @@ class PDESolver(nn.Module, ABC):
         self.dt_init = dt
         self.dx = dx
         self.n_steps = n_steps
-        self.use_spectral = use_spectral
+        self.use_spectral = use_spectral and not causal # Spectral is inherently acausal
+        self.causal = causal
         self.clamp_min = clamp_min
         self.clamp_max = clamp_max
 
@@ -160,8 +163,72 @@ class PDESolver(nn.Module, ABC):
         """
         if self.use_spectral:
             return self._spectral_derivative(u, order, dim)
+        elif self.causal:
+            return self._causal_finite_difference(u, order, dim)
         else:
             return self._finite_difference(u, order, dim)
+
+    def _causal_finite_difference(
+        self,
+        u: torch.Tensor,
+        order: int,
+        dim: int,
+    ) -> torch.Tensor:
+        """
+        Compute derivative using causal backward finite differences.
+        Depends only on current and past values.
+        """
+        # Normalize negative dim
+        if dim < 0:
+            dim = u.ndim + dim
+
+        if order == 1:
+            # Backward difference: (u[i] - u[i-1]) / dx
+            # Pad with zeros at the beginning to maintain shape
+            # u_shifted = roll(1) puts u[i-1] at position i
+            # But standard roll wraps around (u[-1] -> u[0]), which is acausal/leakage
+            # We must use padding instead of roll, or mask the first element
+            
+            # Using torch.cat for causal shift
+            # Shape: [..., T, ...]
+            # u_shifted: [0, u[0], u[1], ..., u[T-2]]
+            
+            # Construct slicing for generic dim
+            slices = [slice(None)] * u.ndim
+            slices[dim] = slice(0, -1) # All but last
+            
+            # Zero padding shape
+            pad_shape = list(u.shape)
+            pad_shape[dim] = 1
+            zeros = torch.zeros(pad_shape, device=u.device, dtype=u.dtype)
+            
+            u_shifted = torch.cat([zeros, u[tuple(slices)]], dim=dim)
+            
+            return (u - u_shifted) / self.dx
+
+        elif order == 2:
+            # Backward second difference: (u[i] - 2*u[i-1] + u[i-2]) / dx^2
+            
+            # u[i-1]
+            slices_1 = [slice(None)] * u.ndim
+            slices_1[dim] = slice(0, -1)
+            pad_shape_1 = list(u.shape)
+            pad_shape_1[dim] = 1
+            zeros_1 = torch.zeros(pad_shape_1, device=u.device, dtype=u.dtype)
+            u_m1 = torch.cat([zeros_1, u[tuple(slices_1)]], dim=dim)
+            
+            # u[i-2]
+            slices_2 = [slice(None)] * u.ndim
+            slices_2[dim] = slice(0, -2)
+            pad_shape_2 = list(u.shape)
+            pad_shape_2[dim] = 2
+            zeros_2 = torch.zeros(pad_shape_2, device=u.device, dtype=u.dtype)
+            u_m2 = torch.cat([zeros_2, u[tuple(slices_2)]], dim=dim)
+            
+            return (u - 2 * u_m1 + u_m2) / (self.dx**2)
+
+        else:
+            raise ValueError(f"Causal derivative order {order} not implemented")
 
     def _spectral_derivative(
         self,
@@ -415,5 +482,6 @@ class PDESolver(nn.Module, ABC):
             f"dt={self.dt_init:.3f}, "
             f"dx={self.dx:.3f}, "
             f"n_steps={self.n_steps}, "
-            f"spectral={self.use_spectral}"
+            f"spectral={self.use_spectral}, "
+            f"causal={self.causal}"
         )

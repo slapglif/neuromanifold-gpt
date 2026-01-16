@@ -126,6 +126,7 @@ class SineGordonSolver(PDESolver):
         clamp_max: float = 10.0,
         dropout: float = 0.0,
         damping: float = 0.0,
+        causal: bool = False,
     ):
         """
         Initialize Sine-Gordon solver.
@@ -142,6 +143,7 @@ class SineGordonSolver(PDESolver):
             clamp_max: Maximum value for clamping (numerical stability)
             dropout: Dropout probability for regularization
             damping: Optional damping coefficient (adds -gamma*phi_t term)
+            causal: Force causal derivatives (backward differences only)
         """
         super().__init__(
             dim=dim,
@@ -152,6 +154,7 @@ class SineGordonSolver(PDESolver):
             clamp_min=clamp_min,
             clamp_max=clamp_max,
             dropout=dropout,
+            causal=causal,
         )
 
         self.use_rk4 = use_rk4

@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from neuromanifold_gpt.model.ssm.mamba import MambaBlock
 from neuromanifold_gpt.model.ssm.hyena_operator import HyenaOperator
-from neuromanifold_gpt.model.soliton.attention import SolitonAttention
+from neuromanifold_gpt.model.soliton.attention import SolitonInteractionLayer
 from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
 
 class WaveManifoldBlock(nn.Module):
@@ -59,7 +59,7 @@ class WaveManifoldBlock(nn.Module):
         if config.soliton_type == "all" or not (use_sg or use_kdv or use_hj):
             use_sg = use_kdv = use_hj = True
             
-        self.soliton = SolitonAttention(
+        self.soliton = SolitonInteractionLayer(
             embed_dim=self.embed_dim,
             n_heads=config.n_head,
             use_sine_gordon=use_sg,

@@ -93,6 +93,11 @@ import torch.nn.functional as F
 from einops import rearrange, einsum
 from einops.layers.torch import Reduce
 
+# Import utility functions from shared modules
+from neuromanifold_gpt.utils.helpers import exists, default
+from neuromanifold_gpt.utils.sinkhorn import sinkhorn_log
+from neuromanifold_gpt.utils.stream_ops import get_expand_reduce_stream_functions
+
 # Try to import fused kernel for GPU acceleration
 try:
     from .mhc_fused import fused_mhc_width_connection
@@ -100,98 +105,6 @@ try:
 except (ImportError, RuntimeError):
     HAS_TRITON = False
     fused_mhc_width_connection = None
-
-
-def exists(v):
-    """Check if a value is not None.
-
-    Args:
-        v: Value to check
-
-    Returns:
-        True if v is not None, False otherwise
-    """
-    return v is not None
-
-
-def default(v, d):
-    """Return value v if it exists, otherwise return default d.
-
-    Args:
-        v: Value to check
-        d: Default value to return if v is None
-
-    Returns:
-        v if v is not None, else d
-    """
-    return v if exists(v) else d
-
-
-def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = 1e-6) -> torch.Tensor:
-    """Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.
-
-    The Birkhoff polytope is the set of doubly stochastic matrices:
-    - All entries >= 0
-    - All rows sum to 1
-    - All columns sum to 1
-
-    This uses the numerically stable log-space algorithm from DeepSeek.
-
-    Args:
-        logits: Raw logits matrix (n, n)
-        num_iters: Number of full Sinkhorn iterations (each iteration does
-            both row and column normalization)
-        tau: Temperature for softmax (lower = sharper, closer to permutation)
-        convergence_tol: Optional convergence threshold for early stopping.
-            Stops when ||u_new - u_old|| < convergence_tol.
-            Default 1e-6 enables convergence-based early stopping.
-
-    Returns:
-        Doubly stochastic matrix on Birkhoff polytope
-    """
-    n = logits.shape[-1]
-    Z = logits / tau
-    log_marginal = torch.zeros((n,), device=logits.device, dtype=logits.dtype)
-
-    u = torch.zeros(logits.shape[:-1], device=Z.device, dtype=Z.dtype)
-    v = torch.zeros_like(u)
-
-    for i in range(num_iters):
-        u_prev = u.clone() if convergence_tol is not None else None
-
-        u = log_marginal - torch.logsumexp(Z + v.unsqueeze(-2), dim=-1)
-        v = log_marginal - torch.logsumexp(Z + u.unsqueeze(-1), dim=-2)
-
-        # Early stopping check
-        if convergence_tol is not None and i > 0:  # Skip first iteration
-            u_change = torch.norm(u - u_prev)
-            if u_change < convergence_tol:
-                break
-
-    return torch.exp(Z + u.unsqueeze(-1) + v.unsqueeze(-2))
-
-
-def get_expand_reduce_stream_functions(num_streams: int, disable: bool = False):
-    """Get functions to expand input to multiple streams and reduce back.
-
-    Args:
-        num_streams: Number of parallel residual streams
-        disable: If True, return identity functions
-
-    Returns:
-        (expand_fn, reduce_fn) tuple
-    """
-    if num_streams == 1 or disable:
-        return (nn.Identity(), nn.Identity())
-
-    expand_fn = Reduce(
-        pattern="b ... -> (b s) ...", reduction="repeat", s=num_streams
-    )
-    reduce_fn = Reduce(
-        pattern="(b s) ... -> b ...", reduction="sum", s=num_streams
-    )
-
-    return expand_fn, reduce_fn
 
 
 class HyperConnections(Module):
@@ -280,8 +193,8 @@ class HyperConnections(Module):
         dropout: float = 0.0,
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
-        sinkhorn_convergence_tol: Optional[float] = 1e-6,
-        use_fused: Optional[bool] = None,  # Use Triton-fused kernel for GPU acceleration (auto-detect)
+        sinkhorn_convergence_tol: Optional[float] = None,
+        use_fused: Optional[bool] = None,  # Use Triton-fused kernel for GPU acceleration
     ):
         """Initialize the HyperConnections layer.
 
@@ -696,7 +609,7 @@ def get_init_and_expand_reduce_stream_functions(
     disable: bool = False,
     sinkhorn_iters: int = 10,
     sinkhorn_tau: float = 0.05,
-    sinkhorn_convergence_tol: Optional[float] = 1e-6,
+    sinkhorn_convergence_tol: Optional[float] = None,
 ):
     """Get mHC initializer and stream expand/reduce functions.
 
