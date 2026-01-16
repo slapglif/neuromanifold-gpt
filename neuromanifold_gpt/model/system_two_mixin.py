@@ -127,3 +127,80 @@ class SystemTwoReasoningMixin:
                 'complexities': dag_output['complexities'],
             }
         return dag_info
+
+    def imagine_alternatives(
+        self,
+        idx: torch.Tensor,
+        goal_tokens: torch.Tensor | None = None,
+        n_alternatives: int = 4,
+    ) -> dict[str, torch.Tensor]:
+        """
+        Use imagination module to explore alternative reasoning paths.
+
+        Args:
+            idx: Input token IDs (B, T)
+            goal_tokens: Optional goal tokens to optimize toward (B, T_goal)
+            n_alternatives: Number of alternatives to generate
+
+        Returns:
+            dict with alternatives, scores, and best selection
+        """
+        if not self.use_imagination:
+            raise RuntimeError("Imagination module not enabled. Set use_imagination=True in config.")
+
+        # Get hidden states
+        B, T = idx.shape
+        device = idx.device
+
+        # Forward pass to get representations
+        logits, _, info = self(idx)
+
+        # Get final hidden states before lm_head
+        x = self.ln_f(info.get('x', logits))  # Approximate from logits if needed
+
+        # If goal tokens provided, encode them
+        goal_emb = None
+        if goal_tokens is not None:
+            goal_logits, _, _ = self(goal_tokens)
+            goal_emb = goal_logits.mean(dim=1)  # (B, D) pooled goal
+
+        # Use imagination
+        if goal_emb is not None:
+            result = self.imagination(x, goal=goal_emb, n_alternatives=n_alternatives)
+        else:
+            result = self.imagination(x, n_alternatives=n_alternatives)
+
+        return result
+
+    def plan_task(
+        self,
+        idx: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """
+        Use DAG planner to decompose a task into subtasks.
+
+        Args:
+            idx: Input token IDs (B, T)
+
+        Returns:
+            dict with node_embeddings, adj_matrix, execution_order, etc.
+        """
+        if not self.use_dag_planner:
+            raise RuntimeError("DAG planner not enabled. Set use_dag_planner=True in config.")
+
+        # Forward pass to get representations
+        logits, _, info = self(idx)
+
+        # DAG info is already computed in forward
+        dag_info = info.get('dag_planner', {})
+
+        # Add execution order
+        if 'adj_matrix' in dag_info and 'node_mask' in dag_info:
+            # Get execution order for first example
+            exec_order = self.dag_planner.get_execution_order(
+                dag_info['adj_matrix'][0],
+                dag_info['node_mask'][0] if 'node_mask' in dag_info else torch.ones(dag_info['adj_matrix'].shape[1], dtype=torch.bool),
+            )
+            dag_info['execution_order'] = exec_order
+
+        return dag_info
