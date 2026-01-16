@@ -7,10 +7,9 @@ Combines:
 - Manifold-Spectral-Soliton Attention Blocks
 - SDR Engram Memory
 - Language Model Head
-- Configurable Positional Embeddings (Learned, Ramanujan, RoPE, ALiBi)
+- Ramanujan Periodic Positional Embeddings (New!)
 """
 
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,18 +18,9 @@ from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
-# COMMENTED OUT - Not implemented as part of position embeddings spec (030)
-# from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
-from neuromanifold_gpt.model.embeddings.rotary import RotaryPositionalEmbedding
-from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
-# COMMENTED OUT - Not implemented as part of position embeddings spec (030)
-# from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
-# from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
-# from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
-# from neuromanifold_gpt.model.attention.mla import RMSNorm  # Module not yet implemented
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -72,41 +62,20 @@ class NeuroManifoldGPT(nn.Module):
             )
             # Projection for feeding block output back as SDR-like input
             self.embed_to_sdr = nn.Linear(config.n_embd, config.sdr_size)
+
+            # Ramanujan Positional Embedding (Add to SDR projection output in loop)
+            # We initialize it with n_embd dimension, as it will be added to the embedding space
+            self.ramanujan_pos = RamanujanPositionalEmbedding(
+                config.block_size, config.n_embd
+            )
         else:
             # Standard embedding (direct to n_embd)
             self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
-            self.embed_to_sdr = None
-
-        # Position Embedding (configurable: learned, ramanujan, rotary, alibi)
-        self.pos_emb_type = getattr(config, 'pos_emb_type', 'learned')
-
-        if self.pos_emb_type == 'learned':
-            # Standard learned positional embeddings
-            self.position_embedding = nn.Embedding(config.block_size, config.n_embd)
-        elif self.pos_emb_type == 'ramanujan':
-            # Ramanujan periodic embeddings (original default)
+            # Use Ramanujan for position instead of standard Learned/Sinusoidal
             self.position_embedding = RamanujanPositionalEmbedding(
                 config.block_size, config.n_embd
             )
-        elif self.pos_emb_type == 'rotary':
-            # RoPE (Rotary Position Embeddings) - applied to Q/K in attention
-            # Store for potential use in attention layers
-            self.position_embedding = RotaryPositionalEmbedding(
-                embed_dim=config.n_embd,
-                head_dim=config.head_dim,
-                max_seq_len=config.block_size
-            )
-        elif self.pos_emb_type == 'alibi':
-            # ALiBi (Attention with Linear Biases) - applied as bias to attention scores
-            # Store for potential use in attention layers
-            self.position_embedding = ALiBiPositionalBias(
-                n_heads=config.n_heads,
-                embed_dim=config.n_embd,
-                max_seq_len=config.block_size
-            )
-        else:
-            raise ValueError(f"Unknown pos_emb_type: {self.pos_emb_type}. "
-                           f"Must be one of: learned, ramanujan, rotary, alibi")
+            self.embed_to_sdr = None
 
         # Transformer blocks
         # First block receives SDR (if enabled), subsequent blocks receive n_embd
@@ -124,8 +93,6 @@ class NeuroManifoldGPT(nn.Module):
                 n_eigenvectors=config.n_eigenvectors,
                 n_heads=config.n_heads,
                 dropout=config.dropout,
-                # Attention configuration
-                attention_type=getattr(config, 'attention_type', 'standard'),
                 # FHN dynamics with semi-implicit IMEX scheme
                 fhn_threshold=config.fhn_threshold,
                 fhn_tau=config.fhn_tau,
@@ -174,7 +141,6 @@ class NeuroManifoldGPT(nn.Module):
         self.mhc_enabled = config.use_mhc and config.mhc_n_streams > 1
 
         # Final layer norm
-        # Note: RMSNorm would be ~15% faster but is not yet implemented
         self.ln_f = nn.LayerNorm(config.n_embd)
 
         # Language model head
@@ -219,61 +185,57 @@ class NeuroManifoldGPT(nn.Module):
             threshold=config.engram_threshold,
         )
 
-        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
-        # self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
-        # if self.use_hybrid_reasoning:
-        #     self.hybrid_reasoning = HybridReasoningModule(
-        #         embed_dim=config.n_embd,
-        #         n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
-        #         n_heads=config.n_heads,
-        #         dropout=config.dropout,
-        #         use_e7_prior=True,
-        #         thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
-        #     )
-        self.use_hybrid_reasoning = False
+        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
+        if self.use_hybrid_reasoning:
+            from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+            self.hybrid_reasoning = HybridReasoningModule(
+                embed_dim=config.n_embd,
+                n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
+                n_heads=config.n_heads,
+                dropout=config.dropout,
+                use_e7_prior=True,
+                thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
+            )
 
         # ========================================
         # System 2 Reasoning Components
         # ========================================
 
-        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
-        # self.use_dag_planner = getattr(config, 'use_dag_planner', False)
-        # if self.use_dag_planner:
-        #     self.dag_planner = ForcedDAGPlanner(
-        #         embed_dim=config.n_embd,
-        #         manifold_dim=config.manifold_dim,
-        #         max_nodes=getattr(config, 'dag_max_nodes', 32),
-        #         min_nodes=getattr(config, 'dag_min_nodes', 3),
-        #     )
-        self.use_dag_planner = False
+        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
+        if self.use_dag_planner:
+            from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+            self.dag_planner = ForcedDAGPlanner(
+                embed_dim=config.n_embd,
+                manifold_dim=config.manifold_dim,
+                max_nodes=getattr(config, 'dag_max_nodes', 32),
+                min_nodes=getattr(config, 'dag_min_nodes', 3),
+            )
 
-        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
-        # self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
-        # if self.use_hierarchical_memory:
-        #     self.hierarchical_memory = HierarchicalEngramMemory(
-        #         sdr_size=config.sdr_size,
-        #         n_active=config.sdr_n_active,
-        #         content_dim=config.n_embd,
-        #         l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
-        #         l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
-        #         l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
-        #     )
-        self.use_hierarchical_memory = False
+        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
+        if self.use_hierarchical_memory:
+            from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
+            self.hierarchical_memory = HierarchicalEngramMemory(
+                sdr_size=config.sdr_size,
+                n_active=config.sdr_n_active,
+                content_dim=config.n_embd,
+                l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
+                l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
+                l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
+            )
 
-        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # ConsistencyImaginationModule - Counterfactual exploration
-        # self.use_imagination = getattr(config, 'use_imagination', False)
-        # if self.use_imagination:
-        #     self.imagination = ConsistencyImaginationModule(
-        #         embed_dim=config.n_embd,
-        #         manifold_dim=config.manifold_dim,
-        #         n_imagination_steps=getattr(config, 'imagination_steps', 4),
-        #     )
-        #     self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
-        self.use_imagination = False
+        self.use_imagination = getattr(config, 'use_imagination', False)
+        if self.use_imagination:
+            from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+            self.imagination = ConsistencyImaginationModule(
+                embed_dim=config.n_embd,
+                manifold_dim=config.manifold_dim,
+                n_imagination_steps=getattr(config, 'imagination_steps', 4),
+            )
+            self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
 
         # Memory Active Retrieval configuration
         self.memory_active_retrieval = getattr(config, 'memory_active_retrieval', False)
@@ -288,15 +250,6 @@ class NeuroManifoldGPT(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
 
-        # Apply special scaled init to residual projections, per GPT-2 paper
-        if getattr(self.config, 'init_strategy', 'deepseek') == 'gpt2_scaled':
-            init_std = getattr(self.config, 'init_std', 0.02)
-            for pn, p in self.named_parameters():
-                # Look for residual projection layers
-                # Common patterns: c_proj, out_proj, mlp_proj, etc.
-                if pn.endswith('c_proj.weight') or pn.endswith('out_proj.weight'):
-                    torch.nn.init.normal_(p, mean=0.0, std=init_std/math.sqrt(2 * self.config.n_layer))
-
         # Replace ALL nn.Linear with FasterKAN (except lm_head)
         # This applies to: manifold projection, spectral decomposition, attention projections
         if getattr(config, "use_kan_everywhere", False):
@@ -309,88 +262,16 @@ class NeuroManifoldGPT(nn.Module):
     def _init_weights(self, module: nn.Module) -> None:
         """Initialize linear and embedding weights.
 
-        Supports multiple initialization strategies:
-        - 'deepseek': DeepSeek-V3 style std=0.006 (default, faster early convergence)
-        - 'gpt2': Standard GPT-2 initialization with std=0.02
-        - 'gpt2_scaled': GPT-2 with residual scaling by 1/sqrt(2*n_layer)
-        - 'mup': Maximal Update Parametrization (enables hyperparameter transfer)
-
-        muP initialization scales:
-        - Embeddings: std = 1 / sqrt(d_model)
-        - Hidden weights: std = 1 / d_model (fan-in independent scaling)
-        - Output head: std = 1 / sqrt(d_model) (no width scaling)
-        - Residual branches: std scaled by sqrt(base_width / d_model)
+        Uses DeepSeek-V3 style std=0.006 by default (configurable via init_std).
+        Smaller initialization leads to faster early convergence.
         """
-        init_strategy = getattr(self.config, 'init_strategy', 'deepseek')
-
-        if init_strategy == 'mup':
-            # muP initialization - enables hyperparameter transfer across model scales
-            d_model = self.config.n_embd
-            base_width = getattr(self.config, 'mup_base_width', 128)
-            width_ratio = base_width / d_model  # < 1 for larger models, > 1 for smaller
-
-            if isinstance(module, nn.Linear):
-                # Determine if this is the output head (lm_head)
-                # Output head uses standard scaling without width adjustment
-                is_output = module is self.lm_head
-
-                if is_output:
-                    # Output layer: std = 1 / sqrt(d_model), no width scaling
-                    std = 1.0 / (d_model ** 0.5)
-                else:
-                    # Hidden layers: std = 1 / d_model for muP
-                    # This is the key muP innovation - width-independent scaling
-                    std = 1.0 / d_model
-
-                    # For residual projection layers, apply additional scaling
-                    # to maintain signal variance through residual connections
-                    # Scale by sqrt(width_ratio) for proper muP transfer
-                    std = std * (width_ratio ** 0.5)
-
-                nn.init.normal_(module.weight, mean=0.0, std=std)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-
-            elif isinstance(module, nn.Embedding):
-                # Embeddings: std = 1 / sqrt(d_model)
-                std = 1.0 / (d_model ** 0.5)
-                nn.init.normal_(module.weight, mean=0.0, std=std)
-
-        elif init_strategy == 'gpt2_scaled':
-            # GPT-2 with residual scaling (scales down residual projections by depth)
-            init_std = getattr(self.config, 'init_std', 0.02)
-            n_layer = self.config.n_layer
-
-            if isinstance(module, nn.Linear):
-                # Check if this is a residual projection layer
-                # These are typically named with patterns like 'c_proj', 'out_proj', etc.
-                # For now, apply standard init and let submodules handle scaling
-                std = init_std
-                nn.init.normal_(module.weight, mean=0.0, std=std)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Embedding):
-                nn.init.normal_(module.weight, mean=0.0, std=init_std)
-
-        elif init_strategy == 'gpt2':
-            # Standard GPT-2 initialization with std=0.02
-            init_std = 0.02
-            if isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=init_std)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Embedding):
-                nn.init.normal_(module.weight, mean=0.0, std=init_std)
-
-        else:  # 'deepseek' or unknown (default to deepseek)
-            # DeepSeek-V3 style: small std=0.006 for faster early convergence
-            init_std = getattr(self.config, 'init_std', 0.006)
-            if isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=init_std)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Embedding):
-                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+        init_std = getattr(self.config, 'init_std', 0.006)
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=init_std)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=init_std)
 
     def forward(
         self,
@@ -415,32 +296,20 @@ class NeuroManifoldGPT(nn.Module):
         discrimination_loss = torch.tensor(0.0, device=device)
         contrastive_loss = torch.tensor(0.0, device=device)
         if self.use_sdr:
-            # Semantic folding to SDR with topographic and discrimination losses
-            sdr, sdr_scores, topographic_loss, discrimination_loss = self.encoder(
+            # Semantic folding to SDR with topographic, discrimination, and contrastive losses
+            sdr, sdr_scores, topographic_loss, discrimination_loss, contrastive_loss = self.encoder(
                 tokens
             )
             x = None  # Initial x comes from first block processing SDR
         else:
             # Standard embedding
             tok_emb = self.token_embedding(tokens)
-            # Apply position embeddings based on type
-            if self.pos_emb_type in ['learned', 'ramanujan']:
-                # Learned or Ramanujan: Add to token embeddings
-                # Indices are 0..T-1
-                pos_emb = self.position_embedding(
-                    torch.arange(T, device=device).unsqueeze(0)
-                )  # (1, T, D)
-                x = tok_emb + pos_emb  # (B, T, n_embd)
-            elif self.pos_emb_type == 'rotary':
-                # RoPE: Applied to Q/K in attention layers (not to embeddings)
-                # For now, skip adding position info at embedding level
-                x = tok_emb
-            elif self.pos_emb_type == 'alibi':
-                # ALiBi: Applied as bias to attention scores (not to embeddings)
-                # For now, skip adding position info at embedding level
-                x = tok_emb
-            else:
-                x = tok_emb
+            # Use Ramanujan Position Embedding
+            # Indices are 0..T-1
+            pos_emb = self.position_embedding(
+                torch.arange(T, device=device).unsqueeze(0)
+            )  # (1, T, D)
+            x = tok_emb + pos_emb  # (B, T, n_embd)
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)  # Dummy SDR
             sdr_scores = None
 
@@ -541,13 +410,10 @@ class NeuroManifoldGPT(nn.Module):
                     # Expand for multi-stream mHC if enabled
                     sdr_in = self.expand_stream(sdr) if self.mhc_enabled else sdr
                     x, info = block(sdr_in)
-                    # Add Position Embedding here (to x) based on type
+                    # Add Ramanujan Positional Embedding here (to x)
                     # x is (B*S, T, n_embd) if mHC, else (B, T, n_embd)
-                    if self.pos_emb_type in ['learned', 'ramanujan']:
-                        # Learned or Ramanujan: Add to embeddings
-                        pos_emb = self.position_embedding(torch.arange(T, device=device).unsqueeze(0))
-                        x = x + pos_emb
-                    # For rotary/alibi: skip adding at embedding level (applied in attention)
+                    pos_emb = self.ramanujan_pos(torch.zeros(1, T, device=device))
+                    x = x + pos_emb
 
                     # Apply pending memory retrieval after first block produces x
                     # This augments representations with retrieved engrams
