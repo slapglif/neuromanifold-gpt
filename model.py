@@ -46,6 +46,11 @@ class RMSNorm(nn.Module):
         return self.weight * input
 
 class CausalSelfAttention(nn.Module):
+    """Multi-head causal self-attention mechanism.
+
+    Implements scaled dot-product attention with causal masking to prevent
+    attending to future tokens. Supports Flash Attention for improved efficiency.
+    """
 
     def __init__(self, config):
         super().__init__()
@@ -95,6 +100,10 @@ class CausalSelfAttention(nn.Module):
         return y
 
 class MLP(nn.Module):
+    """Standard GPT-2 style feed-forward network with GELU activation.
+
+    Two-layer MLP with expansion factor of 4: dim -> 4*dim -> dim
+    """
 
     def __init__(self, config):
         super().__init__()
@@ -131,6 +140,11 @@ class SwiGLU(nn.Module):
         return self.dropout(self.w_down(F.silu(self.w_gate(x)) * self.w_up(x)))
 
 class Block(nn.Module):
+    """Transformer block with pre-normalization.
+
+    Applies attention and feed-forward layers with residual connections.
+    Supports pluggable normalization (LayerNorm/RMSNorm) and FFN types (GELU/SwiGLU).
+    """
 
     def __init__(self, config):
         super().__init__()
@@ -174,6 +188,13 @@ class GPTConfig:
     norm_type: str = 'layernorm' # 'layernorm' or 'rmsnorm'
 
 class GPT(nn.Module):
+    """GPT Language Model with modular architecture components.
+
+    Decoder-only transformer supporting various architectural choices:
+    - Normalization: LayerNorm or RMSNorm
+    - FFN: GELU or SwiGLU activation
+    - Attention: Standard or Flash Attention
+    """
 
     def __init__(self, config):
         super().__init__()
