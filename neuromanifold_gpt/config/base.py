@@ -121,6 +121,7 @@ class NeuroManifoldConfig:
     mhc_sinkhorn_tau: float = 0.05  # Sinkhorn temperature for smoothness
 
     # Attention configuration
+    attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"
     use_knot_attention: bool = False  # Enable Knot-Theoretic attention
     use_kaufmann_attention: bool = False  # Enable Kaufmann Trifecta Attention (The Endgame)
     use_qk_norm: bool = True  # Qwen3/GLM-4.5: RMSNorm on Q,K prevents attention logit explosion

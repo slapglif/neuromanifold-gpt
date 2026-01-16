@@ -31,6 +31,38 @@ from neuromanifold_gpt.model.attention.kaufmann import KaufmannAttention
 # NOTE: MultiHeadLatentAttention not yet implemented in mla.py
 from neuromanifold_gpt.model.attention.mla import RMSNorm
 
+
+def get_attention_class(attention_type: str):
+    """Get attention class by type string.
+
+    Args:
+        attention_type: Attention mechanism type string
+            - "standard": Standard causal self-attention (baseline)
+            - "fhn": FitzHugh-Nagumo neural dynamics attention
+            - "knot": Topological knot-theory based attention
+            - "kaufmann": Combined FHN + Knot reaction-diffusion system
+            - "mla": DeepSeek-style KV cache compression attention
+
+    Returns:
+        Attention class constructor
+
+    Raises:
+        ValueError: If attention_type is unknown
+    """
+    if attention_type == "standard":
+        return StandardAttention
+    elif attention_type == "fhn":
+        return FHNAttention
+    elif attention_type == "knot":
+        return KnotAttention
+    elif attention_type == "kaufmann":
+        return KaufmannAttention
+    elif attention_type == "mla":
+        return MultiHeadLatentAttention
+    else:
+        raise ValueError(f"Unknown attention type: {attention_type}")
+
+
 __all__ = [
     "StandardAttention",
     "FHNAttention",
@@ -39,4 +71,5 @@ __all__ = [
     "KaufmannAttention",
     # "MultiHeadLatentAttention",  # Not yet implemented
     "RMSNorm",
+    "get_attention_class",
 ]
