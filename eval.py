@@ -42,6 +42,8 @@ import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
+from rich.console import Console
+from rich.table import Table
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
@@ -52,6 +54,7 @@ from neuromanifold_gpt.benchmarks.zero_shot import evaluate_lambada, evaluate_mu
 from model import GPT, GPTConfig
 
 logger = get_logger(__name__)
+console = Console()
 
 # -----------------------------------------------------------------------------
 # Default Configuration
@@ -222,22 +225,51 @@ for bench in benchmarks_to_run:
         wandb_results = {f"{bench}/{k}": v for k, v in results.items()}
         wandb.log(wandb_results)
 
-# Print summary
+# Print summary using rich table
 logger.section("Evaluation Summary")
-logger.info("="*60)
+
+# Create table for results
+table = Table(title="Benchmark Evaluation Results", show_header=True, header_style="bold magenta")
+table.add_column("Benchmark", style="cyan", width=15)
+table.add_column("Metric", style="white", width=25)
+table.add_column("Value", justify="right", style="yellow", width=15)
 
 for bench, results in all_results.items():
-    logger.info(f"\n{bench.upper()}:")
+    # Add benchmark rows
+    first_row = True
     for metric, value in results.items():
         if isinstance(value, float):
-            logger.info(f"  {metric:20s}: {value:.4f}")
+            value_str = f"{value:.4f}"
         else:
-            logger.info(f"  {metric:20s}: {value}")
+            value_str = str(value)
 
-logger.info("="*60)
+        if first_row:
+            table.add_row(bench.upper(), metric, value_str)
+            first_row = False
+        else:
+            table.add_row("", metric, value_str)
 
-# Finish wandb
+    # Add separator between benchmarks (if not last)
+    if bench != list(all_results.keys())[-1]:
+        table.add_row("", "", "", end_section=True)
+
+console.print(table)
+
+# Log summary to wandb
 if wandb_log:
+    # Create summary metrics for wandb
+    summary_metrics = {}
+    for bench, results in all_results.items():
+        for metric, value in results.items():
+            summary_metrics[f"summary/{bench}_{metric}"] = value
+
+    wandb.log(summary_metrics)
+
+    # Also log as wandb summary (persisted metrics)
+    for bench, results in all_results.items():
+        for metric, value in results.items():
+            wandb.run.summary[f"{bench}/{metric}"] = value
+
     wandb.finish()
 
 logger.success("Evaluation complete!")
