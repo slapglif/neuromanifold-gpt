@@ -48,14 +48,41 @@ Usage:
     >>> loss, info = head(x)
 """
 
-# Placeholder imports - will be populated as submodules are implemented
-# from neuromanifold_gpt.model.topology.braid import BraidGroup, BraidEncoder
-# from neuromanifold_gpt.model.topology.jones_polynomial import JonesApproximator
-# from neuromanifold_gpt.model.topology.topological_head import TopologicalHead
+# Braid group representations
+from neuromanifold_gpt.model.topology.braid import (
+    BraidGroup,
+    BraidEncoder,
+    BraidCrossing,
+    BraidConfig,
+    TemperleyLiebAlgebra,
+)
+
+# Jones polynomial approximation
+from neuromanifold_gpt.model.topology.jones_polynomial import (
+    JonesApproximator,
+    JonesConfig,
+    JonesEvaluator,
+    JonesLoss,
+    KauffmanBracketNetwork,
+)
+
+# Topological head for loss computation
+from neuromanifold_gpt.model.topology.topological_head import (
+    TopologicalHead,
+    TopologicalHeadConfig,
+)
 
 __all__ = [
-    # "BraidGroup",
-    # "BraidEncoder",
-    # "JonesApproximator",
-    # "TopologicalHead",
+    "BraidGroup",
+    "BraidEncoder",
+    "BraidCrossing",
+    "BraidConfig",
+    "TemperleyLiebAlgebra",
+    "JonesApproximator",
+    "JonesConfig",
+    "JonesEvaluator",
+    "JonesLoss",
+    "KauffmanBracketNetwork",
+    "TopologicalHead",
+    "TopologicalHeadConfig",
 ]

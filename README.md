@@ -259,6 +259,38 @@ And if thou steal, thou shalt not sell thyself.
 
 The model learns Shakespearean vocabulary, verse structure, and writing style. Validation loss drops from ~3.3 (pretrained baseline) to ~0.9-1.1 (finetuned).
 
+## checkpoint management
+
+nanoGPT supports separated checkpoints that split model weights and optimizer state into separate files. This reduces checkpoint sizes by 50%+ and makes it easy to share models without optimizer buffers.
+
+### Quick Example
+
+```sh
+# Save separated checkpoints (model + optimizer in separate files)
+python train.py --save_separate_optimizer=True
+
+# Save model-only checkpoints (inference-ready, 50%+ smaller)
+python train.py --save_model_only=True
+```
+
+**Benefits:**
+- **Smaller files** - Model-only checkpoints are 50-60% smaller (e.g., GPT-2 124M: 240MB unified → 100MB model-only)
+- **Easy sharing** - Share inference-ready models without optimizer state
+- **Flexible loading** - Load just the model or both model + optimizer as needed
+- **Backward compatible** - Automatically detects and loads both old unified and new separated checkpoint formats
+
+### Comprehensive Guide
+
+For detailed information including:
+- **Checkpoint formats** - Understanding unified, separated, and model-only checkpoints
+- **Training resumption** - How optimizer state is preserved and restored
+- **File structure** - Naming conventions and directory organization
+- **Best practices** - When to use each checkpoint format
+- **Migration guide** - Converting from unified to separated checkpoints
+- **Troubleshooting** - Solutions to common checkpoint issues
+
+**See the complete [Checkpoint Management Guide](docs/checkpoint-management.md)** for step-by-step instructions and best practices.
+
 ## sampling / inference
 
 Use the script `sample.py` to sample either from pre-trained GPT-2 models released by OpenAI, or from a model you trained yourself. For example, here is a way to sample from the largest available `gpt2-xl` model:
@@ -277,6 +309,98 @@ If you'd like to sample from a model you trained, use the `--out_dir` to point t
 For simple model benchmarking and profiling, `bench.py` might be useful. It's identical to what happens in the meat of the training loop of `train.py`, but omits much of the other complexities.
 
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
+
+## ralph loop configuration system
+
+The Ralph Loop is a rapid iteration framework for NeuroManifold GPT experiments with tight constraints (val_loss < 1.5, training_time < 100s on consumer GPUs). The configuration system has been refactored from 73 duplicated config files into a composition-based architecture that eliminates 92% of code duplication.
+
+### Quick Start
+
+**Load existing Ralph Loop iterations:**
+
+```python
+from neuromanifold_gpt.config.ralph_configs import get_ralph_config, list_ralph_iterations
+
+# Load a specific Ralph iteration (1-73 available)
+config = get_ralph_config(1)
+print(f"Model: {config.n_layer}L-{config.n_head}H-{config.n_embd}D")
+print(f"Training: {config.max_iters} iterations at lr={config.learning_rate}")
+print(f"Features: KAN={config.use_kan}, mHC={config.use_mhc}")
+
+# List all available iterations
+iterations = list_ralph_iterations()
+print(f"{len(iterations)} Ralph iterations available")
+```
+
+**Create custom configurations with the builder pattern:**
+
+```python
+from neuromanifold_gpt.config.ralph_builder import RalphConfigBuilder
+
+# Specify only what differs from RalphBaseConfig defaults
+config = RalphConfigBuilder().with_overrides(
+    # Model architecture
+    n_layer=4,
+    n_embd=512,
+    n_head=8,
+
+    # NeuroManifold features
+    use_kan=True,
+    kan_type="faster",
+    use_mhc=True,
+
+    # Training params
+    batch_size=32,
+    max_iters=2000,
+    learning_rate=1e-3,
+
+    # Output
+    out_dir="out-custom-experiment"
+).build()
+
+# All other params inherit from RalphBaseConfig defaults
+assert config.dataset == "shakespeare_char"  # Inherited
+assert config.precision == "bf16-mixed"      # Inherited
+```
+
+**Run usage examples:**
+
+```bash
+# See all usage patterns
+python examples/ralph_config_usage.py
+
+# List available iterations
+python examples/ralph_config_usage.py --list
+
+# Load specific iteration details
+python examples/ralph_config_usage.py --iteration=10
+```
+
+### Architecture
+
+The new system uses a three-layer architecture:
+
+1. **RalphBaseConfig** (`neuromanifold_gpt/config/ralph_base.py`) - Single source of truth with 60+ typed parameters
+2. **RalphConfigBuilder** (`neuromanifold_gpt/config/ralph_builder.py`) - Fluent API for composition with delta-based overrides
+3. **Registry** (`neuromanifold_gpt/config/ralph_configs/`) - Maps iteration numbers to configurations
+
+### Benefits
+
+- **92% code reduction**: ~4380 lines → ~300 lines
+- **Type safety**: Dataclass validation vs untyped globals
+- **DRY principle**: Define configs by specifying only deltas from base
+- **Backward compatible**: All 73 original iterations preserved
+- **Maintainable**: Structural changes in one place instead of 73 files
+
+### Documentation
+
+For complete details on the Ralph Loop configuration system, see:
+- **[Ralph Config System Guide](docs/ralph-config-system.md)** - Comprehensive documentation with examples
+- **[Usage Examples](examples/ralph_config_usage.py)** - Runnable code examples showing all patterns
+- **[Configuration Reference](docs/configuration-reference.md)** - Full parameter documentation
+- **[Migration Context](config/archive/ralph_iterations/README.md)** - Why the refactor was needed
+
+The old `config/ralph_iter*.py` files have been archived to `config/archive/ralph_iterations/` for historical reference.
 
 ## logging
 

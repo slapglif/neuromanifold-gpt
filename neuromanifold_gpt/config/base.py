@@ -124,6 +124,7 @@ class NeuroManifoldConfig:
     mhc_residual_weight: float = 0.9  # Initial identity mapping bias
     mhc_sinkhorn_iters: int = 5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
     mhc_sinkhorn_tau: float = 0.05  # Sinkhorn temperature for smoothness
+    use_mhc_fused: bool = False  # Use Triton-optimized fused mHC operations for performance
 
     # Attention configuration
     attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"

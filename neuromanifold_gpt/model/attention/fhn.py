@@ -209,23 +209,10 @@ class FHNAttention(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-        # RoPE and ALiBi position embeddings
+        # RoPE and ALiBi position embeddings (lazy initialization)
         self.rope = None
         self.alibi = None
-        if pos_emb_type == 'rotary':
-            from neuromanifold_gpt.model.embeddings import RotaryPositionalEmbedding
-            self.rope = RotaryPositionalEmbedding(
-                embed_dim=embed_dim,
-                head_dim=self.head_dim,
-                max_seq_len=max_seq_len
-            )
-        elif pos_emb_type == 'alibi':
-            from neuromanifold_gpt.model.embeddings import ALiBiPositionalBias
-            self.alibi = ALiBiPositionalBias(
-                n_heads=n_heads,
-                embed_dim=embed_dim,
-                max_seq_len=max_seq_len
-            )
+        self.max_seq_len = max_seq_len  # Store for lazy init
 
     def forward(
         self, x: torch.Tensor, spectral_basis: torch.Tensor
@@ -237,6 +224,22 @@ class FHNAttention(nn.Module):
         information leakage from future positions during training.
         """
         B, T, D = x.shape
+
+        # Lazy initialization of position embeddings (only when first used)
+        if self.pos_emb_type == 'rotary' and self.rope is None:
+            from neuromanifold_gpt.model.embeddings import RotaryPositionalEmbedding
+            self.rope = RotaryPositionalEmbedding(
+                embed_dim=self.embed_dim,
+                head_dim=self.head_dim,
+                max_seq_len=self.max_seq_len
+            )
+        elif self.pos_emb_type == 'alibi' and self.alibi is None:
+            from neuromanifold_gpt.model.embeddings import ALiBiPositionalBias
+            self.alibi = ALiBiPositionalBias(
+                n_heads=self.n_heads,
+                embed_dim=self.embed_dim,
+                max_seq_len=self.max_seq_len
+            )
 
         # QKV projection
         qkv = self.qkv(x)

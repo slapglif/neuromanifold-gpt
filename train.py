@@ -68,6 +68,8 @@ class TrainingConfig:
     log_interval: int = 10
     eval_iters: int = 200
     save_checkpoints: bool = True
+    save_separate_optimizer: bool = False
+    save_model_only: bool = False
 
     # Data
     dataset: str = "shakespeare_char"
@@ -112,6 +114,7 @@ class TrainingConfig:
     # Training
     max_iters: int = 5000
     gradient_accumulation_steps: int = 1
+    gradient_checkpointing: bool = False
     learning_rate: float = 1e-3
     min_lr: float = 1e-4
     weight_decay: float = 0.1
@@ -637,6 +640,7 @@ def train(config: TrainingConfig) -> None:
             # Speed optimization
             skip_manifold_spectral=config.skip_manifold_spectral,
             # Training
+            gradient_checkpointing=config.gradient_checkpointing,
             learning_rate=config.learning_rate,
             weight_decay=config.weight_decay,
             beta1=config.beta1,
@@ -652,6 +656,7 @@ def train(config: TrainingConfig) -> None:
             n_embd=config.n_embd,
             dropout=config.dropout,
             bias=config.bias,
+            gradient_checkpointing=config.gradient_checkpointing,
         )
 
     # Build Lightning module
