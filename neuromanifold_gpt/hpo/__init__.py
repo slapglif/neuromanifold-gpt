@@ -7,5 +7,6 @@ novel component parameters.
 
 from neuromanifold_gpt.hpo.search_space import SearchSpace
 from neuromanifold_gpt.hpo.optuna_search import OptunaHPO
+from neuromanifold_gpt.hpo.pruning import OptunaPruningCallback
 
-__all__ = ["SearchSpace", "OptunaHPO"]
+__all__ = ["SearchSpace", "OptunaHPO", "OptunaPruningCallback"]
