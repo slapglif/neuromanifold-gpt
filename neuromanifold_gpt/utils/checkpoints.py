@@ -5,6 +5,7 @@ Provides interactive checkpoint selection with rich table UI showing
 validation loss, file age, and size.
 """
 
+import json
 import os
 import re
 from datetime import datetime
@@ -66,6 +67,33 @@ def _extract_val_loss(filename: str) -> Optional[float]:
     match = re.search(r'val[_-](\d+\.\d+)', filename, re.IGNORECASE)
     if match:
         return float(match.group(1))
+
+    return None
+
+
+def _extract_training_step(filename: str) -> Optional[int]:
+    """Extract training step from checkpoint filename.
+
+    Supports patterns like:
+    - ckpt-000123-1.2345.ckpt (Lightning format)
+    - ckpt-{step}-{val_loss}.ckpt
+    - checkpoint_step_12345.pt
+    - iter_12345.pt
+    """
+    # Try Lightning format: ckpt-{step}-{val_loss}.ckpt
+    match = re.search(r'ckpt-(\d+)-\d+\.\d+\.ckpt', filename)
+    if match:
+        return int(match.group(1))
+
+    # Try step in name: step_12345 or step-12345
+    match = re.search(r'step[_-](\d+)', filename, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+
+    # Try iter in name: iter_12345 or iter-12345
+    match = re.search(r'iter[_-](\d+)', filename, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
 
     return None
 
@@ -261,3 +289,75 @@ def list_checkpoints(directory: str = "out") -> List[str]:
     """
     checkpoints = _scan_checkpoints(directory)
     return [ckpt[0] for ckpt in checkpoints]
+
+
+def export_checkpoints_metadata(directory: str = "out", output_file: str = "checkpoints_metadata.json") -> None:
+    """Export checkpoint metadata to a JSON file.
+
+    Scans the directory for checkpoint files and exports their metadata including
+    validation loss, training step, timestamp, age, and file size information.
+
+    Args:
+        directory: Directory to scan for checkpoints (default: "out")
+        output_file: Path to output JSON file (default: "checkpoints_metadata.json")
+
+    Raises:
+        ValueError: If directory does not exist
+        IOError: If unable to write output file
+
+    Example:
+        >>> export_checkpoints_metadata("out", "checkpoints.json")
+        >>> # Creates checkpoints.json with metadata for all checkpoints in out/
+    """
+    dir_path = Path(directory)
+
+    # Validate directory exists
+    if not dir_path.exists():
+        raise ValueError(f"Directory does not exist: {directory}")
+
+    if not dir_path.is_dir():
+        raise ValueError(f"Path is not a directory: {directory}")
+
+    # Scan for checkpoints
+    checkpoints_data = _scan_checkpoints(directory)
+
+    # Build checkpoint metadata list
+    checkpoints_list = []
+    for filename, val_loss, mtime, size_bytes in checkpoints_data:
+        # Extract training step if present
+        training_step = _extract_training_step(filename)
+
+        # Format age as human-readable string
+        age = _format_age(mtime)
+
+        checkpoint_info = {
+            "filename": filename,
+            "val_loss": val_loss,  # None will be serialized as null in JSON
+            "training_step": training_step,  # None will be serialized as null in JSON
+            "timestamp": mtime,
+            "age": age,
+            "size_bytes": size_bytes,
+            "size_mb": size_bytes / 1e6,
+        }
+        checkpoints_list.append(checkpoint_info)
+
+    # Build output structure with metadata header
+    output_data = {
+        "metadata": {
+            "exported_at": datetime.now().isoformat(),
+            "directory": str(dir_path.absolute()),
+            "checkpoint_count": len(checkpoints_list),
+        },
+        "checkpoints": checkpoints_list,
+    }
+
+    # Write to JSON file
+    try:
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, "w") as f:
+            json.dump(output_data, f, indent=2)
+
+    except IOError as e:
+        raise IOError(f"Failed to write output file {output_file}: {e}")

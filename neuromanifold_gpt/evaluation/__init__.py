@@ -18,6 +18,12 @@ MTP Metrics:
 Memory Metrics:
     MemoryMetrics: Memory utilization and retrieval statistics
 
+KAN Metrics:
+    KANMetrics: B-spline basis statistics and activation patterns for KAN layers
+
+Spectral Metrics:
+    SpectralMetrics: Spectral filtering statistics and frequency domain behavior
+
 Aggregator:
     ComponentMetricsAggregator: Main class for computing all metrics from model info dict
 """
@@ -27,6 +33,8 @@ from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
 from neuromanifold_gpt.evaluation.fhn_metrics import FHNMetrics
 from neuromanifold_gpt.evaluation.mtp_metrics import MTPMetrics
 from neuromanifold_gpt.evaluation.memory_metrics import MemoryMetrics
+from neuromanifold_gpt.evaluation.kan_metrics import KANMetrics
+from neuromanifold_gpt.evaluation.spectral_metrics import SpectralMetrics
 
 # Metrics aggregator
 from neuromanifold_gpt.evaluation.component_metrics import ComponentMetricsAggregator
@@ -37,6 +45,8 @@ __all__ = [
     "FHNMetrics",
     "MTPMetrics",
     "MemoryMetrics",
+    "KANMetrics",
+    "SpectralMetrics",
     # Aggregator
     "ComponentMetricsAggregator",
 ]

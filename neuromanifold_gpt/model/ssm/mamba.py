@@ -31,7 +31,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan
+from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan, ParallelSelectiveScan
 
 
 class MambaBlock(nn.Module):
@@ -70,6 +70,7 @@ class MambaBlock(nn.Module):
         bias: bool = False,
         use_conv_bias: bool = True,
         use_norm: bool = True,
+        use_parallel_scan: bool = False,
     ):
         """
         Initialize MambaBlock.
@@ -88,6 +89,7 @@ class MambaBlock(nn.Module):
             bias: Whether to use bias in linear projections
             use_conv_bias: Whether to use bias in convolution
             use_norm: Whether to use layer normalization
+            use_parallel_scan: Whether to use parallel associative scan (faster for long sequences)
         """
         super().__init__()
 
@@ -115,7 +117,9 @@ class MambaBlock(nn.Module):
         )
 
         # Selective scan (core SSM mechanism)
-        self.ssm = SelectiveScan(
+        # Choose between sequential and parallel implementation
+        scan_class = ParallelSelectiveScan if use_parallel_scan else SelectiveScan
+        self.ssm = scan_class(
             embed_dim=self.inner_dim,
             state_dim=state_dim,
             dt_rank=dt_rank,

@@ -24,7 +24,7 @@ Usage:
 """
 
 import torch
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
 from neuromanifold_gpt.evaluation.fhn_metrics import FHNMetrics
@@ -139,7 +139,7 @@ class ComponentMetricsAggregator:
 
     def _aggregate_fhn_metrics(
         self,
-        block_infos: list
+        block_infos: List[Dict[str, Any]]
     ) -> Dict[str, float]:
         """Aggregate FHN metrics from multiple transformer blocks.
 
@@ -154,8 +154,8 @@ class ComponentMetricsAggregator:
             Returns empty dict if no FHN data is found.
         """
         # Collect FHN states and pulse widths from all blocks
-        all_fhn_states = []
-        all_pulse_widths = []
+        all_fhn_states: List[torch.Tensor] = []
+        all_pulse_widths: List[torch.Tensor] = []
 
         for block_info in block_infos:
             if 'fhn_state' in block_info and block_info['fhn_state'] is not None:
@@ -185,7 +185,7 @@ class ComponentMetricsAggregator:
             return {}
 
         # Concatenate all collected tensors
-        aggregated_info = {}
+        aggregated_info: Dict[str, torch.Tensor] = {}
 
         if all_fhn_states:
             # Flatten all states into a single tensor for aggregate statistics

@@ -174,6 +174,11 @@ class PDESolver(nn.Module, ABC):
 
         More accurate for smooth functions, especially for higher orders.
         """
+        # Handle BFloat16 for FFT (not supported natively)
+        orig_dtype = u.dtype
+        if u.dtype == torch.bfloat16:
+            u = u.float()
+
         # Get size along derivative dimension
         n = u.shape[dim]
 
@@ -200,7 +205,7 @@ class PDESolver(nn.Module, ABC):
         du = torch.fft.ifft(du_hat, dim=dim)
 
         # Return real part (input is real)
-        return du.real
+        return du.real.to(orig_dtype)
 
     def _finite_difference(
         self,

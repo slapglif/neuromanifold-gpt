@@ -10,6 +10,15 @@ import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from neuromanifold_gpt.utils.logging import get_logger
+
+try:
+    from .memory_efficient import xformers_attention, XFORMERS_AVAILABLE
+except ImportError:
+    XFORMERS_AVAILABLE = False
+    xformers_attention = None
+
+logger = get_logger(__name__)
 
 
 class StandardAttention(nn.Module):
@@ -19,7 +28,8 @@ class StandardAttention(nn.Module):
     Implements scaled dot-product attention with causal masking:
     Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
 
-    Uses Flash Attention (PyTorch >= 2.0) when available for efficiency.
+    Uses Flash Attention (PyTorch >= 2.0) when available for efficiency,
+    falls back to xformers memory_efficient_attention, then manual implementation.
     """
 
     def __init__(
@@ -49,7 +59,19 @@ class StandardAttention(nn.Module):
 
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        if not self.flash:
+        # xformers memory-efficient attention as fallback
+        self.xformers = XFORMERS_AVAILABLE
+
+        # Log available backend
+        if self.flash:
+            logger.info("StandardAttention: Using Flash Attention backend (PyTorch >= 2.0)")
+        elif self.xformers:
+            logger.info("StandardAttention: Using xformers memory-efficient attention backend")
+        else:
+            logger.info("StandardAttention: Using manual attention implementation")
+
+        # Only need causal mask buffer for manual implementation
+        if not self.flash and not self.xformers:
             # causal mask to ensure that attention is only applied to the left in the input sequence
             self.register_buffer(
                 "bias",
@@ -80,6 +102,8 @@ class StandardAttention(nn.Module):
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         attn_probs = None
+        backend = None
+
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
             y = torch.nn.functional.scaled_dot_product_attention(
@@ -88,6 +112,15 @@ class StandardAttention(nn.Module):
                 dropout_p=self.dropout if self.training else 0,
                 is_causal=True
             )
+            backend = "flash"
+        elif self.xformers:
+            # fallback to xformers memory-efficient attention
+            y = xformers_attention(
+                q, k, v,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=True,
+            )
+            backend = "xformers"
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
@@ -96,6 +129,7 @@ class StandardAttention(nn.Module):
             attn_probs = att
             att = self.attn_dropout(att)
             y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+            backend = "manual"
 
         y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
 
@@ -105,7 +139,8 @@ class StandardAttention(nn.Module):
         # Return info dict matching FHNAttention API
         info = {
             "attention_type": "standard",
-            "attn_probs": attn_probs,  # None when using flash attention
+            "backend": backend,
+            "attn_probs": attn_probs,  # None when using flash or xformers attention
         }
 
         return y, info

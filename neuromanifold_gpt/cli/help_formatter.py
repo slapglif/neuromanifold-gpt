@@ -43,7 +43,8 @@ Usage:
 
 import sys
 import argparse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TextIO
 from ast import literal_eval
 from pathlib import Path
 from dataclasses import fields, is_dataclass, MISSING
@@ -74,7 +75,7 @@ class RichHelpFormatter(argparse.RawDescriptionHelpFormatter):
     Users should use create_parser_from_defaults() instead.
     """
 
-    def __init__(self, prog: str, **kwargs):
+    def __init__(self, prog: str, **kwargs: Any) -> None:
         super().__init__(prog, max_help_position=40, width=100, **kwargs)
 
 
@@ -127,7 +128,7 @@ class RichArgumentParser(argparse.ArgumentParser):
 
         return help_text
 
-    def print_help(self, file=None):
+    def print_help(self, file: Optional[TextIO] = None) -> None:
         """Print help with rich formatting to terminal.
 
         Args:
@@ -252,9 +253,9 @@ def create_parser_from_defaults(
 
 
 def _add_argument_from_default(
-    parser_or_group,
+    parser_or_group: Union[argparse.ArgumentParser, argparse._ArgumentGroup],
     param_name: str,
-    default_value: Any,
+    default_value: Union[str, int, float, bool],
 ) -> None:
     """Add an argument to parser/group inferred from default value.
 

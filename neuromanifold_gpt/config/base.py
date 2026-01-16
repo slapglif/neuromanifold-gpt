@@ -101,6 +101,10 @@ class NeuroManifoldConfig:
     use_fhn_partitioning: bool = True  # Enable energy balancing for stability
     use_fhn_fused: bool = False  # Disabled (Using JIT instead)
     use_fhn_parallel: bool = True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
+
+    # Chunked attention for memory-efficient long sequences
+    use_fhn_chunked: bool = True  # Enable chunked attention for reduced memory usage
+    fhn_chunk_size: int = 512  # Chunk size for processing long sequences (trade-off: memory vs speed)
     
     # Spectral regularization
     ortho_weight: float = 0.01
@@ -124,7 +128,7 @@ class NeuroManifoldConfig:
     mhc_residual_weight: float = 0.9  # Initial identity mapping bias
     mhc_sinkhorn_iters: int = 5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
     mhc_sinkhorn_tau: float = 0.05  # Sinkhorn temperature for smoothness
-    use_mhc_fused: bool = False  # Use Triton-optimized fused mHC operations for performance
+    use_mhc_fused: bool = field(init=False)  # Auto-enabled when CUDA available (Triton-optimized fused mHC)
 
     # Attention configuration
     attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"
@@ -260,6 +264,11 @@ class NeuroManifoldConfig:
     # DeepSeek uses std=0.006 instead of typical 0.02 for faster early convergence
     init_std: float = 0.006
 
+    # Initialization strategy selection
+    # Options: 'gpt2' (standard), 'gpt3' (scaled residual), 'mup' (maximal update parametrization)
+    init_strategy: str = "gpt2"  # Default to GPT-2 style for backward compatibility
+    mup_base_width: int = 128  # Base width for muP hyperparameter transfer
+
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""
         # Fast mode enables all fast-path optimizations
@@ -269,6 +278,13 @@ class NeuroManifoldConfig:
             self.skip_metric_tensor = True
             self.n_fhn_steps = 1  # Reduce FHN steps
             self.sdr_size = min(self.sdr_size, 512)  # Cap SDR size
+
+        # Auto-enable fused mHC when CUDA is available for performance
+        try:
+            import torch
+            self.use_mhc_fused = torch.cuda.is_available()
+        except ImportError:
+            self.use_mhc_fused = False
 
         # Compute number of active SDR bits
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
