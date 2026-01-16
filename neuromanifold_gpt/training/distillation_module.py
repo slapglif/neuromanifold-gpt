@@ -146,4 +146,9 @@ class DistillationLitModule(NeuroManifoldLitModule):
         self.log('train_student_loss', student_loss, on_step=True, on_epoch=True)
         self.log('train_distillation_loss', distillation_loss, on_step=True, on_epoch=True)
 
+        # Log verification metrics
+        self.log('distill_loss', distillation_loss, on_step=True, on_epoch=True)
+        self.log('student_loss', student_loss, on_step=True, on_epoch=True)
+        self.log('teacher_logits_mean', teacher_logits.mean(), on_step=True, on_epoch=True)
+
         return total_loss
