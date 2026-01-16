@@ -90,6 +90,11 @@ def benchmark_speed(quick_test: bool = False):
     print(f"Device: {device}")
     print("=" * 80)
 
+    # Clear GPU memory before starting
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+
     # Set up autocast context
     dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
     device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
@@ -98,10 +103,12 @@ def benchmark_speed(quick_test: bool = False):
 
     # Test configurations
     if quick_test:
+        print("\n⚠ Quick test mode - reduced sequence lengths for faster execution")
         configs = [
-            {"seq_len": 128, "batch_size": 4},
+            {"seq_len": 128, "batch_size": 1},
+            {"seq_len": 256, "batch_size": 1},
         ]
-        n_iters = 10
+        n_iters = 5
         warmup = 2
     else:
         configs = [
@@ -214,6 +221,12 @@ def benchmark_speed(quick_test: bool = False):
             device, ctx, n_iters, warmup
         )
 
+        # Clean up standard model before loading NeuroManifold
+        del standard_model
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+            time.sleep(2)  # Give GPU time to free memory
+
         # Benchmark NeuroManifold attention
         print("Benchmarking NeuroManifold attention...")
         neuromanifold_fwd, neuromanifold_bwd = benchmark_model(
@@ -247,7 +260,7 @@ def benchmark_speed(quick_test: bool = False):
         print(f"  NeuroManifold: {neuromanifold_tokens_per_sec:.1f} ({neuromanifold_tokens_per_sec / standard_tokens_per_sec:.2f}x)")
 
         # Clean up
-        del standard_model, neuromanifold_model
+        del neuromanifold_model
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
