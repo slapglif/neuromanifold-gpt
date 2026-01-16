@@ -368,8 +368,9 @@ class MultiHeadSolitonAttention(nn.Module):
         ]
 
         # Create attention modules for each physics type
+        # Each group has group_size heads, so embed_dim = group_size * head_dim
         self.sine_gordon_attn = SolitonAttention(
-            embed_dim=sum(self.group_sizes[0:1]) * self.head_dim * 3,  # Adjusted for single group
+            embed_dim=self.group_sizes[0] * self.head_dim,
             n_heads=self.group_sizes[0],
             dropout=dropout,
             n_pde_steps=n_pde_steps,
@@ -381,7 +382,7 @@ class MultiHeadSolitonAttention(nn.Module):
         ) if self.group_sizes[0] > 0 else None
 
         self.kdv_attn = SolitonAttention(
-            embed_dim=sum(self.group_sizes[1:2]) * self.head_dim * 3,
+            embed_dim=self.group_sizes[1] * self.head_dim,
             n_heads=self.group_sizes[1],
             dropout=dropout,
             n_pde_steps=n_pde_steps,
@@ -393,7 +394,7 @@ class MultiHeadSolitonAttention(nn.Module):
         ) if self.group_sizes[1] > 0 else None
 
         self.hj_attn = SolitonAttention(
-            embed_dim=sum(self.group_sizes[2:3]) * self.head_dim * 3,
+            embed_dim=self.group_sizes[2] * self.head_dim,
             n_heads=self.group_sizes[2],
             dropout=dropout,
             n_pde_steps=n_pde_steps,
