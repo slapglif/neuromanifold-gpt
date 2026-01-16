@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "023-add-gitignore-patterns-for-training-output-directo",
-  "state": "planning",
+  "spec": "025-merge-all-pending-tasks-to-masterr",
+  "state": "building",
   "subtasks": {
-    "completed": 0,
-    "total": 0,
+    "completed": 3,
+    "total": 21,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Update .gitignore",
+    "current": "CLI and UX Improvements",
     "id": null,
-    "total": 1
+    "total": 5
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 2,
-    "started_at": "2026-01-15T12:57:02.368096"
+    "number": 4,
+    "started_at": "2026-01-15T18:33:04.704417"
   },
-  "last_update": "2026-01-15T12:59:36.990436"
+  "last_update": "2026-01-15T18:40:59.780150"
 }
