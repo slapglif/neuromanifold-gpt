@@ -18,16 +18,18 @@ from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
-from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
+# COMMENTED OUT - Not implemented as part of position embeddings spec (030)
+# from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.embeddings.rotary import RotaryPositionalEmbedding
 from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
-from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
-from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
-from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
-from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
+# COMMENTED OUT - Not implemented as part of position embeddings spec (030)
+# from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+# from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+# from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+# from neuromanifold_gpt.model.attention.mla import RMSNorm  # Module not yet implemented
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -168,8 +170,9 @@ class NeuroManifoldGPT(nn.Module):
         )
         self.mhc_enabled = config.use_mhc and config.mhc_n_streams > 1
 
-        # Final layer norm - RMSNorm is ~15% faster than LayerNorm (no mean computation)
-        self.ln_f = RMSNorm(config.n_embd)
+        # Final layer norm
+        # Note: RMSNorm would be ~15% faster but is not yet implemented
+        self.ln_f = nn.LayerNorm(config.n_embd)
 
         # Language model head
         # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
@@ -213,53 +216,61 @@ class NeuroManifoldGPT(nn.Module):
             threshold=config.engram_threshold,
         )
 
+        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
-        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
-        if self.use_hybrid_reasoning:
-            self.hybrid_reasoning = HybridReasoningModule(
-                embed_dim=config.n_embd,
-                n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
-                n_heads=config.n_heads,
-                dropout=config.dropout,
-                use_e7_prior=True,
-                thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
-            )
+        # self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
+        # if self.use_hybrid_reasoning:
+        #     self.hybrid_reasoning = HybridReasoningModule(
+        #         embed_dim=config.n_embd,
+        #         n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
+        #         n_heads=config.n_heads,
+        #         dropout=config.dropout,
+        #         use_e7_prior=True,
+        #         thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
+        #     )
+        self.use_hybrid_reasoning = False
 
         # ========================================
         # System 2 Reasoning Components
         # ========================================
 
+        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
-        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
-        if self.use_dag_planner:
-            self.dag_planner = ForcedDAGPlanner(
-                embed_dim=config.n_embd,
-                manifold_dim=config.manifold_dim,
-                max_nodes=getattr(config, 'dag_max_nodes', 32),
-                min_nodes=getattr(config, 'dag_min_nodes', 3),
-            )
+        # self.use_dag_planner = getattr(config, 'use_dag_planner', False)
+        # if self.use_dag_planner:
+        #     self.dag_planner = ForcedDAGPlanner(
+        #         embed_dim=config.n_embd,
+        #         manifold_dim=config.manifold_dim,
+        #         max_nodes=getattr(config, 'dag_max_nodes', 32),
+        #         min_nodes=getattr(config, 'dag_min_nodes', 3),
+        #     )
+        self.use_dag_planner = False
 
+        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
-        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
-        if self.use_hierarchical_memory:
-            self.hierarchical_memory = HierarchicalEngramMemory(
-                sdr_size=config.sdr_size,
-                n_active=config.sdr_n_active,
-                content_dim=config.n_embd,
-                l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
-                l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
-                l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
-            )
+        # self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
+        # if self.use_hierarchical_memory:
+        #     self.hierarchical_memory = HierarchicalEngramMemory(
+        #         sdr_size=config.sdr_size,
+        #         n_active=config.sdr_n_active,
+        #         content_dim=config.n_embd,
+        #         l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
+        #         l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
+        #         l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
+        #     )
+        self.use_hierarchical_memory = False
 
+        # COMMENTED OUT - Module not implemented as part of position embeddings spec (030)
         # ConsistencyImaginationModule - Counterfactual exploration
-        self.use_imagination = getattr(config, 'use_imagination', False)
-        if self.use_imagination:
-            self.imagination = ConsistencyImaginationModule(
-                embed_dim=config.n_embd,
-                manifold_dim=config.manifold_dim,
-                n_imagination_steps=getattr(config, 'imagination_steps', 4),
-            )
-            self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
+        # self.use_imagination = getattr(config, 'use_imagination', False)
+        # if self.use_imagination:
+        #     self.imagination = ConsistencyImaginationModule(
+        #         embed_dim=config.n_embd,
+        #         manifold_dim=config.manifold_dim,
+        #         n_imagination_steps=getattr(config, 'imagination_steps', 4),
+        #     )
+        #     self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
+        self.use_imagination = False
 
         # Memory Active Retrieval configuration
         self.memory_active_retrieval = getattr(config, 'memory_active_retrieval', False)

@@ -48,8 +48,9 @@ class RotaryPositionalEmbedding(nn.Module):
         freqs = torch.outer(positions, self.inv_freq)
 
         # emb: [seq_len, head_dim] where each pair (2i, 2i+1) has (cos, sin) or (sin, cos)
-        # We interleave cos and sin: [cos0, cos0, cos1, cos1, ...]
-        emb = torch.cat([freqs, freqs], dim=-1)
+        # CORRECT: Each dimension pair must share the same frequency for proper 2D rotation
+        # This creates pattern [freq0, freq0, freq1, freq1, ...] instead of [freq0, freq1, ...]
+        emb = torch.repeat_interleave(freqs, 2, dim=-1)
 
         # Register cos and sin caches
         self.register_buffer('cos_cached', emb.cos(), persistent=False)
