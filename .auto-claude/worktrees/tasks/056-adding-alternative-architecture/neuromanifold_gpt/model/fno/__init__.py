@@ -61,13 +61,17 @@ Usage:
     >>> x = enc(bytes_input)  # (2, 128, 384) continuous embeddings
 """
 
-# Note: Imports will be added as modules are implemented in subsequent subtasks.
+# Spectral convolution layers (core FNO operation)
+from neuromanifold_gpt.model.fno.spectral_conv import (
+    SpectralConv,
+    SpectralConv1d,
+    SpectralConv2d,
+    SpectralConvNd,
+    SpectralConvConfig,
+)
+
+# Note: Additional imports will be added as modules are implemented in subsequent subtasks.
 # Future imports:
-# from neuromanifold_gpt.model.fno.spectral_conv import (
-#     SpectralConv1d,
-#     SpectralConv2d,
-#     SpectralConvConfig,
-# )
 # from neuromanifold_gpt.model.fno.fourier_operator import (
 #     FNOBlock,
 #     FNOEncoder,
@@ -79,5 +83,10 @@ Usage:
 # )
 
 __all__ = [
-    # Will be populated as modules are implemented
+    # Spectral convolution layers
+    "SpectralConv",
+    "SpectralConv1d",
+    "SpectralConv2d",
+    "SpectralConvNd",
+    "SpectralConvConfig",
 ]
