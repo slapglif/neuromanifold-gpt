@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Write(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Edit(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Glob(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Grep(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Read(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/.auto-claude/specs/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Write(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/.auto-claude/specs/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Edit(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/023-add-gitignore-patterns-for-training-output-directo/.auto-claude/specs/023-add-gitignore-patterns-for-training-output-directo/**)",
+      "Read(/home/mikeb/work/nano/.auto-claude/**)",
+      "Write(/home/mikeb/work/nano/.auto-claude/**)",
+      "Edit(/home/mikeb/work/nano/.auto-claude/**)",
+      "Glob(/home/mikeb/work/nano/.auto-claude/**)",
+      "Grep(/home/mikeb/work/nano/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}
