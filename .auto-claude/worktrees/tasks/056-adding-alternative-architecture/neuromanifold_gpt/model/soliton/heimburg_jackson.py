@@ -81,32 +81,28 @@ def heimburg_jackson_rk4_step(
     #     = dc^2/drho * rho_x^2 + c^2(rho) * rho_xx - h * rho_xxxx
     rhs_base = dc_sq_drho * rho_x * rho_x + c_sq * rho_xx - h_disp * rho_xxxx
 
-    def compute_rhs(r: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        # For internal RK4 stages, use simplified approximation
-        return rhs_base - damping * v
-
-    # RK4 for second-order ODE
+    # RK4 for second-order ODE (inlined compute_rhs: rhs_base - damping * v)
     # k1
     k1_rho = rho_t
-    k1_v = compute_rhs(rho, rho_t)
+    k1_v = rhs_base - damping * rho_t
 
     # k2
     rho_mid1 = rho + 0.5 * dt * k1_rho
     v_mid1 = rho_t + 0.5 * dt * k1_v
     k2_rho = v_mid1
-    k2_v = compute_rhs(rho_mid1, v_mid1)
+    k2_v = rhs_base - damping * v_mid1
 
     # k3
     rho_mid2 = rho + 0.5 * dt * k2_rho
     v_mid2 = rho_t + 0.5 * dt * k2_v
     k3_rho = v_mid2
-    k3_v = compute_rhs(rho_mid2, v_mid2)
+    k3_v = rhs_base - damping * v_mid2
 
     # k4
     rho_end = rho + dt * k3_rho
     v_end = rho_t + dt * k3_v
     k4_rho = v_end
-    k4_v = compute_rhs(rho_end, v_end)
+    k4_v = rhs_base - damping * v_end
 
     # Combine
     rho_new = rho + (dt / 6.0) * (k1_rho + 2.0 * k2_rho + 2.0 * k3_rho + k4_rho)
