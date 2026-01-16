@@ -96,6 +96,78 @@ def benchmark_model_memory(
     return forward_memory_avg, backward_memory_avg
 
 
+def analyze_memory_scaling(results, device):
+    """Analyze memory scaling with batch size and sequence length.
+
+    Args:
+        results: List of dict with keys: seq_len, batch_size, standard_total, neuromanifold_total
+        device: Device used for benchmarking
+    """
+    if device.type != "cuda":
+        print("\n" + "=" * 80)
+        print("Memory scaling analysis (not available on CPU)")
+        print("=" * 80)
+        return
+
+    print("\n" + "=" * 80)
+    print("Memory scaling analysis")
+    print("=" * 80)
+
+    # Group by sequence length for batch size scaling
+    seq_lens = sorted(set(r["seq_len"] for r in results))
+
+    for seq_len in seq_lens:
+        seq_results = [r for r in results if r["seq_len"] == seq_len]
+        if len(seq_results) < 2:
+            continue
+
+        seq_results.sort(key=lambda x: x["batch_size"])
+
+        print(f"\nBatch size scaling at sequence length {seq_len}:")
+        print(f"  {'Batch':<8} {'Std (MB)':<12} {'NM (MB)':<12} {'Std/tok (KB)':<15} {'NM/tok (KB)':<15}")
+        print("  " + "-" * 70)
+
+        for r in seq_results:
+            batch_size = r["batch_size"]
+            seq_len_val = r["seq_len"]
+            tokens = batch_size * seq_len_val
+
+            std_mem = r["standard_total"]
+            nm_mem = r["neuromanifold_total"]
+
+            std_per_tok = (std_mem * 1024) / tokens  # Convert MB to KB per token
+            nm_per_tok = (nm_mem * 1024) / tokens
+
+            print(f"  {batch_size:<8} {std_mem:<12.1f} {nm_mem:<12.1f} {std_per_tok:<15.2f} {nm_per_tok:<15.2f}")
+
+    # Group by batch size for sequence length scaling
+    batch_sizes = sorted(set(r["batch_size"] for r in results))
+
+    for batch_size in batch_sizes:
+        batch_results = [r for r in results if r["batch_size"] == batch_size]
+        if len(batch_results) < 2:
+            continue
+
+        batch_results.sort(key=lambda x: x["seq_len"])
+
+        print(f"\nSequence length scaling at batch size {batch_size}:")
+        print(f"  {'SeqLen':<8} {'Std (MB)':<12} {'NM (MB)':<12} {'Std/tok (KB)':<15} {'NM/tok (KB)':<15}")
+        print("  " + "-" * 70)
+
+        for r in batch_results:
+            batch_size_val = r["batch_size"]
+            seq_len_val = r["seq_len"]
+            tokens = batch_size_val * seq_len_val
+
+            std_mem = r["standard_total"]
+            nm_mem = r["neuromanifold_total"]
+
+            std_per_tok = (std_mem * 1024) / tokens
+            nm_per_tok = (nm_mem * 1024) / tokens
+
+            print(f"  {seq_len_val:<8} {std_mem:<12.1f} {nm_mem:<12.1f} {std_per_tok:<15.2f} {nm_per_tok:<15.2f}")
+
+
 def benchmark_memory(quick_test: bool = False):
     """Run attention memory benchmarks.
 
@@ -109,6 +181,9 @@ def benchmark_memory(quick_test: bool = False):
         print("WARNING: Memory benchmarking requires CUDA. Running on CPU will not measure GPU memory.")
 
     print("=" * 80)
+
+    # Store results for scaling analysis
+    results = []
 
     # Set up autocast context
     dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
@@ -249,6 +324,14 @@ def benchmark_memory(quick_test: bool = False):
         standard_total_mem = standard_fwd_mem + standard_bwd_mem
         neuromanifold_total_mem = neuromanifold_fwd_mem + neuromanifold_bwd_mem
 
+        # Store results for scaling analysis
+        results.append({
+            "seq_len": seq_len,
+            "batch_size": batch_size,
+            "standard_total": standard_total_mem,
+            "neuromanifold_total": neuromanifold_total_mem,
+        })
+
         # Print results
         if device.type == "cuda":
             print(f"\nForward Pass Peak Memory (MB):")
@@ -269,6 +352,9 @@ def benchmark_memory(quick_test: bool = False):
         del standard_model, neuromanifold_model
         if device.type == "cuda":
             torch.cuda.empty_cache()
+
+    # Analyze memory scaling
+    analyze_memory_scaling(results, device)
 
     print("\n" + "=" * 80)
     print("Benchmark complete!")
