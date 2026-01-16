@@ -79,15 +79,13 @@ from neuromanifold_gpt.model.fno.fourier_operator import (
 )
 
 # Multimodal encoder with FNO
-from neuromanifold_gpt.model.fno.multimodal_encoder import (
-    MultimodalFNOEncoder,
-    MultimodalConfig,
-    MultimodalFusionEncoder,
-    ByteEmbedding,
-    AudioEncoder,
-    ImagePatchEncoder,
-    sinusoidal_position_encoding,
-)
+from neuromanifold_gpt.model.fno.config import MultimodalConfig
+from neuromanifold_gpt.model.fno.byte_embedding import ByteEmbedding
+from neuromanifold_gpt.model.fno.audio_encoder import AudioEncoder
+from neuromanifold_gpt.model.fno.image_encoder import ImagePatchEncoder
+from neuromanifold_gpt.model.fno.position_encoding import sinusoidal_position_encoding
+from neuromanifold_gpt.model.fno.encoder import MultimodalFNOEncoder
+from neuromanifold_gpt.model.fno.fusion_encoder import MultimodalFusionEncoder
 
 __all__ = [
     # Spectral convolution layers
