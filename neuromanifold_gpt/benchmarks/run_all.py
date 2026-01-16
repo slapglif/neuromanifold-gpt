@@ -20,12 +20,13 @@ from datetime import datetime
 from pathlib import Path
 
 
-def run_all_benchmarks(quick_test: bool = False, output_file: str = None):
+def run_all_benchmarks(quick_test: bool = False, output_file: str = None, dataset: str = "shakespeare_char"):
     """Run all benchmark suites and collect results.
 
     Args:
         quick_test: If True, run with reduced iterations for quick validation
         output_file: Optional path to save results as JSON
+        dataset: Dataset name (directory under data/)
 
     Returns:
         Dict containing all benchmark results
@@ -62,7 +63,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None):
 
         # Perplexity benchmark
         quality_results = benchmark_quality(
-            dataset="openwebtext",
+            dataset=dataset,
             eval_iters=10 if quick_test else 200,
             batch_size=4 if quick_test else 12,
             block_size=256 if quick_test else 1024,
@@ -73,7 +74,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None):
 
         # Sample quality benchmark
         sample_results = benchmark_sample_quality(
-            dataset="openwebtext",
+            dataset=dataset,
             num_samples=5 if quick_test else 10,
             max_new_tokens=50 if quick_test else 100,
             temperature=0.8,
@@ -212,12 +213,21 @@ Examples:
         help="Save results to JSON file (e.g., benchmark_results.json)"
     )
 
+    parser.add_argument(
+        "--dataset",
+        "-d",
+        type=str,
+        default="shakespeare_char",
+        help="Dataset name (default: shakespeare_char)"
+    )
+
     args = parser.parse_args()
 
     try:
         results = run_all_benchmarks(
             quick_test=args.quick_test,
-            output_file=args.output
+            output_file=args.output,
+            dataset=args.dataset
         )
 
         # Exit with success
