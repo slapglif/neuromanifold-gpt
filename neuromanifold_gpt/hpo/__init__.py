@@ -8,5 +8,17 @@ novel component parameters.
 from neuromanifold_gpt.hpo.search_space import SearchSpace
 from neuromanifold_gpt.hpo.optuna_search import OptunaHPO
 from neuromanifold_gpt.hpo.pruning import OptunaPruningCallback
+from neuromanifold_gpt.hpo.visualize import (
+    plot_optimization_history,
+    plot_param_importances,
+    plot_all_visualizations,
+)
 
-__all__ = ["SearchSpace", "OptunaHPO", "OptunaPruningCallback"]
+__all__ = [
+    "SearchSpace",
+    "OptunaHPO",
+    "OptunaPruningCallback",
+    "plot_optimization_history",
+    "plot_param_importances",
+    "plot_all_visualizations",
+]
