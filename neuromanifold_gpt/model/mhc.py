@@ -279,7 +279,7 @@ class HyperConnections(Module):
         dropout: float = 0.0,
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
-        sinkhorn_convergence_tol: Optional[float] = None,
+        sinkhorn_convergence_tol: Optional[float] = 1e-6,
         use_fused: bool = False,  # Use Triton-fused kernel for GPU acceleration
     ):
         """Initialize the HyperConnections layer.
