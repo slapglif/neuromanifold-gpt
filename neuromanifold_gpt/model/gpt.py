@@ -502,7 +502,7 @@ class NeuroManifoldGPT(nn.Module):
         mtp_loss = torch.tensor(0.0, device=device)
         if targets is not None:
             # Get label smoothing from config (critical for large vocab like 151K Qwen3)
-            label_smoothing = getattr(self.config, 'label_smoothing', 0.0)
+            label_smoothing = self.config.label_smoothing
 
             if loss_weights is not None:
                 # Soft curriculum: weighted CE loss (per-token weights)
