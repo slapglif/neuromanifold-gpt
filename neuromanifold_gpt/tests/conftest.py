@@ -193,6 +193,46 @@ def tokens_2x50(nano_config):
 
 
 @pytest.fixture
+def sample_tensor_2d_grad():
+    """Fixture providing 2D tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: 2D tensor of shape (20, 64) with requires_grad=True.
+    """
+    return torch.randn(20, 64, requires_grad=True)
+
+
+@pytest.fixture
+def sample_tensor_3d_grad():
+    """Fixture providing 3D tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: 3D tensor of shape (2, 20, 64) with requires_grad=True.
+    """
+    return torch.randn(2, 20, 64, requires_grad=True)
+
+
+@pytest.fixture
+def sample_embeddings_grad():
+    """Fixture providing embedding tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: Embedding tensor of shape (2, 20, 128) with requires_grad=True.
+    """
+    return torch.randn(2, 20, 128, requires_grad=True)
+
+
+@pytest.fixture
+def sample_sdr_grad():
+    """Fixture providing SDR tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2, 20, 2048) with requires_grad=True.
+    """
+    return torch.randn(2, 20, 2048, requires_grad=True)
+
+
+@pytest.fixture
 def device():
     """Fixture providing appropriate device for testing.
 
