@@ -269,9 +269,11 @@ class NeuroManifoldConfig:
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
 
         # Validate n_embd is divisible by n_heads
-        assert self.n_embd % self.n_heads == 0, (
-            f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
-        )
+        if self.n_embd % self.n_heads != 0:
+            from neuromanifold_gpt.errors import ConfigurationError
+            raise ConfigurationError(
+                f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
+            )
 
         # Memory active retrieval requires SDR mode
         if self.memory_active_retrieval and not self.use_sdr:
