@@ -205,6 +205,76 @@ class ArchitectureConfig:
         """
         return cls(**config_dict)
 
+    def to_config(
+        self,
+        vocab_size: int,
+        block_size: int = 1024,
+        **kwargs: Any
+    ) -> "NeuroManifoldConfig":
+        """Convert ArchitectureConfig to NeuroManifoldConfig for training.
+
+        This method maps the architecture search parameters to a complete
+        NeuroManifoldConfig that can be used to instantiate and train a model.
+
+        Args:
+            vocab_size: Vocabulary size (required)
+            block_size: Maximum sequence length (default: 1024)
+            **kwargs: Additional parameters to override defaults
+
+        Returns:
+            NeuroManifoldConfig instance ready for model instantiation
+
+        Example:
+            >>> arch = ArchitectureConfig(n_layer=6, n_embd=384)
+            >>> config = arch.to_config(vocab_size=50304)
+            >>> # Now config can be used to create a NeuroManifoldGPT model
+        """
+        from neuromanifold_gpt.config import NeuroManifoldConfig
+
+        # Map ArchitectureConfig parameters to NeuroManifoldConfig
+        config_dict = {
+            # Vocabulary and sequence
+            "vocab_size": vocab_size,
+            "block_size": block_size,
+
+            # Model architecture (from ArchitectureConfig)
+            "n_layer": self.n_layer,
+            "n_embd": self.n_embd,
+            "n_heads": self.n_heads,
+
+            # Attention configuration (from ArchitectureConfig)
+            "attention_type": self.attention_type,
+            "use_qk_norm": self.use_qk_norm,
+
+            # Component choices (from ArchitectureConfig)
+            "use_mhc": self.use_mhc,
+            "use_mla": self.use_mla,
+            "use_moe": self.use_moe,
+            "use_kan": self.use_kan,
+
+            # KAN configuration (from ArchitectureConfig)
+            "kan_type": self.kan_type,
+            "kan_num_centers": self.kan_num_centers,
+
+            # FHN dynamics (from ArchitectureConfig)
+            "fhn_threshold": self.fhn_threshold,
+            "fhn_tau": self.fhn_tau,
+            "use_fhn_parallel": self.use_fhn_parallel,
+
+            # Manifold projection (from ArchitectureConfig)
+            "manifold_dim": self.manifold_dim,
+            "n_eigenvectors": self.n_eigenvectors,
+            "use_multiscale_manifold": self.use_multiscale_manifold,
+
+            # Regularization (from ArchitectureConfig)
+            "dropout": self.dropout,
+        }
+
+        # Override with any additional kwargs
+        config_dict.update(kwargs)
+
+        return NeuroManifoldConfig(**config_dict)
+
 
 class SearchSpace:
     """Neural architecture search space definition.
