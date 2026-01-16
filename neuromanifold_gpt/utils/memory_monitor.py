@@ -6,6 +6,7 @@ Tracks current, peak, and reserved memory with formatting utilities.
 """
 
 import torch
+from collections import deque
 from typing import Optional
 
 
@@ -23,15 +24,19 @@ class GPUMemoryMonitor:
         >>> print(monitor.format_memory_display())
     """
 
-    def __init__(self, device: int = 0):
+    def __init__(self, device: int = 0, history_size: int = 1000):
         """
         Initialize GPU memory monitor.
 
         Args:
             device: CUDA device index to monitor (default: 0)
+            history_size: Maximum number of memory samples to keep in history (default: 1000)
         """
         self.device = device
         self.cuda_available = torch.cuda.is_available()
+
+        # Memory history tracking
+        self.memory_history = deque(maxlen=history_size)
 
         if self.cuda_available:
             # Get total memory capacity
