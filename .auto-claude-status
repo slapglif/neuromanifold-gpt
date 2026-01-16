@@ -3,7 +3,7 @@
   "spec": "088-rotary-and-alibi-position-embeddings",
   "state": "building",
   "subtasks": {
-    "completed": 6,
+    "completed": 7,
     "total": 10,
     "in_progress": 1,
     "failed": 0
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 8,
+    "number": 9,
     "started_at": "2026-01-16T13:18:47.004475"
   },
-  "last_update": "2026-01-16T14:10:24.268179"
+  "last_update": "2026-01-16T14:12:16.258612"
 }

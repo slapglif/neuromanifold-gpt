@@ -49,6 +49,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
     def __init__(self, config: NeuroManifoldConfig):
         super().__init__()
         self.config = config
+        self.pos_emb_type = config.pos_emb_type  # Expose position embedding type
 
         # Override SDR size if SDR is disabled (Block compatibility)
         if not config.use_sdr:
@@ -91,7 +92,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     max_seq_len=config.block_size
                 )
             else:
-                raise ValueError(f"Unsupported pos_emb_type for SDR mode: {config.pos_emb_type}")
+                raise ValueError(f"Unknown pos_emb_type for SDR mode: {config.pos_emb_type}")
         else:
             # Standard embedding (direct to n_embd)
             self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
@@ -116,7 +117,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     max_seq_len=config.block_size
                 )
             else:
-                raise ValueError(f"Unsupported pos_emb_type: {config.pos_emb_type}")
+                raise ValueError(f"Unknown pos_emb_type: {config.pos_emb_type}")
             self.embed_to_sdr = None
 
         # Transformer blocks
@@ -320,7 +321,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 # No additive position embedding needed
                 x = tok_emb  # (B, T, n_embd)
             else:
-                raise ValueError(f"Unsupported pos_emb_type: {self.config.pos_emb_type}")
+                raise ValueError(f"Unknown pos_emb_type: {self.config.pos_emb_type}")
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)  # Dummy SDR
             sdr_scores = None
 
@@ -415,17 +416,22 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
                     # Add Positional Embedding here (to x)
                     # x is (B*S, T, n_embd) if mHC, else (B, T, n_embd)
+                    # Note: RoPE and ALiBi are applied internally in attention, not added here
                     if self.config.pos_emb_type == 'learned':
                         # Learned position embedding: nn.Embedding expects (T,) and returns (T, D)
                         pos_emb = self.position_embedding(
                             torch.arange(T, device=device)
                         ).unsqueeze(0)  # (1, T, D)
+                        x = x + pos_emb
                     elif self.config.pos_emb_type == 'ramanujan':
                         # Ramanujan expects (B, T) and returns (1, T, D)
                         pos_emb = self.position_embedding(torch.zeros(1, T, device=device))
+                        x = x + pos_emb
+                    elif self.config.pos_emb_type in ['rotary', 'alibi']:
+                        # RoPE and ALiBi are applied through attention mechanism, nothing to add here
+                        pass
                     else:
-                        raise ValueError(f"Unsupported pos_emb_type for SDR mode: {self.config.pos_emb_type}")
-                    x = x + pos_emb
+                        raise ValueError(f"Unknown pos_emb_type: {self.config.pos_emb_type}")
 
                     # Apply pending memory retrieval after first block produces x
                     # This augments representations with retrieved engrams
