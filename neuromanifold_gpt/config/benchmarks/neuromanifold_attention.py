@@ -61,6 +61,7 @@ out = dict(
     mhc_n_streams=2,
     mhc_residual_weight=0.9,
     mhc_sinkhorn_iters=5,
+    mhc_sinkhorn_tau=0.05,
 
     # Standard attention settings
     use_knot_attention=False,  # Disable advanced attention variants for baseline

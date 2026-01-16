@@ -51,7 +51,7 @@ def benchmark_model(
     start = time.perf_counter()
     for _ in range(n_iters):
         with ctx:
-            logits, loss = model(x, y)
+            logits, loss, _ = model(x, y)
     if device.type == "cuda":
         torch.cuda.synchronize()
     forward_time = (time.perf_counter() - start) / n_iters * 1000
@@ -59,7 +59,7 @@ def benchmark_model(
     # Warmup backward pass
     for _ in range(warmup):
         with ctx:
-            logits, loss = model(x, y)
+            logits, loss, _ = model(x, y)
         loss.backward()
         model.zero_grad(set_to_none=True)
 
@@ -70,7 +70,7 @@ def benchmark_model(
     start = time.perf_counter()
     for _ in range(n_iters):
         with ctx:
-            logits, loss = model(x, y)
+            logits, loss, _ = model(x, y)
         loss.backward()
         model.zero_grad(set_to_none=True)
     if device.type == "cuda":

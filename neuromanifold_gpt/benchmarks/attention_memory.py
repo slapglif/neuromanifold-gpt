@@ -63,7 +63,7 @@ def benchmark_model_memory(
 
         # Forward pass
         with ctx:
-            logits, loss = model(x, y)
+            logits, loss, _ = model(x, y)
 
         if device.type == "cuda":
             torch.cuda.synchronize()

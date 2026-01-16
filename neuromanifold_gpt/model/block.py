@@ -77,6 +77,8 @@ class NeuroManifoldBlock(nn.Module):
         use_full_mhc: bool = True,  # Use full multi-stream mHC (vs simplified)
         mhc_n_streams: int = 4,  # Number of streams for full mHC
         mhc_residual_weight: float = 0.9,  # Initial identity bias
+        mhc_sinkhorn_iters: int = 10,  # Sinkhorn-Knopp iterations
+        mhc_sinkhorn_tau: float = 0.05,  # Sinkhorn temperature
         # KAN configuration
         use_kan: bool = True,  # Use KAN instead of SwiGLU
         kan_type: str = "faster",  # "faster", "cheby", or "wave"
@@ -86,6 +88,16 @@ class NeuroManifoldBlock(nn.Module):
         kan_num_centers: int = 8,  # For FasterKAN RSWAF centers
         # Speed optimization
         skip_manifold_spectral: bool = False,  # Skip manifold/spectral for faster training
+        # MLA (Multi-Head Latent Attention) - DeepSeek style
+        use_mla: bool = False,
+        mla_latent_dim: int = 64,
+        mla_rope_dim: int = 32,
+        # MoE (Mixture of Experts) - DeepSeek style
+        use_moe: bool = False,
+        moe_n_experts: int = 8,
+        moe_n_active: int = 2,
+        use_shared_expert: bool = True,
+        use_e7_routing: bool = False,
     ):
         super().__init__()
 
@@ -202,14 +214,14 @@ class NeuroManifoldBlock(nn.Module):
                 self.mhc_attn = HyperConnections(
                     mhc_n_streams,
                     dim=embed_dim,
-                    sinkhorn_iters=10,
-                    sinkhorn_tau=0.05,
+                    sinkhorn_iters=mhc_sinkhorn_iters,
+                    sinkhorn_tau=mhc_sinkhorn_tau,
                 )
                 self.mhc_mlp = HyperConnections(
                     mhc_n_streams,
                     dim=embed_dim,
-                    sinkhorn_iters=10,
-                    sinkhorn_tau=0.05,
+                    sinkhorn_iters=mhc_sinkhorn_iters,
+                    sinkhorn_tau=mhc_sinkhorn_tau,
                 )
             else:
                 # Single-stream fallback (simple residual)
