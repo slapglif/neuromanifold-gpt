@@ -68,6 +68,7 @@ import yaml
 if '--help' not in sys.argv and '-h' not in sys.argv:
     from loguru import logger
     from neuromanifold_gpt.hpo.optuna_search import OptunaHPO
+    from neuromanifold_gpt.hpo.visualize import plot_all_visualizations
 
 
 def load_config(config_path: str) -> dict:
@@ -241,6 +242,19 @@ Examples:
     except Exception as e:
         logger.error(f"Failed to export configuration: {e}")
         sys.exit(1)
+
+    # Generate visualizations
+    try:
+        logger.info("\nGenerating HPO visualizations...")
+        plots = plot_all_visualizations(study, "hpo_results")
+        if plots:
+            logger.info(f"Generated {len(plots)} visualization(s) in hpo_results/")
+        else:
+            logger.warning("No visualizations generated (check warnings above)")
+
+    except Exception as e:
+        logger.warning(f"Failed to generate visualizations: {e}")
+        logger.info("Continuing without visualizations...")
 
     logger.info("\nHyperparameter optimization complete!")
     logger.info(f"Use the best config with: python train.py --config {args.output_config}")
