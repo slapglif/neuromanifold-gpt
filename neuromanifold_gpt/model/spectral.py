@@ -11,10 +11,13 @@ import torch.nn.functional as F
 from einops import rearrange, einsum
 
 
-def _spectral_decomposition_forward(
+def _spectral_forward(
     coords: torch.Tensor,
     use_learned_basis: bool,
-    spectral_proj_output: torch.Tensor,
+    spectral_proj_w1: torch.Tensor,
+    spectral_proj_b1: torch.Tensor,
+    spectral_proj_w2: torch.Tensor,
+    spectral_proj_b2: torch.Tensor,
     freq_embed: torch.Tensor,
     random_features: torch.Tensor,
     sigma: torch.Tensor,
@@ -25,11 +28,15 @@ def _spectral_decomposition_forward(
     Spectral decomposition forward pass computation.
 
     This function is compiled with torch.compile for kernel fusion.
+    Includes the spectral projection computation for end-to-end fusion.
 
     Args:
         coords: (B, T, manifold_dim) manifold coordinates
         use_learned_basis: Whether to use learned basis or random features
-        spectral_proj_output: (B, T, n_eig) output from spectral_proj if learned basis, else None
+        spectral_proj_w1: (manifold_dim*2, manifold_dim) first layer weight
+        spectral_proj_b1: (manifold_dim*2,) first layer bias
+        spectral_proj_w2: (n_eig, manifold_dim*2) second layer weight
+        spectral_proj_b2: (n_eig,) second layer bias
         freq_embed: (n_eig,) learned frequencies if learned basis, else None
         random_features: (manifold_dim, n_eig) random features if not learned basis, else None
         sigma: scalar bandwidth parameter
@@ -44,11 +51,16 @@ def _spectral_decomposition_forward(
     B, T, D = coords.shape
 
     if use_learned_basis:
-        # Normalize for stable attention (avoid softmax gradient issues)
-        # Use L2 normalization instead of softmax for better gradient flow
-        spectral_basis = F.normalize(spectral_proj_output, p=2, dim=-1)
-        # Scale to have similar magnitude as softmax would
-        spectral_basis = spectral_basis * (1.0 / (n_eig ** 0.5))
+        # Inline spectral_proj Sequential(Linear -> SiLU -> Linear)
+        # Layer 1: Linear(manifold_dim, manifold_dim * 2)
+        h = F.linear(coords, spectral_proj_w1, spectral_proj_b1)  # (B, T, manifold_dim*2)
+        # Activation: SiLU
+        h = F.silu(h)
+        # Layer 2: Linear(manifold_dim * 2, n_eig)
+        spectral_proj_output = F.linear(h, spectral_proj_w2, spectral_proj_b2)  # (B, T, n_eig)
+
+        # Softmax for normalized coefficients (sum to 1 per position)
+        spectral_basis = F.softmax(spectral_proj_output, dim=-1)
 
         # Learned frequencies
         spectral_freqs = freq_embed.abs().unsqueeze(0).expand(B, -1)
@@ -79,18 +91,29 @@ def _spectral_decomposition_forward(
 
 
 # Compile with reduce-overhead mode for minimal Python overhead
-# Gracefully fall back to uncompiled version on Python 3.12+ (where Dynamo is not supported)
-try:
-    spectral_decomposition_forward = torch.compile(
-        _spectral_decomposition_forward,
-        mode="reduce-overhead"
-    )
-except RuntimeError as e:
-    if "Dynamo is not supported" in str(e):
-        # Fall back to uncompiled version on Python 3.12+
-        spectral_decomposition_forward = _spectral_decomposition_forward
-    else:
-        raise
+# Gracefully fall back to uncompiled version on Python 3.12+ or when CUDA is unavailable
+import os
+import sys
+
+# Check if we should skip compilation (for testing or environments without CUDA)
+skip_compile = (
+    os.environ.get("TORCH_COMPILE_DISABLE") == "1" or
+    sys.version_info >= (3, 12) or
+    not torch.cuda.is_available()
+)
+
+if skip_compile:
+    # Use uncompiled version for testing or when CUDA is unavailable
+    spectral_forward = _spectral_forward
+else:
+    try:
+        spectral_forward = torch.compile(
+            _spectral_forward,
+            mode="reduce-overhead"
+        )
+    except (RuntimeError, Exception) as e:
+        # Fall back to uncompiled version if compilation fails
+        spectral_forward = _spectral_forward
 
 
 class SpectralDecomposition(nn.Module):
@@ -167,20 +190,31 @@ class SpectralDecomposition(nn.Module):
         # The learned basis captures spectral structure without explicit affinity.
 
         if self.use_learned_basis:
-            # Learned spectral projection: O(n·k) instead of O(n²) or O(n³)
-            spectral_proj_output = self.spectral_proj(coords)  # (B, T, n_eig)
+            # Extract weight/bias from spectral_proj Sequential for compilation
+            # spectral_proj is: Sequential(Linear, SiLU, Linear)
+            spectral_proj_w1 = self.spectral_proj[0].weight  # (manifold_dim*2, manifold_dim)
+            spectral_proj_b1 = self.spectral_proj[0].bias    # (manifold_dim*2,)
+            spectral_proj_w2 = self.spectral_proj[2].weight  # (n_eig, manifold_dim*2)
+            spectral_proj_b2 = self.spectral_proj[2].bias    # (n_eig,)
             freq_embed = self.freq_embed
             random_features = None
         else:
-            spectral_proj_output = None
+            spectral_proj_w1 = None
+            spectral_proj_b1 = None
+            spectral_proj_w2 = None
+            spectral_proj_b2 = None
             freq_embed = None
             random_features = self.random_features
 
         # Execute spectral decomposition using torch.compile-optimized kernel
-        spectral_basis, spectral_freqs, ortho_loss = spectral_decomposition_forward(
+        # This now includes the spectral projection for end-to-end fusion
+        spectral_basis, spectral_freqs, ortho_loss = spectral_forward(
             coords,
             self.use_learned_basis,
-            spectral_proj_output,
+            spectral_proj_w1,
+            spectral_proj_b1,
+            spectral_proj_w2,
+            spectral_proj_b2,
             freq_embed,
             random_features,
             self.sigma,
