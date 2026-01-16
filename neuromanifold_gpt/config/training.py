@@ -166,3 +166,45 @@ class TrainingConfig:
     wandb_log: bool = False
     wandb_project: str = "neuromanifold-gpt"
     wandb_run_name: str = "neuromanifold"
+
+
+@dataclass
+class SamplingConfig:
+    """Configuration for sampling from trained models.
+
+    This configuration covers all aspects of text generation:
+    - Model loading and initialization
+    - Generation parameters (temperature, top-k)
+    - Output settings (number of samples, length)
+    - Hardware settings (device, precision)
+
+    Attributes:
+        init_from: Initialization mode ('resume' or gpt2 variant like 'gpt2-xl')
+        out_dir: Directory to load checkpoint from (when init_from='resume')
+        start: Initial prompt string or FILE:path.txt to load from file
+        num_samples: Number of samples to generate
+        max_new_tokens: Maximum number of tokens to generate per sample
+        temperature: Sampling temperature (1.0=no change, <1.0=less random, >1.0=more random)
+        top_k: Top-k filtering (retain only top_k most likely tokens)
+        seed: Random seed for reproducibility
+        device: Device to run on ('cpu', 'cuda', 'cuda:0', etc.)
+        dtype: Precision for inference ('float32', 'bfloat16', or 'float16')
+        compile: Whether to compile model with torch.compile (PyTorch 2.0+)
+    """
+
+    # Model loading
+    init_from: str = 'resume'
+    out_dir: str = 'out'
+
+    # Generation
+    start: str = "\n"
+    num_samples: int = 10
+    max_new_tokens: int = 500
+    temperature: float = 0.8
+    top_k: int = 200
+    seed: int = 1337
+
+    # Hardware
+    device: str = 'cuda'
+    dtype: str = 'bfloat16'
+    compile: bool = False
