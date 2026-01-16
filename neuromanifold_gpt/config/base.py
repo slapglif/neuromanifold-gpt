@@ -238,6 +238,9 @@ class NeuroManifoldConfig:
     early_stopping_patience: int = 5
     use_perplexity_stopping: bool = True
 
+    # Gradient checkpointing - trades compute for memory
+    gradient_checkpointing: bool = False  # Disabled by default
+
     # Learning Rate Schedule (MiniMax/DeepSeek WSD)
     # WSD (Warmup-Stable-Decay) provides better final loss than cosine
     # Reference: MiniMax-01 and DeepSeek-V3 technical reports
