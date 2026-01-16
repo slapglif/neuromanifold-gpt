@@ -78,12 +78,16 @@ from neuromanifold_gpt.model.fno.fourier_operator import (
     FNOWithMLP,
 )
 
-# Note: Additional imports will be added as modules are implemented in subsequent subtasks.
-# Future imports:
-# from neuromanifold_gpt.model.fno.multimodal_encoder import (
-#     MultimodalFNOEncoder,
-#     MultimodalConfig,
-# )
+# Multimodal encoder with FNO
+from neuromanifold_gpt.model.fno.multimodal_encoder import (
+    MultimodalFNOEncoder,
+    MultimodalConfig,
+    MultimodalFusionEncoder,
+    ByteEmbedding,
+    AudioEncoder,
+    ImagePatchEncoder,
+    sinusoidal_position_encoding,
+)
 
 __all__ = [
     # Spectral convolution layers
@@ -97,4 +101,12 @@ __all__ = [
     "FNOEncoder",
     "FNOConfig",
     "FNOWithMLP",
+    # Multimodal encoder
+    "MultimodalFNOEncoder",
+    "MultimodalConfig",
+    "MultimodalFusionEncoder",
+    "ByteEmbedding",
+    "AudioEncoder",
+    "ImagePatchEncoder",
+    "sinusoidal_position_encoding",
 ]
