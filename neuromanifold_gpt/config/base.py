@@ -9,6 +9,7 @@ including settings for:
 - DAG planning and imagination modules
 """
 
+import warnings
 from dataclasses import dataclass, field
 
 
@@ -268,6 +269,21 @@ class NeuroManifoldConfig:
             self.skip_metric_tensor = True
             self.n_fhn_steps = 1  # Reduce FHN steps
             self.sdr_size = min(self.sdr_size, 512)  # Cap SDR size
+
+        # Deprecation warnings for old boolean attention flags
+        if self.use_kaufmann_attention:
+            warnings.warn(
+                "use_kaufmann_attention is deprecated. Use attention_type='kaufmann' instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+
+        if self.use_knot_attention:
+            warnings.warn(
+                "use_knot_attention is deprecated. Use attention_type='knot' instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
 
         # Compute number of active SDR bits
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
