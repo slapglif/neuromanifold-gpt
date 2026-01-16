@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/**)",
+      "Write(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/**)",
+      "Edit(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/**)",
+      "Glob(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/**)",
+      "Grep(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/**)",
+      "Read(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/.auto-claude/specs/030-rotary-and-alibi-position-embeddings/**)",
+      "Write(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/.auto-claude/specs/030-rotary-and-alibi-position-embeddings/**)",
+      "Edit(/home/mikeb/work/nano/.auto-claude/worktrees/tasks/030-rotary-and-alibi-position-embeddings/.auto-claude/specs/030-rotary-and-alibi-position-embeddings/**)",
+      "Read(/home/mikeb/work/nano/.auto-claude/**)",
+      "Write(/home/mikeb/work/nano/.auto-claude/**)",
+      "Edit(/home/mikeb/work/nano/.auto-claude/**)",
+      "Glob(/home/mikeb/work/nano/.auto-claude/**)",
+      "Grep(/home/mikeb/work/nano/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}
