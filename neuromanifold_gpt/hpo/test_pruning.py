@@ -33,8 +33,8 @@ def test_on_validation_end_reports_to_trial():
 
     # Mock trainer and pl_module
     trainer = Mock()
-    trainer.current_epoch = 5
-    trainer.logged_metrics = {"val/loss": 2.5}
+    trainer.global_step = 5
+    trainer.callback_metrics = {"val/loss": 2.5}
 
     pl_module = Mock()
 
@@ -50,12 +50,13 @@ def test_should_prune_raises_exception():
     trial = Mock()
     trial.should_prune = Mock(return_value=True)
     trial.report = Mock()
+    trial.number = 1
 
     callback = OptunaPruningCallback(trial, monitor="val/loss")
 
     trainer = Mock()
-    trainer.current_epoch = 3
-    trainer.logged_metrics = {"val/loss": 5.0}
+    trainer.global_step = 3
+    trainer.callback_metrics = {"val/loss": 5.0}
 
     pl_module = Mock()
 
@@ -73,8 +74,8 @@ def test_missing_metric_logs_warning():
     callback = OptunaPruningCallback(trial, monitor="val/loss")
 
     trainer = Mock()
-    trainer.current_epoch = 2
-    trainer.logged_metrics = {}  # Missing val/loss
+    trainer.global_step = 2
+    trainer.callback_metrics = {}  # Missing val/loss
 
     pl_module = Mock()
 
