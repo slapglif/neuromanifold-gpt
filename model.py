@@ -91,6 +91,26 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
 
+class SwiGLU(nn.Module):
+    """LLaMA-style SwiGLU FFN.
+
+    FFN(x) = (SiLU(xW_gate) ⊙ xW_up) W_down
+
+    Uses 2/3 hidden dim to match parameter count of standard FFN.
+    More expressive than GELU with similar compute.
+    """
+
+    def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0, bias: bool = False):
+        super().__init__()
+        # LLaMA-style: 2/3 hidden dim for gate+up, then down
+        self.w_gate = nn.Linear(dim, hidden_dim, bias=bias)
+        self.w_up = nn.Linear(dim, hidden_dim, bias=bias)
+        self.w_down = nn.Linear(hidden_dim, dim, bias=bias)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.w_down(F.silu(self.w_gate(x)) * self.w_up(x)))
+
 class Block(nn.Module):
 
     def __init__(self, config):
