@@ -21,6 +21,8 @@ from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
+from neuromanifold_gpt.model.embeddings.rotary import RotaryPositionalEmbedding
+from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
 from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
@@ -75,6 +77,19 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 self.position_embedding = RamanujanPositionalEmbedding(
                     config.block_size, config.n_embd
                 )
+            elif config.pos_emb_type == 'rotary':
+                head_dim = config.n_embd // config.n_heads
+                self.position_embedding = RotaryPositionalEmbedding(
+                    embed_dim=config.n_embd,
+                    head_dim=head_dim,
+                    max_seq_len=config.block_size
+                )
+            elif config.pos_emb_type == 'alibi':
+                self.position_embedding = ALiBiPositionalBias(
+                    n_heads=config.n_heads,
+                    embed_dim=config.n_embd,
+                    max_seq_len=config.block_size
+                )
             else:
                 raise ValueError(f"Unsupported pos_emb_type for SDR mode: {config.pos_emb_type}")
         else:
@@ -86,6 +101,19 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             elif config.pos_emb_type == 'ramanujan':
                 self.position_embedding = RamanujanPositionalEmbedding(
                     config.block_size, config.n_embd
+                )
+            elif config.pos_emb_type == 'rotary':
+                head_dim = config.n_embd // config.n_heads
+                self.position_embedding = RotaryPositionalEmbedding(
+                    embed_dim=config.n_embd,
+                    head_dim=head_dim,
+                    max_seq_len=config.block_size
+                )
+            elif config.pos_emb_type == 'alibi':
+                self.position_embedding = ALiBiPositionalBias(
+                    n_heads=config.n_heads,
+                    embed_dim=config.n_embd,
+                    max_seq_len=config.block_size
                 )
             else:
                 raise ValueError(f"Unsupported pos_emb_type: {config.pos_emb_type}")
