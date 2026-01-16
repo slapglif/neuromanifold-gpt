@@ -12,6 +12,7 @@ This module defines the configuration structure for training, including settings
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -208,3 +209,47 @@ class SamplingConfig:
     device: str = 'cuda'
     dtype: str = 'bfloat16'
     compile: bool = False
+
+
+@dataclass
+class EvalConfig:
+    """Configuration for zero-shot benchmark evaluation.
+
+    This configuration covers all aspects of model evaluation:
+    - Checkpoint loading and model initialization
+    - Benchmark selection and evaluation parameters
+    - Hardware settings (device, precision)
+    - Logging and experiment tracking (WandB)
+
+    Attributes:
+        out_dir: Checkpoint directory to load model from
+        benchmark: Benchmark to evaluate (lambada, hellaswag, piqa, winogrande, all)
+        eval_iters: Maximum examples to evaluate (None = all examples)
+        device: Device to run on ('cpu', 'cuda', 'cuda:0', etc.)
+        dtype: Precision for inference ('float32', 'bfloat16', or 'float16')
+        seed: Random seed for reproducibility
+        compile: Whether to compile model with torch.compile (PyTorch 2.0+)
+        wandb_log: Enable Weights & Biases logging
+        wandb_project: WandB project name
+        wandb_run_name: WandB run name (auto-generated if None)
+    """
+
+    # Checkpoint loading
+    out_dir: str = 'out'
+
+    # Benchmark
+    benchmark: str = 'lambada'
+    eval_iters: Optional[int] = None
+
+    # Hardware
+    device: str = 'cuda'
+    dtype: str = 'bfloat16'
+
+    # Reproducibility
+    seed: int = 1337
+    compile: bool = False
+
+    # Logging
+    wandb_log: bool = False
+    wandb_project: str = 'neuromanifold-eval'
+    wandb_run_name: Optional[str] = None
