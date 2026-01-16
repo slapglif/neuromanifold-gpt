@@ -250,9 +250,11 @@ def generate_builder_code(iteration: int, deltas: dict[str, Any], comment_header
     """
     lines = []
 
-    # Add comment header if present
+    # Add comment header if present (before function definition)
     if comment_header:
-        lines.append(f'    {comment_header}')
+        # Split multiline headers and add each line
+        for line in comment_header.split('\n'):
+            lines.append(line)
         lines.append('')
 
     # Generate function definition
