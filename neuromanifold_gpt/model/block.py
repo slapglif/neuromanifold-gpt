@@ -105,58 +105,9 @@ class NeuroManifoldBlock(nn.Module):
     ):
         super().__init__()
 
-        # Backward compatibility: If config is provided, use it; otherwise use individual params
+        # Store or create config
         if config is not None:
-            # Extract core parameters from config
-            sdr_size = config.sdr_size
-            embed_dim = config.embed_dim
-            manifold_dim = config.manifold_dim
-            n_eigenvectors = config.n_eigenvectors
-            n_heads = config.n_heads
-            mlp_ratio = config.mlp_ratio
-            dropout = config.dropout
-
-            # Optimization and attention variant flags
-            skip_manifold_spectral = config.skip_manifold_spectral
-            use_knot_attention = config.use_knot_attention
-            use_kaufmann_attention = config.use_kaufmann_attention
-
-            # FHN parameters from config.fhn
-            fhn_threshold = config.fhn.fhn_threshold
-            fhn_tau = config.fhn.fhn_tau
-            pulse_width_base = config.fhn.pulse_width_base
-            n_fhn_steps = config.fhn.n_fhn_steps
-            use_fhn_imex = config.fhn.use_fhn_imex
-            use_fhn_partitioning = config.fhn.use_fhn_partitioning
-            use_fhn_fused = config.fhn.use_fhn_fused
-
-            # KAN parameters from config.kan
-            use_kan = config.kan.use_kan
-            kan_type = config.kan.kan_type
-            kan_degree = config.kan.kan_degree
-            kan_wavelet = config.kan.kan_wavelet
-            use_fast_wavekan = config.kan.use_fast_wavekan
-            kan_num_centers = config.kan.kan_num_centers
-
-            # mHC parameters from config.mhc
-            use_mhc = config.mhc.use_mhc
-            use_full_mhc = config.mhc.use_full_mhc
-            mhc_n_streams = config.mhc.mhc_n_streams
-            mhc_residual_weight = config.mhc.mhc_residual_weight
-            mhc_sinkhorn_iters = config.mhc.mhc_sinkhorn_iters
-            mhc_sinkhorn_tau = config.mhc.mhc_sinkhorn_tau
-
-            # MLA parameters from config.mla
-            use_mla = config.mla.use_mla
-            mla_latent_dim = config.mla.mla_latent_dim
-            mla_rope_dim = config.mla.mla_rope_dim
-
-            # MoE parameters from config.moe
-            use_moe = config.moe.use_moe
-            moe_n_experts = config.moe.moe_n_experts
-            moe_n_active = config.moe.moe_n_active
-            use_shared_expert = config.moe.use_shared_expert
-            use_e7_routing = config.moe.use_e7_routing
+            self.config = config
         else:
             # Validate that required parameters are provided when not using config
             if sdr_size is None or embed_dim is None:
@@ -164,128 +115,168 @@ class NeuroManifoldBlock(nn.Module):
                     "Either 'config' must be provided, or both 'sdr_size' and 'embed_dim' "
                     "must be specified as individual parameters."
                 )
+            # Create config from individual parameters for backward compatibility
+            from ..config.block_config import FHNConfig, KANConfig, MHCConfig, MLAConfig, MoEConfig
+            self.config = NeuroManifoldBlockConfig(
+                sdr_size=sdr_size,
+                embed_dim=embed_dim,
+                manifold_dim=manifold_dim,
+                n_eigenvectors=n_eigenvectors,
+                n_heads=n_heads,
+                mlp_ratio=mlp_ratio,
+                dropout=dropout,
+                skip_manifold_spectral=skip_manifold_spectral,
+                use_knot_attention=use_knot_attention,
+                use_kaufmann_attention=use_kaufmann_attention,
+                fhn=FHNConfig(
+                    fhn_threshold=fhn_threshold,
+                    fhn_tau=fhn_tau,
+                    pulse_width_base=pulse_width_base,
+                    n_fhn_steps=n_fhn_steps,
+                    use_fhn_imex=use_fhn_imex,
+                    use_fhn_partitioning=use_fhn_partitioning,
+                    use_fhn_fused=use_fhn_fused,
+                ),
+                kan=KANConfig(
+                    use_kan=use_kan,
+                    kan_type=kan_type,
+                    kan_degree=kan_degree,
+                    kan_wavelet=kan_wavelet,
+                    use_fast_wavekan=use_fast_wavekan,
+                    kan_num_centers=kan_num_centers,
+                ),
+                mhc=MHCConfig(
+                    use_mhc=use_mhc,
+                    use_full_mhc=use_full_mhc,
+                    mhc_n_streams=mhc_n_streams,
+                    mhc_residual_weight=mhc_residual_weight,
+                    mhc_sinkhorn_iters=mhc_sinkhorn_iters,
+                    mhc_sinkhorn_tau=mhc_sinkhorn_tau,
+                ),
+                mla=MLAConfig(
+                    use_mla=use_mla,
+                    mla_latent_dim=mla_latent_dim,
+                    mla_rope_dim=mla_rope_dim,
+                ),
+                moe=MoEConfig(
+                    use_moe=use_moe,
+                    moe_n_experts=moe_n_experts,
+                    moe_n_active=moe_n_active,
+                    use_shared_expert=use_shared_expert,
+                    use_e7_routing=use_e7_routing,
+                ),
+            )
 
         # SDR to embedding (skip if dimensions match for efficiency)
-        if sdr_size != embed_dim:
-            self.sdr_proj = nn.Linear(sdr_size, embed_dim)
+        if self.config.sdr_size != self.config.embed_dim:
+            self.sdr_proj = nn.Linear(self.config.sdr_size, self.config.embed_dim)
         else:
             self.sdr_proj = nn.Identity()  # No projection needed in dense mode
-        self.skip_manifold_spectral = skip_manifold_spectral
 
         # Manifold + Spectral (skip if requested for speed)
-        if not skip_manifold_spectral:
-            self.manifold = ManifoldProjection(sdr_size, manifold_dim)
-            self.spectral = SpectralDecomposition(manifold_dim, n_eigenvectors)
+        if not self.config.skip_manifold_spectral:
+            self.manifold = ManifoldProjection(self.config.sdr_size, self.config.manifold_dim)
+            self.spectral = SpectralDecomposition(self.config.manifold_dim, self.config.n_eigenvectors)
         else:
             self.manifold = None
             self.spectral = None
 
         # FHN attention (with semi-implicit IMEX scheme)
-        if use_kaufmann_attention:
+        if self.config.use_kaufmann_attention:
             # The Full Trifecta Model
-            self.attention = KaufmannAttention(embed_dim, n_heads, config=None) # We need to pass config or params
-            # Actually KaufmannAttention needs config for FHN params.
-            # We should pass individual params or a config object.
-            # Let's refactor KaufmannAttention to take params directly or construct config proxy.
-            # For now, assuming we handle this in __init__ logic below
-            pass
+            self.attention = KaufmannAttention(
+                self.config.embed_dim,
+                self.config.n_heads,
+                manifold_dim=self.config.manifold_dim,
+                fhn_threshold=self.config.fhn.fhn_threshold,
+                fhn_tau=self.config.fhn.fhn_tau,
+                use_imex=self.config.fhn.use_fhn_imex,
+                use_partitioning=self.config.fhn.use_fhn_partitioning,
+                use_fused=self.config.fhn.use_fhn_fused
+            )
         else:
             self.attention = FHNAttention(
-                embed_dim=embed_dim,
-                n_heads=n_heads,
-                threshold=fhn_threshold,
-                tau=fhn_tau,
-                pulse_width_base=pulse_width_base,
-                dropout=dropout,
-                n_fhn_steps=n_fhn_steps,
-                use_imex=use_fhn_imex,
-                use_partitioning=use_fhn_partitioning,
-                use_fused=use_fhn_fused
+                embed_dim=self.config.embed_dim,
+                n_heads=self.config.n_heads,
+                threshold=self.config.fhn.fhn_threshold,
+                tau=self.config.fhn.fhn_tau,
+                pulse_width_base=self.config.fhn.pulse_width_base,
+                dropout=self.config.dropout,
+                n_fhn_steps=self.config.fhn.n_fhn_steps,
+                use_imex=self.config.fhn.use_fhn_imex,
+                use_partitioning=self.config.fhn.use_fhn_partitioning,
+                use_fused=self.config.fhn.use_fhn_fused
             )
 
         # Knot attention (optional)
-        self.use_knot_attention = use_knot_attention
-        self.use_kaufmann_attention = use_kaufmann_attention
-        
-        if self.use_kaufmann_attention:
-             # Re-init attention with params
-             # We construct it using the params passed to block __init__
-             self.attention = KaufmannAttention(
-                 embed_dim, n_heads, 
-                 manifold_dim=manifold_dim,
-                 fhn_threshold=fhn_threshold,
-                 fhn_tau=fhn_tau,
-                 use_imex=use_fhn_imex,
-                 use_partitioning=use_fhn_partitioning,
-                 use_fused=use_fhn_fused
-             )
-
-        if self.use_knot_attention and not self.use_kaufmann_attention:
+        if self.config.use_knot_attention and not self.config.use_kaufmann_attention:
             self.knot_attention = KnotAttention(
-                embed_dim=embed_dim,
-                manifold_dim=manifold_dim,
-                n_heads=n_heads
+                embed_dim=self.config.embed_dim,
+                manifold_dim=self.config.manifold_dim,
+                n_heads=self.config.n_heads
             )
             # Gating for combining FHN and Knot attention
-            self.attn_gate = nn.Linear(embed_dim, 2)
+            self.attn_gate = nn.Linear(self.config.embed_dim, 2)
 
         # FFN: SwiGLU or ChebyKAN or WaveKAN or FasterKAN
-        if use_kan:
-            mlp_hidden = int(embed_dim * mlp_ratio)
-            if kan_type == "faster":
+        if self.config.kan.use_kan:
+            mlp_hidden = int(self.config.embed_dim * self.config.mlp_ratio)
+            if self.config.kan.kan_type == "faster":
                 # FasterKAN with RSWAF basis (default, fastest)
                 self.mlp = FasterKANFFN(
-                    embed_dim,
+                    self.config.embed_dim,
                     mlp_hidden,
-                    num_centers=kan_num_centers,
-                    dropout=dropout
+                    num_centers=self.config.kan.kan_num_centers,
+                    dropout=self.config.dropout
                 )
-            elif kan_type == "cheby":
+            elif self.config.kan.kan_type == "cheby":
                 # ChebyKAN FFN
-                self.mlp = ChebyKANFFN(embed_dim, mlp_hidden, degree=kan_degree, dropout=dropout)
-            elif kan_type == "wave":
+                self.mlp = ChebyKANFFN(
+                    self.config.embed_dim,
+                    mlp_hidden,
+                    degree=self.config.kan.kan_degree,
+                    dropout=self.config.dropout
+                )
+            elif self.config.kan.kan_type == "wave":
                 # WaveKAN FFN
                 self.mlp = WaveKANFFN(
-                    embed_dim,
+                    self.config.embed_dim,
                     mlp_hidden,
-                    wavelet_type=kan_wavelet,
-                    dropout=dropout,
-                    use_fast_wavekan=use_fast_wavekan
+                    wavelet_type=self.config.kan.kan_wavelet,
+                    dropout=self.config.dropout,
+                    use_fast_wavekan=self.config.kan.use_fast_wavekan
                 )
             else:
-                raise ValueError(f"Unknown KAN type: {kan_type}")
+                raise ValueError(f"Unknown KAN type: {self.config.kan.kan_type}")
         else:
             # SwiGLU FFN (LLaMA-style, 2/3 hidden dim to match param count)
             # Standard FFN: 2 * dim * hidden = 2 * d * 4d = 8d²
             # SwiGLU: 3 * dim * hidden = 3 * d * (8/3)d = 8d² (same params)
-            mlp_hidden = int(embed_dim * mlp_ratio * 2 / 3)
-            self.mlp = SwiGLU(embed_dim, mlp_hidden, dropout=dropout)
+            mlp_hidden = int(self.config.embed_dim * self.config.mlp_ratio * 2 / 3)
+            self.mlp = SwiGLU(self.config.embed_dim, mlp_hidden, dropout=self.config.dropout)
 
         # Layer norms
-        self.norm1 = nn.LayerNorm(embed_dim)
-        self.norm2 = nn.LayerNorm(embed_dim)
+        self.norm1 = nn.LayerNorm(self.config.embed_dim)
+        self.norm2 = nn.LayerNorm(self.config.embed_dim)
 
         # mHC residual connections (from DeepSeek paper)
         # Reference: https://arxiv.org/abs/2512.24880
         # The new implementation correctly wraps sublayers with H_pre/H_res/H_post
-        self.use_mhc = use_mhc
-        self.use_full_mhc = use_full_mhc
-        self.mhc_n_streams = mhc_n_streams
-        if self.use_mhc:
-            if use_full_mhc and mhc_n_streams > 1:
+        if self.config.mhc.use_mhc:
+            if self.config.mhc.use_full_mhc and self.config.mhc.mhc_n_streams > 1:
                 # Full multi-stream mHC with Sinkhorn-Knopp projection
                 # Note: Multi-stream requires expand/reduce at GPT level
                 self.mhc_attn = HyperConnections(
-                    mhc_n_streams,
-                    dim=embed_dim,
-                    sinkhorn_iters=mhc_sinkhorn_iters,
-                    sinkhorn_tau=mhc_sinkhorn_tau,
+                    self.config.mhc.mhc_n_streams,
+                    dim=self.config.embed_dim,
+                    sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
+                    sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
                 )
                 self.mhc_mlp = HyperConnections(
-                    mhc_n_streams,
-                    dim=embed_dim,
-                    sinkhorn_iters=mhc_sinkhorn_iters,
-                    sinkhorn_tau=mhc_sinkhorn_tau,
+                    self.config.mhc.mhc_n_streams,
+                    dim=self.config.embed_dim,
+                    sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
+                    sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
                 )
             else:
                 # Single-stream fallback (simple residual)
@@ -307,7 +298,7 @@ class NeuroManifoldBlock(nn.Module):
         x = self.sdr_proj(sdr)
 
         # Manifold projection and spectral decomposition (skip if requested for speed)
-        if not self.skip_manifold_spectral:
+        if not self.config.skip_manifold_spectral:
             coords, metric = self.manifold(sdr)
             spectral_basis, spectral_freqs, ortho_loss = self.spectral(coords, metric)
         else:
@@ -319,13 +310,13 @@ class NeuroManifoldBlock(nn.Module):
             ortho_loss = torch.tensor(0.0, device=x.device)
 
         # FHN attention + residual with mHC
-        if self.use_mhc:
+        if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
             attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
 
             # Knot attention (if enabled)
-            if self.use_knot_attention:
+            if self.config.use_knot_attention:
                 knot_out, knot_info = self.knot_attention(self.norm1(branch_input), coords)
                 attn_info.update(knot_info)
                 gate = F.softmax(self.attn_gate(branch_input), dim=-1)
@@ -337,7 +328,7 @@ class NeuroManifoldBlock(nn.Module):
             # Standard residual connection
             attn_out, attn_info = self.attention(self.norm1(x), spectral_basis)
 
-            if self.use_knot_attention:
+            if self.config.use_knot_attention:
                 knot_out, knot_info = self.knot_attention(self.norm1(x), coords)
                 attn_info.update(knot_info)
                 gate = F.softmax(self.attn_gate(x), dim=-1)
@@ -346,7 +337,7 @@ class NeuroManifoldBlock(nn.Module):
             x = x + attn_out
 
         # MLP + residual with mHC
-        if self.use_mhc:
+        if self.config.mhc.use_mhc:
             branch_input_mlp, add_residual_fn_mlp = self.mhc_mlp(x)
             mlp_out = self.mlp(self.norm2(branch_input_mlp))
             x = add_residual_fn_mlp(mlp_out)
