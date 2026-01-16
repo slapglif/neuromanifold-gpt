@@ -85,6 +85,13 @@ class MultiHeadLatentAttention(nn.Module):
 
         assert embed_dim % n_heads == 0, "embed_dim must be divisible by n_heads"
 
+        # Validate rope_dim constraint
+        assert rope_dim <= self.head_dim, (
+            f"rope_dim ({rope_dim}) must be <= head_dim ({self.head_dim}). "
+            f"For embed_dim={embed_dim} with n_heads={n_heads}, head_dim={self.head_dim}. "
+            f"Try rope_dim={self.head_dim // 2}."
+        )
+
         # Q projection (standard multi-head)
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
