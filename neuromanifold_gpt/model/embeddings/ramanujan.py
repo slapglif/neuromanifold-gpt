@@ -27,23 +27,35 @@ class RamanujanPositionalEmbedding(nn.Module):
         super().__init__()
         self.block_size = block_size
         self.embed_dim = embed_dim
-        
+
         # We compute periods q for each dimension
         qs = torch.arange(1, embed_dim + 1)
-        
-        pe = torch.zeros(block_size, embed_dim)
-        for i in range(embed_dim):
-            q = int(qs[i])
-            for n in range(block_size):
+        self.register_buffer('qs', qs)
+
+        # Precompute positional embeddings for block_size
+        self._build_cache(block_size)
+
+    def _build_cache(self, seq_len):
+        """Precompute Ramanujan positional embeddings for positions [0, seq_len)"""
+        pe = torch.zeros(seq_len, self.embed_dim)
+        for i in range(self.embed_dim):
+            q = int(self.qs[i])
+            for n in range(seq_len):
                 pe[n, i] = ramanujan_sum(q, n)
-                
+
         # Normalize: c_q(n) can be large.
         # phi(q) is the max value. Normalize by sqrt(q) roughly.
-        pe = pe / (qs.float().unsqueeze(0) ** 0.5)
-        
-        self.register_buffer('pe', pe)
-        
+        pe = pe / (self.qs.float().unsqueeze(0) ** 0.5)
+
+        self.register_buffer('pe', pe, persistent=False)
+        self.cached_seq_len = seq_len
+
     def forward(self, idx):
         # idx: (B, T)
         T = idx.shape[1]
+
+        # Extend cache if needed
+        if T > self.cached_seq_len:
+            self._build_cache(T)
+
         return self.pe[:T, :].unsqueeze(0)
