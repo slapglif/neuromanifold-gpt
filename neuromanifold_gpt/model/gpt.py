@@ -231,6 +231,63 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             # No match found - use zeros
             return torch.zeros(self.config.n_embd, device=device)
 
+    def _retrieve_batch_memories(
+        self,
+        query_sdr: torch.Tensor,
+        B: int,
+        T: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Retrieve memories for each batch element and return projected expansion.
+
+        Args:
+            query_sdr: Query SDR patterns (B, sdr_size)
+            B: Batch size
+            T: Sequence length
+            device: Device to create tensors on
+
+        Returns:
+            Retrieved and projected memory content expanded to (B, T, n_embd)
+        """
+        retrieved_contents_list = []
+        total_similarity = 0.0
+        total_retrieved = 0
+
+        for b in range(B):
+            # Memory retrieval - via mixin helper
+            retrieval_result = self._get_memory_for_retrieval(
+                query_sdr[b],
+                top_k=self.memory_retrieval_top_k,
+                threshold=self.config.engram_threshold,
+            )
+            # Unpack results (hierarchical returns 3 values, basic returns 2)
+            if self.use_hierarchical_memory:
+                contents, sims, tier = retrieval_result
+            else:
+                contents, sims = retrieval_result
+
+            # Aggregate retrieved content weighted by similarity
+            aggregated = self._aggregate_retrieved_content(contents, sims, device)
+            retrieved_contents_list.append(aggregated)
+
+            # Track statistics
+            if len(contents) > 0:
+                total_similarity += sims.mean().item()
+                total_retrieved += len(contents)
+
+        # Stack retrieved contents: (B, n_embd)
+        retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
+
+        # Project and expand to sequence length: (B, n_embd) -> (B, T, n_embd)
+        retrieved_proj = self.memory_retrieval_proj(retrieved_contents)  # (B, n_embd)
+        retrieved_expanded = retrieved_proj.unsqueeze(1).expand(-1, T, -1)  # (B, T, n_embd)
+
+        # Update memory retrieval info (will be accessed by caller)
+        self._memory_retrieval_count = total_retrieved
+        self._memory_retrieval_similarity = total_similarity / B if B > 0 else 0.0
+
+        return retrieved_expanded
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -282,59 +339,22 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         memory_retrieval_info = {"retrieved_count": 0, "avg_similarity": 0.0}
         pending_memory_retrieval = None  # Local variable (not instance var) for thread safety
 
-        if self.memory_active_retrieval and self.use_sdr:
-            if self._check_memory_has_content():
-                # For SDR mode, we need to retrieve based on SDR patterns
-                # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
-                # Alternative: per-position queries (more expensive but more precise)
+        # Apply memory retrieval only if all conditions are met
+        # Guard clauses prevent deep nesting (max 1 level)
+        if self.memory_active_retrieval and self.use_sdr and self._check_memory_has_content():
+            # Memory retrieval is enabled, we're in SDR mode, and memory has content
+            # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
+            query_sdr = sdr.mean(dim=1)  # (B, sdr_size)
 
-                # Mean pool SDR across sequence for query (B, sdr_size)
-                query_sdr = sdr.mean(dim=1)  # (B, sdr_size)
+            # Retrieve for each batch element using helper method
+            pending_memory_retrieval = self._retrieve_batch_memories(
+                query_sdr, B, T, device
+            )
 
-                # Retrieve for each batch element
-                retrieved_contents_list = []
-                total_similarity = 0.0
-                total_retrieved = 0
+            # Update info from helper method's stored values
+            memory_retrieval_info["retrieved_count"] = self._memory_retrieval_count
+            memory_retrieval_info["avg_similarity"] = self._memory_retrieval_similarity
 
-                for b in range(B):
-                    # Memory retrieval - via mixin helper
-                    retrieval_result = self._get_memory_for_retrieval(
-                        query_sdr[b],
-                        top_k=self.memory_retrieval_top_k,
-                        threshold=self.config.engram_threshold,
-                    )
-                    # Unpack results (hierarchical returns 3 values, basic returns 2)
-                    if self.use_hierarchical_memory:
-                        contents, sims, tier = retrieval_result
-                    else:
-                        contents, sims = retrieval_result
-
-                    # Aggregate retrieved content weighted by similarity
-                    aggregated = self._aggregate_retrieved_content(contents, sims, device)
-                    retrieved_contents_list.append(aggregated)
-
-                    # Track statistics
-                    if len(contents) > 0:
-                        total_similarity += sims.mean().item()
-                        total_retrieved += len(contents)
-
-                # Stack retrieved contents: (B, n_embd)
-                retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
-
-                # Project and expand to sequence length: (B, n_embd) -> (B, T, n_embd)
-                retrieved_proj = self.memory_retrieval_proj(retrieved_contents)  # (B, n_embd)
-                retrieved_expanded = retrieved_proj.unsqueeze(1).expand(-1, T, -1)  # (B, T, n_embd)
-
-                # Mix with input representations
-                # For SDR mode, we'll add to the first block's output later
-                # Store in local variable for application after first block produces x
-                pending_memory_retrieval = retrieved_expanded
-
-                # Update info
-                memory_retrieval_info["retrieved_count"] = total_retrieved
-                memory_retrieval_info["avg_similarity"] = (
-                    total_similarity / B if B > 0 else 0.0
-                )
         # NOTE: Memory retrieval requires SDR mode (use_sdr=True).
         # SDR engram memory stores sparse distributed representations for similarity matching.
         # In non-SDR mode, we use standard dense embeddings without sparse patterns, so there
