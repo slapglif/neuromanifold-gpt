@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint
 
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
@@ -148,6 +149,7 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     pos_emb_type: str = 'learned' # Position embedding type: 'learned', 'rotary', or 'alibi'
+    gradient_checkpointing: bool = False # Enable gradient checkpointing to reduce memory usage during training
 
 class GPT(nn.Module):
 
@@ -226,8 +228,17 @@ class GPT(nn.Module):
             x = self.transformer.drop(tok_emb + pos_emb)
         else:
             x = self.transformer.drop(tok_emb)
-        for block in self.transformer.h:
-            x = block(x)
+
+        # Apply transformer blocks with optional gradient checkpointing
+        if self.config.gradient_checkpointing and self.training:
+            # Use gradient checkpointing during training to save memory
+            for block in self.transformer.h:
+                x = checkpoint(block, x, use_reentrant=False)
+        else:
+            # Normal forward pass (inference or checkpointing disabled)
+            for block in self.transformer.h:
+                x = block(x)
+
         x = self.transformer.ln_f(x)
 
         if targets is not None:
