@@ -67,18 +67,28 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             # Projection for feeding block output back as SDR-like input
             self.embed_to_sdr = nn.Linear(config.n_embd, config.sdr_size)
 
-            # Ramanujan Positional Embedding (Add to SDR projection output in loop)
+            # Positional Embedding (based on config.pos_emb_type)
             # We initialize it with n_embd dimension, as it will be added to the embedding space
-            self.ramanujan_pos = RamanujanPositionalEmbedding(
-                config.block_size, config.n_embd
-            )
+            if config.pos_emb_type == 'learned':
+                self.position_embedding = nn.Embedding(config.block_size, config.n_embd)
+            elif config.pos_emb_type == 'ramanujan':
+                self.position_embedding = RamanujanPositionalEmbedding(
+                    config.block_size, config.n_embd
+                )
+            else:
+                raise ValueError(f"Unsupported pos_emb_type for SDR mode: {config.pos_emb_type}")
         else:
             # Standard embedding (direct to n_embd)
             self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
-            # Use Ramanujan for position instead of standard Learned/Sinusoidal
-            self.position_embedding = RamanujanPositionalEmbedding(
-                config.block_size, config.n_embd
-            )
+            # Positional embedding (based on config.pos_emb_type)
+            if config.pos_emb_type == 'learned':
+                self.position_embedding = nn.Embedding(config.block_size, config.n_embd)
+            elif config.pos_emb_type == 'ramanujan':
+                self.position_embedding = RamanujanPositionalEmbedding(
+                    config.block_size, config.n_embd
+                )
+            else:
+                raise ValueError(f"Unsupported pos_emb_type: {config.pos_emb_type}")
             self.embed_to_sdr = None
 
         # Transformer blocks
@@ -263,11 +273,20 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         else:
             # Standard embedding
             tok_emb = self.token_embedding(tokens)
-            # Use Ramanujan Position Embedding
+            # Positional Embedding
             # Indices are 0..T-1
-            pos_emb = self.position_embedding(
-                torch.arange(T, device=device).unsqueeze(0)
-            )  # (1, T, D)
+            if self.config.pos_emb_type == 'learned':
+                # Learned position embedding: nn.Embedding expects (T,) and returns (T, D)
+                pos_emb = self.position_embedding(
+                    torch.arange(T, device=device)
+                ).unsqueeze(0)  # (1, T, D)
+            elif self.config.pos_emb_type == 'ramanujan':
+                # Ramanujan expects (B, T) and returns (1, T, D)
+                pos_emb = self.position_embedding(
+                    torch.arange(T, device=device).unsqueeze(0)
+                )  # (1, T, D)
+            else:
+                raise ValueError(f"Unsupported pos_emb_type: {self.config.pos_emb_type}")
             x = tok_emb + pos_emb  # (B, T, n_embd)
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)  # Dummy SDR
             sdr_scores = None
@@ -356,14 +375,23 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
                     # Apply gradient checkpointing if enabled
                     # Trades compute for memory by recomputing activations during backward pass
-                    if self.config.gradient_checkpointing and self.training:
+                    if getattr(self.config, 'gradient_checkpointing', False) and self.training:
                         x, info = checkpoint(block, sdr_in, use_reentrant=False)
                     else:
                         x, info = block(sdr_in)
 
-                    # Add Ramanujan Positional Embedding here (to x)
+                    # Add Positional Embedding here (to x)
                     # x is (B*S, T, n_embd) if mHC, else (B, T, n_embd)
-                    pos_emb = self.ramanujan_pos(torch.zeros(1, T, device=device))
+                    if self.config.pos_emb_type == 'learned':
+                        # Learned position embedding: nn.Embedding expects (T,) and returns (T, D)
+                        pos_emb = self.position_embedding(
+                            torch.arange(T, device=device)
+                        ).unsqueeze(0)  # (1, T, D)
+                    elif self.config.pos_emb_type == 'ramanujan':
+                        # Ramanujan expects (B, T) and returns (1, T, D)
+                        pos_emb = self.position_embedding(torch.zeros(1, T, device=device))
+                    else:
+                        raise ValueError(f"Unsupported pos_emb_type for SDR mode: {self.config.pos_emb_type}")
                     x = x + pos_emb
 
                     # Apply pending memory retrieval after first block produces x
@@ -379,7 +407,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                         # Local variable - no need to clear, goes out of scope naturally
                 else:
                     # Block already applies internal residuals
-                    if self.config.gradient_checkpointing and self.training:
+                    if getattr(self.config, 'gradient_checkpointing', False) and self.training:
                         x, info = checkpoint(block, x, use_reentrant=False)
                     else:
                         x, info = block(x)
@@ -390,7 +418,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     x = self.expand_stream(x)
                 # Block already applies internal residuals (x + attn_out, x + mlp_out)
                 # DO NOT add another residual here - that was doubling the signal
-                if self.config.gradient_checkpointing and self.training:
+                if getattr(self.config, 'gradient_checkpointing', False) and self.training:
                     x, info = checkpoint(block, x, use_reentrant=False)
                 else:
                     x, info = block(x)

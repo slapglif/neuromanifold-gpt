@@ -116,6 +116,7 @@ class MHCConfig:
     mhc_residual_weight: float = 0.9
     mhc_sinkhorn_iters: int = 5
     mhc_sinkhorn_tau: float = 0.05
+    use_mhc_fused: bool = False
 
 
 @dataclass
@@ -319,6 +320,7 @@ class NeuroManifoldBlockConfig:
             mhc_residual_weight=config.mhc_residual_weight,
             mhc_sinkhorn_iters=config.mhc_sinkhorn_iters,
             mhc_sinkhorn_tau=config.mhc_sinkhorn_tau,
+            use_mhc_fused=config.use_mhc_fused,
         )
 
         # Create MLA sub-config from model config

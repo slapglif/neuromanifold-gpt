@@ -112,7 +112,7 @@ class NeuroManifoldBlock(nn.Module):
             self.spectral = None
 
         # FHN attention (with semi-implicit IMEX scheme)
-        if self.config.use_kaufmann_attention:
+        if self.config.attention_type == "kaufmann":
             # The Full Trifecta Model
             self.attention = KaufmannAttention(
                 self.config.embed_dim,
@@ -139,7 +139,7 @@ class NeuroManifoldBlock(nn.Module):
             )
 
         # Knot attention (optional)
-        if self.config.use_knot_attention and not self.config.use_kaufmann_attention:
+        if self.config.attention_type == "knot" and self.config.attention_type != "kaufmann":
             self.knot_attention = KnotAttention(
                 embed_dim=self.config.embed_dim,
                 manifold_dim=self.config.manifold_dim,
@@ -201,14 +201,14 @@ class NeuroManifoldBlock(nn.Module):
                     dim=self.config.embed_dim,
                     sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
                     sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
-                    use_fused=self.config.use_mhc_fused,
+                    use_fused=self.config.mhc.use_mhc_fused,
                 )
                 self.mhc_mlp = HyperConnections(
                     self.config.mhc.mhc_n_streams,
                     dim=self.config.embed_dim,
                     sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
                     sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
-                    use_fused=self.config.use_mhc_fused,
+                    use_fused=self.config.mhc.use_mhc_fused,
                 )
             else:
                 # Single-stream fallback (simple residual)
@@ -248,7 +248,7 @@ class NeuroManifoldBlock(nn.Module):
             attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
 
             # Knot attention (if enabled)
-            if self.config.use_knot_attention:
+            if self.config.attention_type == "knot":
                 knot_out, knot_info = self.knot_attention(self.norm1(branch_input), coords)
                 attn_info.update(knot_info)
                 gate = F.softmax(self.attn_gate(branch_input), dim=-1)
