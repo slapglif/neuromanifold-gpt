@@ -1,10 +1,10 @@
 """
-Full definition of a GPT Language Model, all of it in this single file.
+GPT Language Model with modular architecture: swap between LayerNorm/RMSNorm,
+GELU/SwiGLU FFN, and Flash/manual attention via GPTConfig parameters.
+
 References:
-1) the official GPT-2 TensorFlow implementation released by OpenAI:
-https://github.com/openai/gpt-2/blob/master/src/model.py
-2) huggingface/transformers PyTorch implementation:
-https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+1) OpenAI GPT-2: https://github.com/openai/gpt-2/blob/master/src/model.py
+2) HuggingFace: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
 
 import math
@@ -14,12 +14,6 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
-# Import position embeddings
-from neuromanifold_gpt.model.embeddings import (
-    RotaryPositionalEmbedding,
-    ALiBiPositionalBias,
-)
 
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
@@ -32,8 +26,19 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
-class CausalSelfAttention(nn.Module):
+class RMSNorm(nn.Module):
+    """ Root Mean Square Layer Normalization (LLaMA/Mistral style). Simpler than LayerNorm. """
+    def __init__(self, ndim, eps=1e-5):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(ndim))
 
+    def forward(self, input):
+        variance = input.pow(2).mean(dim=-1, keepdim=True)
+        return self.weight * input * torch.rsqrt(variance + self.eps)
+
+class CausalSelfAttention(nn.Module):
+    """Multi-head causal self-attention with Flash Attention support."""
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
@@ -82,7 +87,7 @@ class CausalSelfAttention(nn.Module):
         return y
 
 class MLP(nn.Module):
-
+    """GPT-2 style feed-forward network with GELU (dim -> 4*dim -> dim)."""
     def __init__(self, config):
         super().__init__()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
@@ -97,14 +102,32 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
 
-class Block(nn.Module):
+class SwiGLU(nn.Module):
+    """LLaMA-style SwiGLU FFN: (SiLU(xW_gate) ⊙ xW_up) W_down. More expressive than GELU."""
+    def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0, bias: bool = False):
+        super().__init__()
+        # LLaMA-style: 2/3 hidden dim for gate+up, then down
+        self.w_gate = nn.Linear(dim, hidden_dim, bias=bias)
+        self.w_up = nn.Linear(dim, hidden_dim, bias=bias)
+        self.w_down = nn.Linear(hidden_dim, dim, bias=bias)
+        self.dropout = nn.Dropout(dropout)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.w_down(F.silu(self.w_gate(x)) * self.w_up(x)))
+
+class Block(nn.Module):
+    """Transformer block with pluggable normalization (LayerNorm/RMSNorm) and FFN (GELU/SwiGLU)."""
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        norm = RMSNorm if config.norm_type == 'rmsnorm' else lambda d: LayerNorm(d, bias=config.bias)
+        self.ln_1 = norm(config.n_embd)
+        self.ln_2 = norm(config.n_embd)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
-        self.mlp = MLP(config)
+        if config.ffn_type == 'swiglu':
+            mlp_hidden = int(config.n_embd * 4.0 * 2 / 3)  # Match param count with standard FFN
+            self.mlp = SwiGLU(config.n_embd, mlp_hidden, dropout=config.dropout, bias=config.bias)
+        else:
+            self.mlp = MLP(config)
 
     def forward(self, x):
         x = x + self.attn(self.ln_1(x))
@@ -120,51 +143,24 @@ class GPTConfig:
     n_embd: int = 768
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-    pos_emb_type: str = 'learned' # Position embedding type: 'learned', 'rotary', or 'alibi'
+    ffn_type: str = 'gelu' # 'gelu' or 'swiglu'
+    norm_type: str = 'layernorm' # 'layernorm' or 'rmsnorm'
 
 class GPT(nn.Module):
-
+    """GPT Language Model with modular normalization, FFN, and attention components."""
     def __init__(self, config):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config
-
-        # Position embedding type (configurable: learned, rotary, alibi)
-        self.pos_emb_type = getattr(config, 'pos_emb_type', 'learned')
-
-        # Create transformer components
-        transformer_dict = dict(
+        ln_f = RMSNorm(config.n_embd) if config.norm_type == 'rmsnorm' else LayerNorm(config.n_embd, bias=config.bias)
+        self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
+            wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
-        )
-
-        # Add position embedding based on type
-        if self.pos_emb_type == 'learned':
-            # Standard learned positional embeddings
-            transformer_dict['wpe'] = nn.Embedding(config.block_size, config.n_embd)
-        elif self.pos_emb_type == 'rotary':
-            # RoPE (Rotary Position Embeddings) - applied to Q/K in attention
-            head_dim = config.n_embd // config.n_head
-            transformer_dict['wpe'] = RotaryPositionalEmbedding(
-                embed_dim=config.n_embd,
-                head_dim=head_dim,
-                max_seq_len=config.block_size
-            )
-        elif self.pos_emb_type == 'alibi':
-            # ALiBi (Attention with Linear Biases) - applied as bias to attention scores
-            transformer_dict['wpe'] = ALiBiPositionalBias(
-                n_heads=config.n_head,
-                embed_dim=config.n_embd,
-                max_seq_len=config.block_size
-            )
-        else:
-            raise ValueError(f"Unknown pos_emb_type: {self.pos_emb_type}. "
-                           f"Must be one of: learned, rotary, alibi")
-
-        self.transformer = nn.ModuleDict(transformer_dict)
+            ln_f = ln_f,
+        ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
         # "UserWarning: functional_call was passed multiple values for tied weights.
@@ -183,18 +179,10 @@ class GPT(nn.Module):
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
     def get_num_params(self, non_embedding=True):
-        """
-        Return the number of parameters in the model.
-        For non-embedding count (default), the position embeddings get subtracted.
-        The token embeddings would too, except due to the parameter sharing these
-        params are actually used as weights in the final layer, so we include them.
-        """
+        """Return number of parameters. For non_embedding, position embeddings are excluded."""
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
-            # Only subtract learned position embedding parameters
-            # RoPE and ALiBi use non-learnable buffers, so no subtraction needed
-            if self.pos_emb_type == 'learned' and hasattr(self.transformer.wpe, 'weight'):
-                n_params -= self.transformer.wpe.weight.numel()
+            n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
     def _init_weights(self, module):
@@ -213,26 +201,8 @@ class GPT(nn.Module):
 
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-
-        # Apply position embeddings based on type
-        if self.pos_emb_type == 'learned':
-            # Learned embeddings: add to token embeddings
-            pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-            x = self.transformer.drop(tok_emb + pos_emb)
-        elif self.pos_emb_type == 'rotary':
-            # RoPE: Applied to Q/K in attention layers (not at embedding level)
-            # For now, just use token embeddings without position info
-            # Position info will be applied in attention when RoPE is integrated there
-            x = self.transformer.drop(tok_emb)
-        elif self.pos_emb_type == 'alibi':
-            # ALiBi: Applied as bias to attention scores (not at embedding level)
-            # For now, just use token embeddings without position info
-            # Position info will be applied in attention when ALiBi is integrated there
-            x = self.transformer.drop(tok_emb)
-        else:
-            # Default: use token embeddings only
-            x = self.transformer.drop(tok_emb)
-
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
+        x = self.transformer.drop(tok_emb + pos_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
@@ -343,28 +313,16 @@ class GPT(nn.Module):
         return optimizer
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):
-        """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
-        # first estimate the number of flops we do per iteration.
-        # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
+        """Estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS."""
         N = self.get_num_params()
         cfg = self.config
         L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd//cfg.n_head, cfg.block_size
-        flops_per_token = 6*N + 12*L*H*Q*T
-        flops_per_fwdbwd = flops_per_token * T
-        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
-        # express our flops throughput as ratio of A100 bfloat16 peak flops
-        flops_achieved = flops_per_iter * (1.0/dt) # per second
-        flops_promised = 312e12 # A100 GPU bfloat16 peak flops is 312 TFLOPS
-        mfu = flops_achieved / flops_promised
-        return mfu
+        flops_per_iter = (6*N + 12*L*H*Q*T) * T * fwdbwd_per_iter
+        return (flops_per_iter / dt) / 312e12  # A100 bfloat16 peak: 312 TFLOPS
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
-        """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
-        """
+        """Generate tokens autoregressively. idx: (b,t) LongTensor. Use model.eval() mode."""
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
