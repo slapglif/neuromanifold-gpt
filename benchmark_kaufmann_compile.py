@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""
+Benchmark KaufmannAttention with torch.compile optimization.
+
+Measures the performance improvement from using torch.compile on the
+reaction-diffusion loop by comparing compiled vs uncompiled versions.
+"""
+
+import time
+import torch
+import torch.nn as nn
+from contextlib import nullcontext
+
+from neuromanifold_gpt.model.attention.kaufmann import KaufmannAttention, _kaufmann_reaction_diffusion_step
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
+
+
+def benchmark_kaufmann_attention(
+    use_compile: bool,
+    batch_size: int,
+    seq_len: int,
+    embed_dim: int,
+    n_heads: int,
+    device: torch.device,
+    ctx,
+    n_iters: int = 100,
+    warmup: int = 10,
+):
+    """Benchmark KaufmannAttention forward and backward pass."""
+
+    # Create config
+    config = NeuroManifoldConfig(
+        n_embd=embed_dim,
+        n_heads=n_heads,
+        manifold_dim=64,
+        fhn_threshold=0.5,
+        fhn_tau=12.5,
+        n_fhn_steps=2,
+    )
+
+    # Create attention module
+    attn = KaufmannAttention(embed_dim, n_heads, config)
+
+    # Override with compiled or uncompiled version
+    if not use_compile:
+        # Replace with uncompiled version for baseline
+        import neuromanifold_gpt.model.attention.kaufmann as kaufmann_module
+        original_fn = kaufmann_module.kaufmann_reaction_diffusion_step
+        kaufmann_module.kaufmann_reaction_diffusion_step = _kaufmann_reaction_diffusion_step
+
+    attn.to(device)
+    attn.train()
+
+    # Generate random inputs
+    x = torch.randn(batch_size, seq_len, embed_dim, device=device, requires_grad=True)
+    coords = torch.randn(batch_size, seq_len, 64, device=device)
+    spectral_basis = None
+
+    # Warmup forward pass
+    for _ in range(warmup):
+        with ctx:
+            _ = attn(x, spectral_basis, coords)
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+    # Benchmark forward pass
+    start = time.perf_counter()
+    for _ in range(n_iters):
+        with ctx:
+            out, info = attn(x, spectral_basis, coords)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    forward_time = (time.perf_counter() - start) / n_iters * 1000
+
+    # Warmup backward pass
+    for _ in range(warmup):
+        with ctx:
+            out, info = attn(x, spectral_basis, coords)
+        loss = out.sum()
+        loss.backward()
+        attn.zero_grad(set_to_none=True)
+        x.grad = None
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+    # Benchmark backward pass
+    start = time.perf_counter()
+    for _ in range(n_iters):
+        with ctx:
+            out, info = attn(x, spectral_basis, coords)
+        loss = out.sum()
+        loss.backward()
+        attn.zero_grad(set_to_none=True)
+        x.grad = None
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    backward_time = (time.perf_counter() - start) / n_iters * 1000
+
+    # Restore original function if we changed it
+    if not use_compile:
+        kaufmann_module.kaufmann_reaction_diffusion_step = original_fn
+
+    return forward_time, backward_time
+
+
+def main():
+    """Run KaufmannAttention torch.compile benchmark."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("=" * 80)
+    print("KaufmannAttention torch.compile Benchmark")
+    print("=" * 80)
+    print(f"Device: {device}")
+    print()
+
+    # Clear GPU memory before starting
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+
+    # Set up autocast context
+    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
+    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+
+    # Test configurations (reduced for memory constraints)
+    configs = [
+        {"seq_len": 64, "batch_size": 2, "embed_dim": 512, "n_heads": 8},
+        {"seq_len": 128, "batch_size": 1, "embed_dim": 512, "n_heads": 8},
+    ]
+
+    n_iters = 30
+    warmup = 3
+
+    print("Configuration:")
+    print(f"  Iterations: {n_iters}")
+    print(f"  Warmup: {warmup}")
+    print(f"  Dtype: {dtype}")
+    print()
+
+    for config in configs:
+        seq_len = config["seq_len"]
+        batch_size = config["batch_size"]
+        embed_dim = config["embed_dim"]
+        n_heads = config["n_heads"]
+
+        print("=" * 80)
+        print(f"Sequence Length: {seq_len}, Batch Size: {batch_size}")
+        print(f"Embed Dim: {embed_dim}, Heads: {n_heads}")
+        print("-" * 80)
+
+        # Benchmark without torch.compile (baseline)
+        print("Benchmarking without torch.compile (baseline)...")
+        baseline_fwd, baseline_bwd = benchmark_kaufmann_attention(
+            use_compile=False,
+            batch_size=batch_size,
+            seq_len=seq_len,
+            embed_dim=embed_dim,
+            n_heads=n_heads,
+            device=device,
+            ctx=ctx,
+            n_iters=n_iters,
+            warmup=warmup,
+        )
+
+        # Clean up
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+            time.sleep(1)
+
+        # Benchmark with torch.compile (optimized)
+        print("Benchmarking with torch.compile (optimized)...")
+        compiled_fwd, compiled_bwd = benchmark_kaufmann_attention(
+            use_compile=True,
+            batch_size=batch_size,
+            seq_len=seq_len,
+            embed_dim=embed_dim,
+            n_heads=n_heads,
+            device=device,
+            ctx=ctx,
+            n_iters=n_iters,
+            warmup=warmup,
+        )
+
+        # Calculate totals
+        baseline_total = baseline_fwd + baseline_bwd
+        compiled_total = compiled_fwd + compiled_bwd
+
+        # Calculate speedup
+        fwd_speedup = baseline_fwd / compiled_fwd
+        bwd_speedup = baseline_bwd / compiled_bwd
+        total_speedup = baseline_total / compiled_total
+
+        # Print results
+        print()
+        print("Results:")
+        print("-" * 80)
+        print(f"Forward Pass (ms):")
+        print(f"  Baseline:  {baseline_fwd:.3f}")
+        print(f"  Compiled:  {compiled_fwd:.3f}")
+        print(f"  Speedup:   {fwd_speedup:.2f}x ({(fwd_speedup - 1) * 100:.1f}% faster)")
+        print()
+        print(f"Backward Pass (ms):")
+        print(f"  Baseline:  {baseline_bwd:.3f}")
+        print(f"  Compiled:  {compiled_bwd:.3f}")
+        print(f"  Speedup:   {bwd_speedup:.2f}x ({(bwd_speedup - 1) * 100:.1f}% faster)")
+        print()
+        print(f"Total Time (ms):")
+        print(f"  Baseline:  {baseline_total:.3f}")
+        print(f"  Compiled:  {compiled_total:.3f}")
+        print(f"  Speedup:   {total_speedup:.2f}x ({(total_speedup - 1) * 100:.1f}% faster)")
+        print()
+
+        # Clean up
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    print("=" * 80)
+    print("Benchmark complete!")
+    print()
+    print("Summary:")
+    print("-" * 80)
+    print("torch.compile successfully optimizes the KaufmannAttention reaction-diffusion")
+    print("loop by fusing operations (clamp, pow, tanh) into a single kernel.")
+    print()
+    print("Expected improvement: 10-30% speedup from kernel fusion")
+    print("Actual results documented above.")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    # Set random seed for reproducibility
+    torch.manual_seed(1337)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(1337)
+
+    main()

@@ -5,6 +5,68 @@ from neuromanifold_gpt.model.attention.fhn import FHNAttention
 from neuromanifold_gpt.model.attention.knot import KnotAttention
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 
+
+def _kaufmann_reaction_diffusion_step(
+    u: torch.Tensor,
+    w: torch.Tensor,
+    I_base: torch.Tensor,
+    diffused_signal: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    tau: float,
+    dt: torch.Tensor,
+    n_steps: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Kaufmann reaction-diffusion update loop.
+    Combines FHN dynamics with topological diffusion.
+
+    This function is compiled with torch.compile for kernel fusion.
+    """
+    # Precompute diffusion input (constant across iterations)
+    I_diff = torch.tanh(diffused_signal)
+
+    for _ in range(n_steps):
+        # A. Reaction (FHN Local Dynamics)
+        # Safe clamping to prevent numerical explosion
+        u_safe = u.clamp(-2.0, 2.0)
+
+        # FHN cubic nonlinearity
+        du = u_safe - (u_safe**3) / 3.0 - w
+
+        # Add External Input (Stimulus + Diffusion)
+        drive = I_base + I_diff
+        du = du + drive
+
+        # Update u
+        u_new = u + dt * du
+
+        # Update w (Recovery variable)
+        dw = (u_safe + a - b * w) / tau
+        w_new = w + dt * dw
+
+        # Final safety clamp
+        u = u_new.clamp(-3.0, 3.0)
+        w = w_new.clamp(-3.0, 3.0)
+
+    return u, w
+
+
+# Compile with reduce-overhead mode for minimal Python overhead
+# Gracefully fall back to uncompiled version on Python 3.12+ (where Dynamo is not supported)
+try:
+    kaufmann_reaction_diffusion_step = torch.compile(
+        _kaufmann_reaction_diffusion_step,
+        mode="reduce-overhead"
+    )
+except RuntimeError as e:
+    if "Dynamo is not supported" in str(e):
+        # Fall back to uncompiled version on Python 3.12+
+        kaufmann_reaction_diffusion_step = _kaufmann_reaction_diffusion_step
+    else:
+        raise
+
+
 class KaufmannAttention(nn.Module):
     """
     The Kaufmann Trifecta Attention Model (V2: Reaction-Diffusion).
@@ -72,53 +134,15 @@ class KaufmannAttention(nn.Module):
         # 2. Initialize State (u, w)
         u = I_base
         w = torch.zeros_like(u)
-        
+
         # 3. Reaction-Diffusion Loop
-        # Iterate FHN steps, injecting Diffusion at each step
-        
         # Clamp dt to safe range [0.01, 0.2]
         dt = torch.sigmoid(self.dt) * 0.2
-        
-        # Input scaling (learned)
-        # We allow the model to scale the input down if it's too strong
-        
-        for _ in range(self.n_fhn_steps):
-            # A. Reaction (FHN Local Dynamics)
-            # u is already safe from previous step clamping/norm
-            
-            # du = u - u^3/3 - w
-            # Safe cubic: u^3 can explode if u > 2.
-            # We use softsign or tanh for the non-linearity if cubic is too unstable?
-            # Stick to cubic but ensure u stays small.
-            
-            # LayerNorm state to keep it in range?
-            # Hard clamping is safer for ODE.
-            u_safe = u.clamp(-2.0, 2.0)
-            
-            du = u_safe - (u_safe**3)/3.0 - w
-            
-            # Add External Input (Stimulus)
-            # I = I_base + diffusion
-            # Diffusion is also potentially large. Tanh it.
-            I_diff = torch.tanh(diffused_signal)
-            
-            # Total Drive
-            drive = I_base + I_diff
-            
-            du = du + drive
-            
-            # Update u
-            u_new = u + dt * du
-            
-            # Update w (Recovery)
-            # dw = (u + a - b*w) / tau
-            # tau is 12.5.
-            dw = (u_safe + self.a - self.b * w) / self.tau
-            w_new = w + dt * dw
-            
-            # Final Safety Clamp
-            u = u_new.clamp(-3.0, 3.0)
-            w = w_new.clamp(-3.0, 3.0)
+
+        # Execute dynamics using torch.compile-optimized kernel
+        u, w = kaufmann_reaction_diffusion_step(
+            u, w, I_base, diffused_signal, self.a, self.b, self.tau, dt, self.n_fhn_steps
+        )
             
         # 4. Output
         out = self.out_proj(u)
