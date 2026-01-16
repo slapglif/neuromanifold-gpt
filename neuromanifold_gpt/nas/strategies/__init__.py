@@ -10,5 +10,6 @@ Each strategy implements the Searcher interface defined in searcher.py.
 """
 
 from neuromanifold_gpt.nas.strategies.random_search import RandomSearch
+from neuromanifold_gpt.nas.strategies.evolutionary import EvolutionarySearch
 
-__all__ = ["RandomSearch"]
+__all__ = ["RandomSearch", "EvolutionarySearch"]
