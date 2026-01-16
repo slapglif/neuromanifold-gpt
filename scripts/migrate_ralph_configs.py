@@ -24,7 +24,7 @@ import ast
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 
 def extract_comment_header(file_path: Path) -> str:
@@ -52,7 +52,7 @@ def extract_comment_header(file_path: Path) -> str:
     return '\n'.join(header_lines)
 
 
-def parse_config_file(file_path: Path) -> dict[str, Any]:
+def parse_config_file(file_path: Path) -> Dict[str, Any]:
     """Parse a ralph_iter config file and extract parameter values.
 
     Uses AST parsing to extract simple assignments (name = value).
@@ -65,7 +65,7 @@ def parse_config_file(file_path: Path) -> dict[str, Any]:
     Returns:
         Dictionary mapping parameter names to values
     """
-    config_values = {}
+    config_values: Dict[str, Any] = {}
 
     with open(file_path) as f:
         source = f.read()
@@ -119,7 +119,7 @@ def _extract_literal(node: ast.expr) -> Any:
     return None
 
 
-def get_base_config_defaults() -> dict[str, Any]:
+def get_base_config_defaults() -> Dict[str, Any]:
     """Get default values from RalphBaseConfig.
 
     Returns:
@@ -188,7 +188,7 @@ def get_base_config_defaults() -> dict[str, Any]:
         }
 
 
-def compute_deltas(config_values: dict[str, Any], base_defaults: dict[str, Any]) -> dict[str, Any]:
+def compute_deltas(config_values: Dict[str, Any], base_defaults: Dict[str, Any]) -> Dict[str, Any]:
     """Compute delta between config values and base defaults.
 
     Only includes parameters that differ from the base configuration.
@@ -237,7 +237,7 @@ def format_delta_value(value: Any) -> str:
         return repr(value)
 
 
-def generate_builder_code(iteration: int, deltas: dict[str, Any], comment_header: str) -> str:
+def generate_builder_code(iteration: int, deltas: Dict[str, Any], comment_header: str) -> str:
     """Generate builder-based configuration code for an iteration.
 
     Args:
@@ -282,7 +282,7 @@ def generate_builder_code(iteration: int, deltas: dict[str, Any], comment_header
     return '\n'.join(lines)
 
 
-def find_ralph_iter_files(config_dir: Path) -> list[tuple[int, Path]]:
+def find_ralph_iter_files(config_dir: Path) -> List[Tuple[int, Path]]:
     """Find all ralph_iter*.py files and extract iteration numbers.
 
     Args:
@@ -394,7 +394,7 @@ def main():
         print('\n'.join(output_lines))
 
 
-def generate_iterations_content(iterations_data: list[tuple[int, dict[str, Any], str]]) -> list[str]:
+def generate_iterations_content(iterations_data: List[Tuple[int, Dict[str, Any], str]]) -> List[str]:
     """Generate the content for iterations.py module.
 
     Args:
@@ -427,7 +427,7 @@ def generate_iterations_content(iterations_data: list[tuple[int, dict[str, Any],
     return lines
 
 
-def generate_iterations_file(output_path: Path, iterations_data: list[tuple[int, dict[str, Any], str]]) -> None:
+def generate_iterations_file(output_path: Path, iterations_data: List[Tuple[int, Dict[str, Any], str]]) -> None:
     """Write the generated iterations.py file.
 
     Args:

@@ -22,11 +22,12 @@ Usage:
 import sys
 import time
 from collections import deque
-from typing import Any, Optional
+from typing import Any, Dict, Deque, List, Optional, Union
 
 import torch
 import lightning as pl
-from pytorch_lightning.callbacks import Callback
+from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch.callbacks import Callback
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
@@ -60,27 +61,27 @@ class TrainingHealthCallback(Callback):
         self.enable_dashboard = enable_dashboard and self.is_tty
 
         # Gradient tracking
-        self.grad_norm_history = deque(maxlen=gradient_norm_history_size)
-        self.grad_norm_before_clip = None
+        self.grad_norm_history: Deque[float] = deque(maxlen=gradient_norm_history_size)
+        self.grad_norm_before_clip: Optional[float] = None
         self.total_clip_events = 0
         self.total_steps = 0
-        self.clip_ratios = deque(maxlen=100)  # Track clip magnitude when clipping occurs
+        self.clip_ratios: Deque[float] = deque(maxlen=100)  # Track clip magnitude when clipping occurs
 
         # Memory tracking
         self.peak_memory_mb = 0.0
 
         # Timing and throughput
-        self.step_start_time = None
-        self.step_times = deque(maxlen=20)  # Rolling average
-        self.training_start_time = None
-        self.max_steps = None
+        self.step_start_time: Optional[float] = None
+        self.step_times: Deque[float] = deque(maxlen=20)  # Rolling average
+        self.training_start_time: Optional[float] = None
+        self.max_steps: Optional[Union[int, float]] = None
         self.warmup_steps = 10  # Number of steps before showing ETA
 
         # Loss tracking
-        self.loss_history = deque(maxlen=100)
+        self.loss_history: Deque[float] = deque(maxlen=100)
 
         # Anomaly detection
-        self.warnings = []  # List of warning messages
+        self.warnings: List[Dict[str, Any]] = []  # List of warning messages
         self.loss_spike_threshold = 3.0  # Number of std devs for spike detection
         self.grad_explosion_threshold = 3.0  # Number of std devs for gradient explosion detection
         self.min_loss_history_for_detection = 20  # Minimum samples before detecting anomalies
@@ -223,7 +224,7 @@ class TrainingHealthCallback(Callback):
                 'severity': 'critical'
             })
 
-    def _detect_nan_inf_gradients(self, pl_module: pl.LightningModule, current_step: int) -> None:
+    def _detect_nan_inf_gradients(self, pl_module: LightningModule, current_step: int) -> None:
         """Detect if gradients contain NaN or Inf values.
 
         This is a critical error that requires immediate attention.
@@ -405,8 +406,8 @@ class TrainingHealthCallback(Callback):
 
     def on_train_start(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
+        trainer: Trainer,
+        pl_module: LightningModule,
     ) -> None:
         """Initialize the live dashboard."""
         # Record training start time for ETA calculation
@@ -427,8 +428,8 @@ class TrainingHealthCallback(Callback):
 
     def on_train_end(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
+        trainer: Trainer,
+        pl_module: LightningModule,
     ) -> None:
         """Stop the live dashboard."""
         if self.live is not None:
@@ -436,8 +437,8 @@ class TrainingHealthCallback(Callback):
 
     def on_train_batch_start(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
+        trainer: Trainer,
+        pl_module: LightningModule,
         batch: Any,
         batch_idx: int,
     ) -> None:
@@ -446,8 +447,8 @@ class TrainingHealthCallback(Callback):
 
     def on_after_backward(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
+        trainer: Trainer,
+        pl_module: LightningModule,
     ) -> None:
         """Track gradient norm before clipping.
 
@@ -470,9 +471,9 @@ class TrainingHealthCallback(Callback):
 
     def on_before_optimizer_step(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
-        optimizer,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        optimizer: Any,
     ) -> None:
         """Track gradient clipping events.
 
@@ -503,10 +504,10 @@ class TrainingHealthCallback(Callback):
 
     def on_train_batch_end(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
-        outputs,
-        batch,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs: Any,
+        batch: Any,
         batch_idx: int,
     ) -> None:
         """Log training health metrics at specified intervals."""
