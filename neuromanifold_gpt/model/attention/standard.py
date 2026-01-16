@@ -10,12 +10,15 @@ import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from neuromanifold_gpt.utils.logging import get_logger
 
 try:
     from .memory_efficient import xformers_attention, XFORMERS_AVAILABLE
 except ImportError:
     XFORMERS_AVAILABLE = False
     xformers_attention = None
+
+logger = get_logger(__name__)
 
 
 class StandardAttention(nn.Module):
@@ -58,6 +61,15 @@ class StandardAttention(nn.Module):
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         # xformers memory-efficient attention as fallback
         self.xformers = XFORMERS_AVAILABLE
+
+        # Log available backend
+        if self.flash:
+            logger.info("StandardAttention: Using Flash Attention backend (PyTorch >= 2.0)")
+        elif self.xformers:
+            logger.info("StandardAttention: Using xformers memory-efficient attention backend")
+        else:
+            logger.info("StandardAttention: Using manual attention implementation")
+
         # Only need causal mask buffer for manual implementation
         if not self.flash and not self.xformers:
             # causal mask to ensure that attention is only applied to the left in the input sequence

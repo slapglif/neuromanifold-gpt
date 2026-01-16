@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange, einsum
 from .partitioning import SpectralPartitioner
+from neuromanifold_gpt.utils.logging import get_logger
 
 try:
     from .memory_efficient import xformers_attention, XFORMERS_AVAILABLE
@@ -28,6 +29,8 @@ try:
 except ImportError:
     TRITON_AVAILABLE = False
     fhn_triton_kernel = None
+
+logger = get_logger(__name__)
 
 
 @torch.jit.script
@@ -128,6 +131,14 @@ class FHNDynamics(nn.Module):
                 "Falling back to JIT backend. Install Triton with: pip install triton"
             )
             self.backend = "jit"
+
+        # Log FHN backend selection
+        if self.backend == "triton":
+            logger.info("FHNDynamics: Using Triton-accelerated backend")
+        elif self.use_imex:
+            logger.info("FHNDynamics: Using JIT-compiled IMEX backend")
+        else:
+            logger.info("FHNDynamics: Using explicit Euler backend")
 
         # Learnable parameters (standard FHN values)
         self.a = nn.Parameter(torch.tensor(0.7))
@@ -244,6 +255,14 @@ class FHNAttention(nn.Module):
         # Check attention backend availability
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         self.xformers = XFORMERS_AVAILABLE
+
+        # Log attention backend availability
+        if self.flash:
+            logger.info("FHNAttention: Flash Attention backend available (PyTorch >= 2.0)")
+        elif self.xformers:
+            logger.info("FHNAttention: xformers memory-efficient attention backend available")
+        else:
+            logger.info("FHNAttention: Using manual attention implementation")
 
     def forward(
         self, x: torch.Tensor, spectral_basis: torch.Tensor
