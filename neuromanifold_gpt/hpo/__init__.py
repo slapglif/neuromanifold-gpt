@@ -5,4 +5,6 @@ enabling efficient search over learning rates, architecture sizes, and
 novel component parameters.
 """
 
-__all__ = []
+from neuromanifold_gpt.hpo.search_space import SearchSpace
+
+__all__ = ["SearchSpace"]
