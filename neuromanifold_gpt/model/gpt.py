@@ -19,14 +19,30 @@ from neuromanifold_gpt.errors import RuntimeError
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
-from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
-from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
-from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
-from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
-from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
+
+# Optional modules (may not be implemented yet)
+try:
+    from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
+except ImportError:
+    HierarchicalEngramMemory = None
+
+try:
+    from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+except ImportError:
+    HybridReasoningModule = None
+
+try:
+    from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+except ImportError:
+    ForcedDAGPlanner = None
+
+try:
+    from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+except ImportError:
+    ConsistencyImaginationModule = None
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -146,8 +162,8 @@ class NeuroManifoldGPT(nn.Module):
         )
         self.mhc_enabled = config.use_mhc and config.mhc_n_streams > 1
 
-        # Final layer norm - RMSNorm is ~15% faster than LayerNorm (no mean computation)
-        self.ln_f = RMSNorm(config.n_embd)
+        # Final layer norm
+        self.ln_f = nn.LayerNorm(config.n_embd)
 
         # Language model head
         # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
@@ -192,7 +208,7 @@ class NeuroManifoldGPT(nn.Module):
         )
 
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
-        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
+        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False) and HybridReasoningModule is not None
         if self.use_hybrid_reasoning:
             self.hybrid_reasoning = HybridReasoningModule(
                 embed_dim=config.n_embd,
@@ -208,7 +224,7 @@ class NeuroManifoldGPT(nn.Module):
         # ========================================
 
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
-        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
+        self.use_dag_planner = getattr(config, 'use_dag_planner', False) and ForcedDAGPlanner is not None
         if self.use_dag_planner:
             self.dag_planner = ForcedDAGPlanner(
                 embed_dim=config.n_embd,
@@ -218,7 +234,7 @@ class NeuroManifoldGPT(nn.Module):
             )
 
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
-        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
+        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False) and HierarchicalEngramMemory is not None
         if self.use_hierarchical_memory:
             self.hierarchical_memory = HierarchicalEngramMemory(
                 sdr_size=config.sdr_size,
@@ -230,7 +246,7 @@ class NeuroManifoldGPT(nn.Module):
             )
 
         # ConsistencyImaginationModule - Counterfactual exploration
-        self.use_imagination = getattr(config, 'use_imagination', False)
+        self.use_imagination = getattr(config, 'use_imagination', False) and ConsistencyImaginationModule is not None
         if self.use_imagination:
             self.imagination = ConsistencyImaginationModule(
                 embed_dim=config.n_embd,
