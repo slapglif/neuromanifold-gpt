@@ -38,6 +38,9 @@ except ImportError:
     TORCH_AVAILABLE = False
     torch = None
 
+# Progress utilities (imported at top since they're lightweight)
+from neuromanifold_gpt.utils.progress import progress_bar
+
 # -----------------------------------------------------------------------------
 # Default config values designed to train NeuroManifoldGPT
 defaults = {
@@ -345,7 +348,12 @@ def estimate_loss() -> dict[str, float]:
     model.eval()
     for split in ["train", "val"]:
         losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
+        # Only show progress on master process to avoid duplicate output in DDP
+        iterator = range(eval_iters)
+        if master_process:
+            iterator = progress_bar(iterator, description=f"Evaluating {split}", total=eval_iters)
+
+        for k in iterator:
             X, Y = get_batch(split)
             with ctx:
                 logits, loss, info = model(X, Y)
