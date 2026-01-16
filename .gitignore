@@ -10,8 +10,10 @@ __pycache__/
 input.txt
 env/
 venv/
+.venv/
 # Additional ignore patterns
 *.log
+logs/
 *.egg-info/
 out/
 out-lightning/
