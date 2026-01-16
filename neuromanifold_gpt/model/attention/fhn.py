@@ -168,6 +168,7 @@ class FHNAttention(nn.Module):
         use_imex: bool = True,
         use_partitioning: bool = True,
         use_fused: bool = False,  # Deprecated
+        use_flash_fhn_fusion: bool = True,  # Use Flash Attention fusion
         pos_emb_type: str = "learned",  # Position embedding type
         max_seq_len: int = 1024,  # For RoPE/ALiBi initialization
     ):
