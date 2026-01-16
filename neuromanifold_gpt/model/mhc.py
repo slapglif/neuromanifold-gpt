@@ -259,7 +259,7 @@ class HyperConnections(Module):
         sinkhorn_iters: Number of Sinkhorn-Knopp iterations for H_res projection
         sinkhorn_tau: Temperature for Sinkhorn softmax (lower = sharper)
         sinkhorn_convergence_tol: Optional convergence threshold for early stopping
-        use_fused: Deprecated parameter for API compatibility (not currently used)
+        use_fused: Use Triton-fused kernel for GPU acceleration (auto-enabled if available)
 
     Shape:
         - Input: (B*S, T, D) where S is num_residual_streams
@@ -281,7 +281,7 @@ class HyperConnections(Module):
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
         sinkhorn_convergence_tol: Optional[float] = 1e-6,
-        use_fused: bool = False,  # Use Triton-fused kernel for GPU acceleration
+        use_fused: Optional[bool] = None,  # Use Triton-fused kernel for GPU acceleration (auto-detect)
     ):
         """Initialize the HyperConnections layer.
 
@@ -322,7 +322,7 @@ class HyperConnections(Module):
                 When True and CUDA is available, width_connection uses a single
                 fused kernel instead of 4 sequential operations. Provides 1.5-2.5x
                 speedup on GPU. Gracefully falls back to unfused path on CPU.
-                Default: False for maximum compatibility.
+                Default: None (auto-enabled when Triton is available).
         """
         super().__init__()
 
@@ -331,7 +331,7 @@ class HyperConnections(Module):
         self.sinkhorn_iters = sinkhorn_iters
         self.sinkhorn_tau = sinkhorn_tau
         self.sinkhorn_convergence_tol = sinkhorn_convergence_tol
-        self.use_fused = use_fused and HAS_TRITON  # Enable fusion only if requested and available
+        self.use_fused = default(use_fused, HAS_TRITON) and HAS_TRITON  # Enable fusion by default if available
 
         # Choose initial residual stream index
         init_residual_index = (
