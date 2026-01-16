@@ -337,13 +337,14 @@ class NeuroManifoldBlockConfig:
         )
 
         # Map boolean flags to attention_type string (backward compatibility)
-        attention_type = "fhn"  # default
-        if hasattr(config, 'attention_type'):
-            attention_type = config.attention_type
-        elif hasattr(config, 'use_kaufmann_attention') and config.use_kaufmann_attention:
+        # Boolean flags take precedence for backward compatibility
+        if hasattr(config, 'use_kaufmann_attention') and config.use_kaufmann_attention:
             attention_type = "kaufmann"
         elif hasattr(config, 'use_knot_attention') and config.use_knot_attention:
             attention_type = "knot"
+        else:
+            # Use attention_type from config (defaults to "fhn" if not set)
+            attention_type = getattr(config, 'attention_type', 'fhn')
 
         # Create and return the block config with all sub-configs
         return cls(
