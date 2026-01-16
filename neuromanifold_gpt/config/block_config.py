@@ -243,3 +243,88 @@ class NeuroManifoldBlockConfig:
     mhc: MHCConfig = field(default_factory=MHCConfig)
     mla: MLAConfig = field(default_factory=MLAConfig)
     moe: MoEConfig = field(default_factory=MoEConfig)
+
+    @classmethod
+    def from_model_config(cls, config: "NeuroManifoldConfig", layer_idx: int) -> "NeuroManifoldBlockConfig":
+        """Create NeuroManifoldBlockConfig from NeuroManifoldConfig.
+
+        This helper method extracts block-level configuration from the model-level
+        configuration, mapping fields from NeuroManifoldConfig to the structured
+        sub-configs in NeuroManifoldBlockConfig.
+
+        Args:
+            config: The model-level NeuroManifoldConfig instance
+            layer_idx: The index of this block in the model (0-based)
+                      Reserved for layer-specific configuration in the future
+
+        Returns:
+            NeuroManifoldBlockConfig instance with all sub-configs populated
+
+        Example:
+            >>> from neuromanifold_gpt.config import NeuroManifoldConfig
+            >>> model_cfg = NeuroManifoldConfig()
+            >>> block_cfg = NeuroManifoldBlockConfig.from_model_config(model_cfg, layer_idx=0)
+        """
+        # Create FHN sub-config from model config
+        fhn_cfg = FHNConfig(
+            fhn_threshold=config.fhn_threshold,
+            fhn_tau=config.fhn_tau,
+            fhn_velocity=config.fhn_velocity,
+            pulse_width_base=config.pulse_width_base,
+            n_fhn_steps=config.n_fhn_steps,
+            use_fhn_imex=config.use_fhn_imex,
+            use_fhn_partitioning=config.use_fhn_partitioning,
+            use_fhn_fused=config.use_fhn_fused,
+            use_fhn_parallel=config.use_fhn_parallel,
+        )
+
+        # Create KAN sub-config from model config
+        kan_cfg = KANConfig(
+            use_kan=config.use_kan,
+            kan_type=config.kan_type,
+            kan_degree=config.kan_degree,
+            kan_wavelet=config.kan_wavelet,
+            use_fast_wavekan=config.use_fast_wavekan,
+            kan_num_centers=config.kan_num_centers,
+            use_kan_everywhere=config.use_kan_everywhere,
+        )
+
+        # Create mHC sub-config from model config
+        mhc_cfg = MHCConfig(
+            use_mhc=config.use_mhc,
+            use_full_mhc=config.use_full_mhc,
+            mhc_n_streams=config.mhc_n_streams,
+            mhc_residual_weight=config.mhc_residual_weight,
+            mhc_sinkhorn_iters=config.mhc_sinkhorn_iters,
+            mhc_sinkhorn_tau=config.mhc_sinkhorn_tau,
+        )
+
+        # Create MLA sub-config from model config
+        mla_cfg = MLAConfig(
+            use_mla=config.use_mla,
+            mla_latent_dim=config.mla_latent_dim,
+            mla_rope_dim=config.mla_rope_dim,
+        )
+
+        # Create MoE sub-config from model config
+        moe_cfg = MoEConfig(
+            use_moe=config.use_moe,
+            moe_n_experts=config.moe_n_experts,
+            moe_n_active=config.moe_n_active,
+            use_shared_expert=config.use_shared_expert,
+            use_e7_routing=config.use_e7_routing,
+        )
+
+        # Create and return the block config with all sub-configs
+        return cls(
+            sdr_size=config.sdr_size,
+            embed_dim=config.n_embd,
+            n_heads=config.n_heads,
+            dropout=config.dropout,
+            bias=config.bias,
+            fhn=fhn_cfg,
+            kan=kan_cfg,
+            mhc=mhc_cfg,
+            mla=mla_cfg,
+            moe=moe_cfg,
+        )

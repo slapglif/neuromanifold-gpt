@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "033-neuromanifold-attention-benchmarks",
-  "state": "complete",
+  "spec": "052-reduce-neuromanifoldblock-parameter-explosion-with",
+  "state": "building",
   "subtasks": {
-    "completed": 13,
-    "total": 13,
-    "in_progress": 0,
+    "completed": 5,
+    "total": 18,
+    "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Documentation and Results",
+    "current": "Add Config Dataclasses",
     "id": null,
-    "total": 2
+    "total": 6
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 13,
-    "started_at": "2026-01-15T21:53:37.855089"
+    "number": 7,
+    "started_at": "2026-01-16T01:15:51.745834"
   },
-  "last_update": "2026-01-15T23:16:54.605949"
+  "last_update": "2026-01-16T01:32:08.788591"
 }
