@@ -24,8 +24,8 @@ use_mamba_backbone = True
 mamba_state_dim = 16
 use_soliton_mixing = True
 soliton_type = "sine_gordon"
-use_topological_loss = False
-use_continuous_head = False
+use_topological_loss = True
+use_continuous_head = False # Keep simple first
 
 # Optimization
 learning_rate = 1e-3

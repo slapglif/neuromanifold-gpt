@@ -167,6 +167,7 @@ class HeimburgJacksonSolver(PDESolver):
         clamp_max: float = 5.0,
         dropout: float = 0.0,
         damping: float = 0.0,
+        causal: bool = False,
     ):
         """
         Initialize Heimburg-Jackson solver.
@@ -193,6 +194,7 @@ class HeimburgJacksonSolver(PDESolver):
             clamp_max: Maximum value for clamping (numerical stability)
             dropout: Dropout probability for regularization
             damping: Optional damping coefficient (adds -γ·ρ_t term)
+            causal: Force causal derivatives (backward differences only)
         """
         super().__init__(
             dim=dim,
@@ -203,6 +205,7 @@ class HeimburgJacksonSolver(PDESolver):
             clamp_min=clamp_min,
             clamp_max=clamp_max,
             dropout=dropout,
+            causal=causal,
         )
 
         self.use_rk4 = use_rk4
