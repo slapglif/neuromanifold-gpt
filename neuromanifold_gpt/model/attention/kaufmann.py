@@ -89,16 +89,18 @@ class KaufmannAttention(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.n_heads = n_heads
-        
+
         # Extract config
         manifold_dim = getattr(config, 'manifold_dim', kwargs.get('manifold_dim', 64))
         fhn_threshold = getattr(config, 'fhn_threshold', kwargs.get('fhn_threshold', 0.5))
         fhn_tau = getattr(config, 'fhn_tau', kwargs.get('fhn_tau', 12.5))
         self.n_fhn_steps = getattr(config, 'n_fhn_steps', kwargs.get('n_fhn_steps', 2))
-        
+        pos_emb_type = getattr(config, 'pos_emb_type', kwargs.get('pos_emb_type', 'learned'))
+        max_seq_len = getattr(config, 'max_seq_len', kwargs.get('max_seq_len', 1024))
+
         # 1. Topology (Diffusion Matrix)
         # Computes 'Linking Number' matrix -> Attention Weights
-        self.knot_gate = KnotAttention(embed_dim, manifold_dim=manifold_dim, n_heads=n_heads)
+        self.knot_gate = KnotAttention(embed_dim, manifold_dim=manifold_dim, n_heads=n_heads, pos_emb_type=pos_emb_type, max_seq_len=max_seq_len)
         
         # 2. Dynamics (Reaction)
         # FHN parameters

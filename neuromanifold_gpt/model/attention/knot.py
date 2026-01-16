@@ -22,12 +22,18 @@ class KnotAttention(nn.Module):
     Crossings encode relationships; invariants identify patterns.
     """
 
-    def __init__(self, embed_dim: int, manifold_dim: int = 64, n_heads: int = 8):
+    def __init__(self, embed_dim: int, manifold_dim: int = 64, n_heads: int = 8, pos_emb_type: str = "learned", max_seq_len: int = 1024):
         super().__init__()
         self.embed_dim = embed_dim
         self.manifold_dim = manifold_dim
         self.n_heads = n_heads
         self.head_dim = embed_dim // n_heads
+        self.pos_emb_type = pos_emb_type
+        self.max_seq_len = max_seq_len
+
+        # RoPE and ALiBi position embeddings (lazy initialization)
+        self.rope = None
+        self.alibi = None
 
         # Learn crossing detector: which tokens "cross" (strongly interact)
         # Input: features_i, features_j, coords_i, coords_j
@@ -86,8 +92,24 @@ class KnotAttention(nn.Module):
         H = self.n_heads
         HD = self.head_dim
 
-        # If coords not provided, create simple projection from input
-        if coords is None:
+        # Lazy initialization of position embeddings (only when first used)
+        if self.pos_emb_type == 'rotary' and self.rope is None:
+            from neuromanifold_gpt.model.embeddings import RotaryPositionalEmbedding
+            self.rope = RotaryPositionalEmbedding(
+                embed_dim=self.embed_dim,
+                head_dim=self.head_dim,
+                max_seq_len=self.max_seq_len
+            )
+        elif self.pos_emb_type == 'alibi' and self.alibi is None:
+            from neuromanifold_gpt.model.embeddings import ALiBiPositionalBias
+            self.alibi = ALiBiPositionalBias(
+                n_heads=self.n_heads,
+                embed_dim=self.embed_dim,
+                max_seq_len=self.max_seq_len
+            )
+
+        # If coords not provided or has wrong shape, create simple projection from input
+        if coords is None or coords.shape[-1] != self.manifold_dim or coords.shape[0] != B or coords.shape[1] != T:
             # Use a learned projection to create pseudo-coordinates
             coords = x[:, :, :self.manifold_dim]  # Use first manifold_dim features as proxy
 
@@ -96,7 +118,15 @@ class KnotAttention(nn.Module):
         k = self.to_k(x).view(B, T, H, HD).transpose(1, 2)
         v = self.to_v(x).view(B, T, H, HD).transpose(1, 2)
 
-        # Prepare pairwise inputs for crossing net
+        # Save pre-RoPE versions for crossing network
+        q_for_crossing = q
+        k_for_crossing = k
+
+        # Apply RoPE if enabled (for final attention calculation)
+        if self.rope is not None:
+            q, k = self.rope(q, k)
+
+        # Prepare pairwise inputs for crossing net (using pre-RoPE q and k)
         # This is O(T^2), but T is usually block_size (256-1024)
         # Optimization: Could use block-sparse or local window + random long-range
 
@@ -106,10 +136,11 @@ class KnotAttention(nn.Module):
         # For T=256, T^2=65k, acceptable.
 
         # Let's use the Q and K as the feature proxies for "crossing prediction"
+        # Use pre-RoPE versions for crossing network
         # q_i: (B, H, T, 1, HD)
         # k_j: (B, H, 1, T, HD)
-        q_exp = q.unsqueeze(3).expand(-1, -1, -1, T, -1)
-        k_exp = k.unsqueeze(2).expand(-1, -1, T, -1, -1)
+        q_exp = q_for_crossing.unsqueeze(3).expand(-1, -1, -1, T, -1)
+        k_exp = k_for_crossing.unsqueeze(2).expand(-1, -1, T, -1, -1)
 
         # Coords: (B, T, M) -> (B, 1, T, M) -> expand
         c_i = coords.unsqueeze(1).unsqueeze(3).expand(-1, H, -1, T, -1)
@@ -130,16 +161,22 @@ class KnotAttention(nn.Module):
         # Topological Linking Matrix
         # (B, H, T, T)
         linking = self.compute_linking_matrix(crossings)
-        
+
         # Topological Gating (Masking)
         # If linking number is close to 0, they are unlinked -> low attention
         # We use the absolute linking magnitude as the attention score
         # Note: Standard attention uses dot product similarity.
         # Here we substitute (or augment) dot product with "entanglement amount"
-        
+
         # Scale for softmax stability
         attn_scores = linking / math.sqrt(self.head_dim)
-        
+
+        # Add ALiBi bias if enabled (before causal mask)
+        if self.alibi is not None:
+            alibi_bias = self.alibi(T)  # Shape: (1, n_heads, T, T)
+            # Add to attention scores
+            attn_scores = attn_scores + alibi_bias
+
         # Causal mask (if autoregressive)
         # Ideally, knots are global, but GPT generation is causal.
         # We mask future tokens to prevent cheating.
