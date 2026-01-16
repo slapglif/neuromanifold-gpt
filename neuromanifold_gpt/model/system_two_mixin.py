@@ -82,3 +82,48 @@ class SystemTwoReasoningMixin:
                 n_imagination_steps=getattr(config, 'imagination_steps', 4),
             )
             self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
+
+    def _apply_hybrid_reasoning(self, x):
+        """
+        Apply hybrid reasoning to input tensor if enabled.
+
+        Args:
+            x: Input tensor of shape (batch, seq_len, embed_dim)
+
+        Returns:
+            tuple: (output_tensor, hybrid_info_dict)
+                - output_tensor: Processed tensor (same shape as input)
+                - hybrid_info_dict: Dictionary with reasoning metadata (empty if disabled)
+        """
+        hybrid_info = {}
+        if self.use_hybrid_reasoning:
+            # Get E7 tier if available (set by trainer based on curriculum)
+            e7_tier = getattr(self, '_e7_tier', None)
+            x, hybrid_info = self.hybrid_reasoning(x, e7_tier=e7_tier)
+        return x, hybrid_info
+
+    def _apply_dag_planner(self, x):
+        """
+        Apply DAG planner to input tensor if enabled.
+
+        Args:
+            x: Input tensor of shape (batch, seq_len, embed_dim)
+
+        Returns:
+            dict: DAG planner output info containing:
+                - node_embeddings: Planned task node representations
+                - adj_matrix: Task dependency adjacency matrix
+                - surface_area: Geometric complexity measure
+                - complexities: Per-node complexity estimates
+                Empty dict if DAG planner is disabled.
+        """
+        dag_info = {}
+        if self.use_dag_planner:
+            dag_output = self.dag_planner(x, deterministic=not self.training)
+            dag_info = {
+                'node_embeddings': dag_output['node_embeddings'],
+                'adj_matrix': dag_output['adj_matrix'],
+                'surface_area': dag_output['surface_area'],
+                'complexities': dag_output['complexities'],
+            }
+        return dag_info
