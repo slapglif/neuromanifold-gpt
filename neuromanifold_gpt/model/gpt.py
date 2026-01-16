@@ -299,10 +299,9 @@ class NeuroManifoldGPT(nn.Module):
         contrastive_loss = torch.tensor(0.0, device=device)
         if self.use_sdr:
             # Semantic folding to SDR with topographic and discrimination losses
-            sdr, sdr_scores, topographic_loss, discrimination_loss = self.encoder(
+            sdr, sdr_scores, topographic_loss, discrimination_loss, contrastive_loss = self.encoder(
                 tokens
             )
-            contrastive_loss = torch.tensor(0.0, device=tokens.device)
             x = None  # Initial x comes from first block processing SDR
         else:
             # Standard embedding

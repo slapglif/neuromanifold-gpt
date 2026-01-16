@@ -182,11 +182,11 @@ class FHNAttention(nn.Module):
         self.pos_emb_type = pos_emb_type
 
         # Warn users about deprecated manual attention path
-        if not use_flash_fhn_fusion:
+        if not use_fused:
             warnings.warn(
-                "The manual attention path (use_flash_fhn_fusion=False) is deprecated "
+                "The manual attention path (use_fused=False) is deprecated "
                 "and will be removed in a future version. Please use the default Flash "
-                "Attention fusion path (use_flash_fhn_fusion=True) for 2-4x better performance.",
+                "Attention fusion path (use_fused=True) for 2-4x better performance.",
                 DeprecationWarning,
                 stacklevel=2,
             )
