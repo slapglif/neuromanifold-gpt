@@ -179,7 +179,23 @@ class ByteEmbedding(nn.Module):
 
     def _init_weights(self):
         """Initialize embedding weights."""
-        nn.init.normal_(self.token_embed.weight, mean=0.0, std=0.02)
+        # Try to load semantic initialization
+        glove_path = 'data/shakespeare_char/glove_init.pt'
+        if os.path.exists(glove_path):
+            try:
+                glove_emb = torch.load(glove_path)
+                if glove_emb.shape == self.token_embed.weight.shape:
+                    self.token_embed.weight.data.copy_(glove_emb)
+                    print(f"Loaded semantic embeddings from {glove_path}")
+                else:
+                    print(f"Skipping semantic init: shape mismatch {glove_emb.shape} vs {self.token_embed.weight.shape}")
+                    nn.init.normal_(self.token_embed.weight, mean=0.0, std=0.02)
+            except Exception as e:
+                print(f"Failed to load semantic init: {e}")
+                nn.init.normal_(self.token_embed.weight, mean=0.0, std=0.02)
+        else:
+            nn.init.normal_(self.token_embed.weight, mean=0.0, std=0.02)
+
         if self.pos_embed is not None:
             nn.init.normal_(self.pos_embed.weight, mean=0.0, std=0.02)
 
@@ -220,7 +236,7 @@ class ByteEmbedding(nn.Module):
             embedded[:, :seq_len] = embedded[:, :seq_len] + self.sinusoidal_pe[:seq_len]
 
         # Normalize and dropout
-        embedded = self.norm(embedded)
+        # embedded = self.norm(embedded) # REMOVED: Breaks bijectivity for continuous flow matching
         embedded = self.dropout(embedded)
 
         return embedded
