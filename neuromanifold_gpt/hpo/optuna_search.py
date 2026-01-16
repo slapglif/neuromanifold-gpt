@@ -31,6 +31,7 @@ import pytorch_lightning as pl
 from loguru import logger
 
 from neuromanifold_gpt.hpo.search_space import SearchSpace
+from neuromanifold_gpt.hpo.pruning import OptunaPruningCallback
 from neuromanifold_gpt.training.config import TrainConfig
 from neuromanifold_gpt.training.trainer import train
 
@@ -357,6 +358,18 @@ class OptunaHPO:
                     verbose=False,
                 )
             )
+
+        # Add Optuna pruning callback if pruning is enabled
+        pruning_config = self.config.get("pruning", {})
+        if pruning_config.get("enabled", True):  # Default to enabled if pruning config exists
+            monitor = pruning_config.get("monitor", "val/loss")
+            callbacks.append(
+                OptunaPruningCallback(
+                    trial=trial,
+                    monitor=monitor,
+                )
+            )
+            logger.debug(f"Added OptunaPruningCallback monitoring '{monitor}'")
 
         # Create Lightning Trainer
         trainer = pl.Trainer(
