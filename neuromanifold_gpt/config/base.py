@@ -10,6 +10,24 @@ including settings for:
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class AttentionBackend(Enum):
+    """Attention implementation backend selection.
+
+    Different backends provide varying levels of optimization and compatibility:
+    - AUTO: Automatically selects the best available backend
+    - FLASH: Flash Attention 2 (fastest, requires CUDA + Ampere/Ada GPUs)
+    - XFORMERS: xFormers memory-efficient attention (good compatibility)
+    - TRITON: Triton-based custom kernels (requires Triton installation)
+    - PYTORCH: PyTorch native scaled_dot_product_attention (widest compatibility)
+    """
+    AUTO = "auto"
+    FLASH = "flash"
+    XFORMERS = "xformers"
+    TRITON = "triton"
+    PYTORCH = "pytorch"
 
 
 @dataclass
@@ -128,6 +146,7 @@ class NeuroManifoldConfig:
 
     # Attention configuration
     attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"
+    attention_backend: str = "auto"  # Backend: "auto", "flash", "xformers", "triton", or "pytorch"
     use_knot_attention: bool = False  # Enable Knot-Theoretic attention
     use_kaufmann_attention: bool = False  # Enable Kaufmann Trifecta Attention (The Endgame)
     use_qk_norm: bool = True  # Qwen3/GLM-4.5: RMSNorm on Q,K prevents attention logit explosion
