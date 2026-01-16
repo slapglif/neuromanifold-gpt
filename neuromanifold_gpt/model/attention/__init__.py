@@ -3,7 +3,11 @@
 
 This module provides a registry-based attention selection system with automatic
 backend selection for optimal GPU compatibility. Use the `attention_type` and
-`attention_backend` parameters in NeuroManifoldConfig to select the mechanism:
+`attention_backend` parameters in NeuroManifoldConfig to select the mechanism.
+
+For complete documentation including GPU compatibility matrix, performance
+benchmarks, and troubleshooting guide, see the "GPU compatibility and attention
+backends" section in README.md.
 
 Attention Types:
   - "standard": Standard causal self-attention (baseline)
