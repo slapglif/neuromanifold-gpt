@@ -315,7 +315,23 @@ class FHNAttention(nn.Module):
             attn_weights = einsum(q_chunk, k_causal, "b h t d, b h s d -> b h t s")
             attn_weights = attn_weights / (D ** 0.5)
 
-            # Apply softmax
+            # Create causal mask for this chunk
+            # Query at absolute position (chunk_start + i) should only attend to keys at positions 0..(chunk_start + i)
+            # Shape: query_positions (chunk_len, 1), key_positions (1, chunk_end)
+            query_positions = torch.arange(chunk_start, chunk_end, device=q.device).unsqueeze(1)  # (chunk_len, 1)
+            key_positions = torch.arange(0, chunk_end, device=q.device).unsqueeze(0)  # (1, chunk_end)
+
+            # causal_mask[i, j] = True if query at (chunk_start + i) should NOT attend to key at j
+            # This happens when j > (chunk_start + i), i.e., when key_positions > query_positions
+            causal_mask = key_positions > query_positions  # (chunk_len, chunk_end)
+
+            # Apply causal mask: set future positions to -inf
+            attn_weights = attn_weights.masked_fill(
+                causal_mask.unsqueeze(0).unsqueeze(0),  # Broadcast to (1, 1, chunk_len, chunk_end) -> (B, H, chunk_len, chunk_end)
+                float("-inf")
+            )
+
+            # Apply softmax (masked positions will have probability ~0)
             attn_probs = torch.softmax(attn_weights, dim=-1)
             attn_probs = self.dropout(attn_probs)
 
