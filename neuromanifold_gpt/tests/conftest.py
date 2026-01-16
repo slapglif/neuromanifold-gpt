@@ -141,6 +141,58 @@ def sample_tokens():
 
 
 @pytest.fixture
+def tokens_1x10(nano_config):
+    """Single batch, short sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (1, 10) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (1, 10))
+
+
+@pytest.fixture
+def tokens_1x20(nano_config):
+    """Single batch, medium sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (1, 20) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (1, 20))
+
+
+@pytest.fixture
+def tokens_2x20(nano_config):
+    """Batch of 2, medium sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (2, 20) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (2, 20))
+
+
+@pytest.fixture
+def tokens_2x50(nano_config):
+    """Batch of 2, longer sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (2, 50) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (2, 50))
+
+
+@pytest.fixture
 def device():
     """Fixture providing appropriate device for testing.
 
