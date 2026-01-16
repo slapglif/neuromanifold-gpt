@@ -10,39 +10,23 @@ Combines:
 - Ramanujan Periodic Positional Embeddings (New!)
 """
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
-from neuromanifold_gpt.errors import RuntimeError
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
+from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
-
-# Optional modules (may not be implemented yet)
-try:
-    from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
-except ImportError:
-    HierarchicalEngramMemory = None
-
-try:
-    from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
-except ImportError:
-    HybridReasoningModule = None
-
-try:
-    from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
-except ImportError:
-    ForcedDAGPlanner = None
-
-try:
-    from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
-except ImportError:
-    ConsistencyImaginationModule = None
+from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
+from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
+from neuromanifold_gpt.model.imagination import ConsistencyImaginationModule
+from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
 
 
 class NeuroManifoldGPT(nn.Module):
@@ -162,8 +146,8 @@ class NeuroManifoldGPT(nn.Module):
         )
         self.mhc_enabled = config.use_mhc and config.mhc_n_streams > 1
 
-        # Final layer norm
-        self.ln_f = nn.LayerNorm(config.n_embd)
+        # Final layer norm - RMSNorm is ~15% faster than LayerNorm (no mean computation)
+        self.ln_f = RMSNorm(config.n_embd)
 
         # Language model head
         # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
@@ -208,7 +192,7 @@ class NeuroManifoldGPT(nn.Module):
         )
 
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
-        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False) and HybridReasoningModule is not None
+        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
         if self.use_hybrid_reasoning:
             self.hybrid_reasoning = HybridReasoningModule(
                 embed_dim=config.n_embd,
@@ -224,7 +208,7 @@ class NeuroManifoldGPT(nn.Module):
         # ========================================
 
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
-        self.use_dag_planner = getattr(config, 'use_dag_planner', False) and ForcedDAGPlanner is not None
+        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
         if self.use_dag_planner:
             self.dag_planner = ForcedDAGPlanner(
                 embed_dim=config.n_embd,
@@ -234,7 +218,7 @@ class NeuroManifoldGPT(nn.Module):
             )
 
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
-        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False) and HierarchicalEngramMemory is not None
+        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
         if self.use_hierarchical_memory:
             self.hierarchical_memory = HierarchicalEngramMemory(
                 sdr_size=config.sdr_size,
@@ -246,7 +230,7 @@ class NeuroManifoldGPT(nn.Module):
             )
 
         # ConsistencyImaginationModule - Counterfactual exploration
-        self.use_imagination = getattr(config, 'use_imagination', False) and ConsistencyImaginationModule is not None
+        self.use_imagination = getattr(config, 'use_imagination', False)
         if self.use_imagination:
             self.imagination = ConsistencyImaginationModule(
                 embed_dim=config.n_embd,
@@ -268,6 +252,15 @@ class NeuroManifoldGPT(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
 
+        # Apply special scaled init to residual projections, per GPT-2 paper
+        if getattr(self.config, 'init_strategy', 'deepseek') == 'gpt2_scaled':
+            init_std = getattr(self.config, 'init_std', 0.02)
+            for pn, p in self.named_parameters():
+                # Look for residual projection layers
+                # Common patterns: c_proj, out_proj, mlp_proj, etc.
+                if pn.endswith('c_proj.weight') or pn.endswith('out_proj.weight'):
+                    torch.nn.init.normal_(p, mean=0.0, std=init_std/math.sqrt(2 * self.config.n_layer))
+
         # Replace ALL nn.Linear with FasterKAN (except lm_head)
         # This applies to: manifold projection, spectral decomposition, attention projections
         if getattr(config, "use_kan_everywhere", False):
@@ -280,16 +273,88 @@ class NeuroManifoldGPT(nn.Module):
     def _init_weights(self, module: nn.Module) -> None:
         """Initialize linear and embedding weights.
 
-        Uses DeepSeek-V3 style std=0.006 by default (configurable via init_std).
-        Smaller initialization leads to faster early convergence.
+        Supports multiple initialization strategies:
+        - 'deepseek': DeepSeek-V3 style std=0.006 (default, faster early convergence)
+        - 'gpt2': Standard GPT-2 initialization with std=0.02
+        - 'gpt2_scaled': GPT-2 with residual scaling by 1/sqrt(2*n_layer)
+        - 'mup': Maximal Update Parametrization (enables hyperparameter transfer)
+
+        muP initialization scales:
+        - Embeddings: std = 1 / sqrt(d_model)
+        - Hidden weights: std = 1 / d_model (fan-in independent scaling)
+        - Output head: std = 1 / sqrt(d_model) (no width scaling)
+        - Residual branches: std scaled by sqrt(base_width / d_model)
         """
-        init_std = getattr(self.config, 'init_std', 0.006)
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=init_std)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=init_std)
+        init_strategy = getattr(self.config, 'init_strategy', 'deepseek')
+
+        if init_strategy == 'mup':
+            # muP initialization - enables hyperparameter transfer across model scales
+            d_model = self.config.n_embd
+            base_width = getattr(self.config, 'mup_base_width', 128)
+            width_ratio = base_width / d_model  # < 1 for larger models, > 1 for smaller
+
+            if isinstance(module, nn.Linear):
+                # Determine if this is the output head (lm_head)
+                # Output head uses standard scaling without width adjustment
+                is_output = module is self.lm_head
+
+                if is_output:
+                    # Output layer: std = 1 / sqrt(d_model), no width scaling
+                    std = 1.0 / (d_model ** 0.5)
+                else:
+                    # Hidden layers: std = 1 / d_model for muP
+                    # This is the key muP innovation - width-independent scaling
+                    std = 1.0 / d_model
+
+                    # For residual projection layers, apply additional scaling
+                    # to maintain signal variance through residual connections
+                    # Scale by sqrt(width_ratio) for proper muP transfer
+                    std = std * (width_ratio ** 0.5)
+
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+            elif isinstance(module, nn.Embedding):
+                # Embeddings: std = 1 / sqrt(d_model)
+                std = 1.0 / (d_model ** 0.5)
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+
+        elif init_strategy == 'gpt2_scaled':
+            # GPT-2 with residual scaling (scales down residual projections by depth)
+            init_std = getattr(self.config, 'init_std', 0.02)
+            n_layer = self.config.n_layer
+
+            if isinstance(module, nn.Linear):
+                # Check if this is a residual projection layer
+                # These are typically named with patterns like 'c_proj', 'out_proj', etc.
+                # For now, apply standard init and let submodules handle scaling
+                std = init_std
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Embedding):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+
+        elif init_strategy == 'gpt2':
+            # Standard GPT-2 initialization with std=0.02
+            init_std = 0.02
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Embedding):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+
+        else:  # 'deepseek' or unknown (default to deepseek)
+            # DeepSeek-V3 style: small std=0.006 for faster early convergence
+            init_std = getattr(self.config, 'init_std', 0.006)
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Embedding):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
 
     def forward(
         self,
@@ -752,11 +817,7 @@ class NeuroManifoldGPT(nn.Module):
             dict with alternatives, scores, and best selection
         """
         if not self.use_imagination:
-            raise RuntimeError(
-                problem="Imagination module not available",
-                cause="Model was initialized without imagination support",
-                recovery="Set use_imagination=True in config to enable this feature"
-            )
+            raise RuntimeError("Imagination module not enabled. Set use_imagination=True in config.")
 
         # Get hidden states
         B, T = idx.shape
@@ -796,11 +857,7 @@ class NeuroManifoldGPT(nn.Module):
             dict with node_embeddings, adj_matrix, execution_order, etc.
         """
         if not self.use_dag_planner:
-            raise RuntimeError(
-                problem="DAG planner not available",
-                cause="Model was initialized without DAG planner support",
-                recovery="Set use_dag_planner=True in config to enable this feature"
-            )
+            raise RuntimeError("DAG planner not enabled. Set use_dag_planner=True in config.")
 
         # Forward pass to get representations
         logits, _, info = self(idx)

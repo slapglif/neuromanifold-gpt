@@ -32,39 +32,6 @@ Dependencies:
 -  `wandb` for optional logging <3
 -  `tqdm` for progress bars <3
 
-## getting help
-
-All CLI scripts now include rich-formatted help output with organized argument groups and examples. Use the `--help` flag with any script to see all available options:
-
-**Training scripts:**
-```sh
-python neuromanifold_gpt/train_nanogpt.py --help
-```
-
-**Sampling scripts:**
-```sh
-python sample.py --help
-python neuromanifold_gpt/sample_nanogpt.py --help
-```
-
-**Benchmarking:**
-```sh
-python bench.py --help
-```
-
-The help output displays:
-- **Grouped arguments** organized by category (Model, Sampling, Training, Hardware, etc.)
-- **Color-coded sections** for better readability
-- **Usage examples** showing common command patterns
-- **Type information and defaults** for each argument
-
-You can also view help even when using config files:
-```sh
-python sample.py config/finetune_shakespeare.py --help
-```
-
-This makes it easy to discover all available options without reading the source code.
-
 ## quick start
 
 If you are not a deep learning professional and you just want to feel the magic and get your feet wet, the fastest way to get started is to train a character-level GPT on the works of Shakespeare. First, we download it as a single (1MB) file and turn it from raw text into one large stream of integers:
@@ -221,6 +188,68 @@ Thou hast no right, no right, but to be sold.
 ```
 
 Whoa there, GPT, entering some dark place over there. I didn't really tune the hyperparameters in the config too much, feel free to try!
+
+## weight initialization
+
+Getting weight initialization right can make or break your training run. nanoGPT now supports multiple modern initialization strategies that you can configure with `--init_strategy`. The default `gpt2` strategy works well for most cases, but if you're seeing training instability or working with very deep/wide models, the other strategies can help.
+
+**Quick examples:**
+
+Standard GPT-2 initialization (default):
+```sh
+python train.py config/train_gpt2.py
+# or explicitly: --init_strategy=gpt2
+```
+
+GPT-2 scaled initialization (recommended for deep models >12 layers):
+```sh
+python train.py config/train_gpt2.py --init_strategy=gpt2_scaled
+```
+
+muP initialization for hyperparameter transfer across model sizes:
+```sh
+# Tune hyperparameters on a small model
+python train.py config/train_gpt2.py --n_embd=256 --init_strategy=mup --mup_base_width=256
+
+# Transfer the same hyperparameters to a large model - no retuning needed!
+python train.py config/train_gpt2.py --n_embd=1024 --init_strategy=mup --mup_base_width=256
+```
+
+DeepSeek initialization (default for NeuroManifoldGPT, more conservative):
+```python
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+
+config = NeuroManifoldConfig(
+    vocab_size=50304,
+    n_layer=12,
+    n_heads=8,
+    n_embd=768,
+    init_strategy='deepseek'  # Very small std=0.006, good for novel architectures
+)
+model = NeuroManifoldGPT(config)
+```
+
+**When to use each strategy:**
+
+- `gpt2`: Default, proven to work. Use when replicating GPT-2 or for standard transformers
+- `gpt2_scaled`: Deep models (>12 layers) or when you see gradient explosion/NaN losses
+- `mup`: When scaling up models and you want to transfer hyperparameters from small → large
+- `deepseek`: Default for NeuroManifoldGPT, very conservative initialization for complex architectures
+
+**Debugging initialization issues:**
+
+If your loss is not decreasing or you see NaN values early in training, check your weight distributions:
+
+```sh
+# Analyze weight statistics before training
+python neuromanifold_gpt/research/analyze_init.py --strategy gpt2_scaled --n-layer 12 --n-embd 768
+
+# Compare all strategies side-by-side
+python neuromanifold_gpt/research/analyze_init.py --compare-all --n-layer 12 --n-embd 768
+```
+
+For a deep dive into the theory, muP hyperparameter transfer workflow, and troubleshooting, see the [full initialization strategies documentation](docs/initialization_strategies.md).
 
 ## sampling / inference
 

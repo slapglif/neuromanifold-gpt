@@ -41,6 +41,12 @@ from loguru import logger
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.utils.memory_optimizer import (
+    detect_gpu_memory,
+    estimate_model_memory,
+    recommend_batch_size,
+)
+from neuromanifold_gpt.utils.memory_monitor import GPUMemoryMonitor
 from model import GPTConfig, GPT
 
 
@@ -122,6 +128,7 @@ class TrainConfig:
     devices: int = 1
     precision: str = "bf16-mixed"
     compile_model: bool = False
+    gradient_checkpointing: bool = False
 
     # Logging
     wandb_log: bool = False
@@ -554,6 +561,152 @@ class MFUCallback(Callback):
             pass
 
 
+class MemoryMonitorCallback(Callback):
+    """Track GPU and CPU memory usage during training."""
+
+    def __init__(self, log_interval: int = 100):
+        self.log_interval = log_interval
+
+    def on_train_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: NeuroManifoldLitModule,
+        outputs,
+        batch,
+        batch_idx: int,
+    ) -> None:
+        if batch_idx % self.log_interval != 0:
+            return
+
+        # Track GPU memory if available
+        if torch.cuda.is_available():
+            device_idx = pl_module.device.index if hasattr(pl_module.device, "index") else 0
+            if device_idx is None:
+                device_idx = 0
+
+            try:
+                # Memory in GB
+                mem_allocated = torch.cuda.memory_allocated(device_idx) / 1e9
+                mem_reserved = torch.cuda.memory_reserved(device_idx) / 1e9
+                mem_max_allocated = torch.cuda.max_memory_allocated(device_idx) / 1e9
+
+                pl_module.log("memory/gpu_allocated_gb", mem_allocated, on_step=True)
+                pl_module.log("memory/gpu_reserved_gb", mem_reserved, on_step=True)
+                pl_module.log("memory/gpu_max_allocated_gb", mem_max_allocated, on_step=True)
+
+                # Calculate memory utilization percentage
+                if torch.cuda.get_device_properties(device_idx).total_memory > 0:
+                    total_mem = torch.cuda.get_device_properties(device_idx).total_memory / 1e9
+                    util_pct = (mem_allocated / total_mem) * 100
+                    pl_module.log("memory/gpu_utilization_pct", util_pct, on_step=True, prog_bar=True)
+
+            except Exception:
+                pass
+
+
+# -----------------------------------------------------------------------------
+# Memory Reporting
+# -----------------------------------------------------------------------------
+def print_startup_memory_report(
+    model: torch.nn.Module,
+    config: TrainConfig,
+) -> None:
+    """
+    Print startup memory report with VRAM detection and batch size recommendation.
+
+    Shows:
+    - Available VRAM detected
+    - Model parameter count
+    - Current batch size vs recommended
+    - Estimated memory usage
+    """
+    logger.info("\n" + "=" * 80)
+    logger.info("MEMORY REPORT")
+    logger.info("=" * 80)
+
+    # GPU detection
+    monitor = GPUMemoryMonitor()
+    gpu_name = monitor.get_device_name()
+    vram_gb = detect_gpu_memory()
+
+    if vram_gb > 0:
+        logger.info(f"GPU Device: {gpu_name}")
+        logger.info(f"Available VRAM: {vram_gb:.2f} GB")
+    else:
+        logger.info("GPU Device: None (CPU mode)")
+        logger.info("Available VRAM: 0.00 GB")
+
+    # Model size
+    n_params = sum(p.numel() for p in model.parameters())
+    model_size_m = n_params / 1e6
+    logger.info(f"Model Parameters: {model_size_m:.2f}M ({n_params:,})")
+
+    # Batch size recommendation
+    if vram_gb > 0:
+        # Determine dtype bytes based on precision
+        dtype_bytes = 2 if "16" in config.precision else 4
+        if "bf16" in config.precision:
+            dtype_bytes = 2
+
+        recommended_batch_size = recommend_batch_size(
+            vram_gb=vram_gb,
+            model_size_m=int(model_size_m),
+            seq_len=config.block_size,
+            dtype_bytes=dtype_bytes,
+            safety_factor=0.8,
+        )
+
+        logger.info(f"\nBatch Size Configuration:")
+        logger.info(f"  Current batch size: {config.batch_size}")
+        logger.info(f"  Recommended batch size: {recommended_batch_size}")
+        logger.info(f"  Gradient accumulation steps: {config.gradient_accumulation_steps}")
+        logger.info(f"  Effective batch size: {config.batch_size * config.gradient_accumulation_steps}")
+
+        # Warning if current batch size is significantly larger than recommended
+        if config.batch_size > recommended_batch_size * 1.5:
+            logger.warning(
+                f"⚠️  Current batch size ({config.batch_size}) is significantly larger than "
+                f"recommended ({recommended_batch_size}). This may cause OOM errors!"
+            )
+        elif config.batch_size < recommended_batch_size * 0.5:
+            logger.info(
+                f"ℹ️  You can potentially increase batch size to ~{recommended_batch_size} "
+                f"for better GPU utilization."
+            )
+
+        # Memory usage estimate
+        estimated_memory = estimate_model_memory(
+            n_params=n_params,
+            batch_size=config.batch_size,
+            seq_len=config.block_size,
+            dtype_bytes=dtype_bytes,
+        )
+
+        logger.info(f"\nEstimated Memory Usage:")
+        logger.info(f"  Training (current batch): ~{estimated_memory:.2f} GB")
+        logger.info(f"  Available VRAM: {vram_gb:.2f} GB")
+        logger.info(f"  Estimated utilization: {(estimated_memory / vram_gb * 100):.1f}%")
+
+        if estimated_memory > vram_gb * 0.95:
+            logger.warning(
+                f"⚠️  Estimated memory usage ({estimated_memory:.2f} GB) is close to or "
+                f"exceeds available VRAM ({vram_gb:.2f} GB)! OOM errors likely!"
+            )
+    else:
+        logger.info(f"\nBatch Size Configuration:")
+        logger.info(f"  Current batch size: {config.batch_size}")
+        logger.info(f"  No GPU detected - training on CPU")
+
+    # Gradient checkpointing status
+    logger.info(f"\nMemory Optimization:")
+    if config.gradient_checkpointing:
+        logger.info(f"  ✓ Gradient checkpointing: ENABLED (trades compute for memory)")
+    else:
+        logger.info(f"  ✗ Gradient checkpointing: DISABLED (use --gradient_checkpointing to enable)")
+
+    logger.info("=" * 80 + "\n")
+
+
 # -----------------------------------------------------------------------------
 # Main Training Function
 # -----------------------------------------------------------------------------
@@ -630,6 +783,8 @@ def train(config: TrainConfig) -> None:
             beta1=config.beta1,
             beta2=config.beta2,
             grad_clip=config.grad_clip,
+            # Memory optimization
+            gradient_checkpointing=config.gradient_checkpointing,
         )
     else:
         model_config = GPTConfig(
@@ -640,6 +795,7 @@ def train(config: TrainConfig) -> None:
             n_embd=config.n_embd,
             dropout=config.dropout,
             bias=config.bias,
+            gradient_checkpointing=config.gradient_checkpointing,
         )
 
     # Build Lightning module
@@ -648,6 +804,9 @@ def train(config: TrainConfig) -> None:
         train_config=config,
         itos=data_module.itos,
     )
+
+    # Print startup memory report
+    print_startup_memory_report(lit_module.model, config)
 
     # Compile model if requested
     if config.compile_model:
@@ -694,6 +853,7 @@ def train(config: TrainConfig) -> None:
         )
 
     callbacks.append(MFUCallback(log_interval=config.log_interval))
+    callbacks.append(MemoryMonitorCallback(log_interval=config.log_interval))
 
     # Logger
     pl_logger = None

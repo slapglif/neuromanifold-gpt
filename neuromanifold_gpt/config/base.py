@@ -10,7 +10,6 @@ including settings for:
 """
 
 from dataclasses import dataclass, field
-from neuromanifold_gpt.errors import ConfigurationError
 
 
 @dataclass
@@ -61,6 +60,9 @@ class NeuroManifoldConfig:
         beta2: AdamW beta2 parameter (default 0.95, MiniMax: faster adaptation)
         optimizer_eps: AdamW epsilon (default 1e-15, MiniMax: handles tiny gradients)
         grad_clip: Gradient clipping norm (default 1.0)
+        init_strategy: Weight initialization strategy ('deepseek', 'gpt2', 'gpt2_scaled', 'mup')
+        mup_base_width: Base model width for muP scaling (default 128)
+        mup_scale_attn_by_d: Whether to scale attention by d vs sqrt(d) in muP (default True)
     """
 
     # Vocabulary and sequence
@@ -250,6 +252,17 @@ class NeuroManifoldConfig:
     # DeepSeek uses std=0.006 instead of typical 0.02 for faster early convergence
     init_std: float = 0.006
 
+    # Initialization strategy selection
+    # Options: 'deepseek' (default, std=0.006), 'gpt2' (std=0.02),
+    #          'gpt2_scaled' (GPT-2 with residual scaling), 'mup' (maximal update parametrization)
+    init_strategy: str = "deepseek"
+
+    # muP (Maximal Update Parametrization) parameters
+    # muP enables hyperparameter transfer across model scales
+    # Reference: "Tensor Programs V: Tuning Large Neural Networks via Zero-Shot Hyperparameter Transfer"
+    mup_base_width: int = 128  # Base model width for muP scaling calculations
+    mup_scale_attn_by_d: bool = True  # Scale attention logits by 1/d instead of 1/sqrt(d)
+
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""
         # Fast mode enables all fast-path optimizations
@@ -264,17 +277,9 @@ class NeuroManifoldConfig:
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
 
         # Validate n_embd is divisible by n_heads
-        if self.n_embd % self.n_heads != 0:
-            # Calculate valid n_embd values close to the current one
-            remainder = self.n_embd % self.n_heads
-            valid_lower = self.n_embd - remainder
-            valid_upper = self.n_embd + (self.n_heads - remainder)
-
-            raise ConfigurationError(
-                problem=f"n_embd must be divisible by n_heads",
-                cause=f"n_embd={self.n_embd} is not divisible by n_heads={self.n_heads}",
-                recovery=f"Set n_embd to a multiple of {self.n_heads} (e.g., n_embd={valid_lower} or n_embd={valid_upper})"
-            )
+        assert self.n_embd % self.n_heads == 0, (
+            f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
+        )
 
         # Memory active retrieval requires SDR mode
         if self.memory_active_retrieval and not self.use_sdr:

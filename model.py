@@ -15,8 +15,6 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from neuromanifold_gpt.errors import ModelError
-
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -116,6 +114,7 @@ class GPTConfig:
     n_embd: int = 768
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    init_strategy: str = 'gpt2' # Weight initialization strategy
 
 class GPT(nn.Module):
 
@@ -144,7 +143,23 @@ class GPT(nn.Module):
         # apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):
-                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+                if config.init_strategy == 'gpt2':
+                    torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+                elif config.init_strategy == 'mup':
+                    # muP: scale output projection by 1/width
+                    fan_in = p.size(1)
+                    std = 1.0 / fan_in
+                    torch.nn.init.normal_(p, mean=0.0, std=std)
+                elif config.init_strategy == 'xavier':
+                    # Xavier already handles scaling, just apply depth scaling
+                    torch.nn.init.xavier_uniform_(p, gain=1.0/math.sqrt(2 * config.n_layer))
+                elif config.init_strategy == 'he':
+                    # He with depth scaling
+                    torch.nn.init.kaiming_normal_(p, mode='fan_in', nonlinearity='relu')
+                    p.data *= (1.0 / math.sqrt(2 * config.n_layer))
+                elif config.init_strategy == 'deepnorm':
+                    # DeepNorm already accounts for depth in _init_weights
+                    pass
 
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
@@ -162,12 +177,50 @@ class GPT(nn.Module):
         return n_params
 
     def _init_weights(self, module):
+        strategy = self.config.init_strategy
+
         if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if strategy == 'gpt2':
+                # Standard GPT-2 initialization
+                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            elif strategy == 'mup':
+                # Maximal Update Parametrization (muP)
+                # Scale by 1/sqrt(fan_in) for better width scaling
+                fan_in = module.weight.size(1)
+                std = 1.0 / math.sqrt(fan_in)
+                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            elif strategy == 'xavier':
+                # Xavier/Glorot initialization
+                torch.nn.init.xavier_uniform_(module.weight)
+            elif strategy == 'he':
+                # He initialization (good for ReLU-like activations)
+                torch.nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            elif strategy == 'deepnorm':
+                # DeepNorm initialization for very deep networks
+                # Scale by 1/sqrt(2*n_layer) for stability
+                std = 0.02 / math.sqrt(2 * self.config.n_layer)
+                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            else:
+                raise ValueError(f"Unknown init_strategy: {strategy}")
+
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if strategy == 'gpt2':
+                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            elif strategy == 'mup':
+                # muP: scale embeddings by 1/sqrt(n_embd)
+                std = 1.0 / math.sqrt(self.config.n_embd)
+                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            elif strategy == 'xavier':
+                torch.nn.init.xavier_uniform_(module.weight)
+            elif strategy == 'he':
+                torch.nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            elif strategy == 'deepnorm':
+                std = 0.02 / math.sqrt(2 * self.config.n_layer)
+                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            else:
+                raise ValueError(f"Unknown init_strategy: {strategy}")
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -207,21 +260,10 @@ class GPT(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
-        if model_type not in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}:
-            raise ModelError(
-                problem=f"Cannot load pretrained model '{model_type}'",
-                cause="Model type must be one of: gpt2, gpt2-medium, gpt2-large, gpt2-xl",
-                recovery="Specify a valid model type or use --init_from=scratch"
-            )
+        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         override_args = override_args or {} # default to empty dict
         # only dropout can be overridden see more notes below
-        if not all(k == 'dropout' for k in override_args):
-            invalid_keys = [k for k in override_args.keys() if k != 'dropout']
-            raise ModelError(
-                problem="Invalid override arguments for pretrained model",
-                cause=f"Only 'dropout' can be overridden, but got: {', '.join(invalid_keys)}",
-                recovery="Remove invalid override arguments and only specify 'dropout' if needed"
-            )
+        assert all(k == 'dropout' for k in override_args)
         from transformers import GPT2LMHeadModel
         print("loading weights from pretrained gpt: %s" % model_type)
 
@@ -258,31 +300,16 @@ class GPT(nn.Module):
         transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
         # basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla Linear
         # this means that we have to transpose these weights when we import them
-        if len(sd_keys_hf) != len(sd_keys):
-            raise ModelError(
-                problem="Pretrained model architecture mismatch",
-                cause=f"HuggingFace model has {len(sd_keys_hf)} parameters but local model has {len(sd_keys)} parameters",
-                recovery="Ensure model configuration matches the pretrained checkpoint"
-            )
+        assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
         for k in sd_keys_hf:
             if any(k.endswith(w) for w in transposed):
                 # special treatment for the Conv1D weights we need to transpose
-                if sd_hf[k].shape[::-1] != sd[k].shape:
-                    raise ModelError(
-                        problem=f"Shape mismatch for transposed weight '{k}'",
-                        cause=f"HuggingFace shape {sd_hf[k].shape} (transposed: {sd_hf[k].shape[::-1]}) != local shape {sd[k].shape}",
-                        recovery="Verify model architecture configuration matches pretrained checkpoint"
-                    )
+                assert sd_hf[k].shape[::-1] == sd[k].shape
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k].t())
             else:
                 # vanilla copy over the other parameters
-                if sd_hf[k].shape != sd[k].shape:
-                    raise ModelError(
-                        problem=f"Shape mismatch for parameter '{k}'",
-                        cause=f"HuggingFace shape {sd_hf[k].shape} != local shape {sd[k].shape}",
-                        recovery="Verify model architecture configuration matches pretrained checkpoint"
-                    )
+                assert sd_hf[k].shape == sd[k].shape
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k])
 

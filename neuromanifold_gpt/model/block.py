@@ -16,8 +16,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from neuromanifold_gpt.errors import ConfigurationError
-
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
 from .attention.fhn import FHNAttention
@@ -79,6 +77,17 @@ class NeuroManifoldBlock(nn.Module):
         use_full_mhc: bool = True,  # Use full multi-stream mHC (vs simplified)
         mhc_n_streams: int = 4,  # Number of streams for full mHC
         mhc_residual_weight: float = 0.9,  # Initial identity bias
+        mhc_sinkhorn_iters: int = 5,  # Sinkhorn iterations for optimal transport
+        # MLA (Multi-Head Latent Attention) configuration
+        use_mla: bool = False,  # Use MLA attention (DeepSeek style)
+        mla_latent_dim: int = 64,  # Latent dimension for MLA
+        mla_rope_dim: int = 32,  # RoPE dimension for MLA
+        # MoE (Mixture of Experts) configuration
+        use_moe: bool = False,  # Use MoE for FFN
+        moe_n_experts: int = 8,  # Number of experts
+        moe_n_active: int = 2,  # Number of active experts per token
+        use_shared_expert: bool = True,  # Use shared expert
+        use_e7_routing: bool = False,  # Use E7 routing
         # KAN configuration
         use_kan: bool = True,  # Use KAN instead of SwiGLU
         kan_type: str = "faster",  # "faster", "cheby", or "wave"
@@ -179,11 +188,7 @@ class NeuroManifoldBlock(nn.Module):
                     use_fast_wavekan=use_fast_wavekan
                 )
             else:
-                raise ConfigurationError(
-                    problem=f"Unknown KAN type: {kan_type}",
-                    cause=f"kan_type must be one of: 'faster', 'cheby', or 'wave'",
-                    recovery=f"Set kan_type to 'faster' (recommended), 'cheby', or 'wave' in your config"
-                )
+                raise ValueError(f"Unknown KAN type: {kan_type}")
         else:
             # SwiGLU FFN (LLaMA-style, 2/3 hidden dim to match param count)
             # Standard FFN: 2 * dim * hidden = 2 * d * 4d = 8d²
