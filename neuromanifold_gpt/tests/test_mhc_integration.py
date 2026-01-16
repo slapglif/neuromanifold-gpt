@@ -11,7 +11,7 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-from neuromanifold_gpt.model.mhc import SimplifiedMHC, sinkhorn_log
+from neuromanifold_gpt.model.mhc import HyperConnections, sinkhorn_log
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
