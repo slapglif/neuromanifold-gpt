@@ -332,11 +332,7 @@ class OptunaHPO:
             )
 
         # Build Lightning module
-        lit_module = NeuroManifoldLitModule(
-            model_config=model_config,
-            train_config=train_config,
-            itos=data_module.itos,
-        )
+        lit_module = NeuroManifoldLitModule(config=model_config)
 
         # Compile model if requested
         if train_config.compile_model:
