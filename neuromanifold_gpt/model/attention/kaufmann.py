@@ -6,8 +6,7 @@ from neuromanifold_gpt.model.attention.knot import KnotAttention
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 
 
-@torch.jit.script
-def kaufmann_reaction_diffusion_step(
+def _kaufmann_reaction_diffusion_step(
     u: torch.Tensor,
     w: torch.Tensor,
     I_base: torch.Tensor,
@@ -19,8 +18,10 @@ def kaufmann_reaction_diffusion_step(
     n_steps: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    JIT-compiled Kaufmann reaction-diffusion update loop.
+    Kaufmann reaction-diffusion update loop.
     Combines FHN dynamics with topological diffusion.
+
+    This function is compiled with torch.compile for kernel fusion.
     """
     # Precompute diffusion input (constant across iterations)
     I_diff = torch.tanh(diffused_signal)
@@ -49,6 +50,13 @@ def kaufmann_reaction_diffusion_step(
         w = w_new.clamp(-3.0, 3.0)
 
     return u, w
+
+
+# Compile with reduce-overhead mode for minimal Python overhead
+kaufmann_reaction_diffusion_step = torch.compile(
+    _kaufmann_reaction_diffusion_step,
+    mode="reduce-overhead"
+)
 
 
 class KaufmannAttention(nn.Module):
@@ -123,7 +131,7 @@ class KaufmannAttention(nn.Module):
         # Clamp dt to safe range [0.01, 0.2]
         dt = torch.sigmoid(self.dt) * 0.2
 
-        # Execute dynamics using JIT-compiled kernel
+        # Execute dynamics using torch.compile-optimized kernel
         u, w = kaufmann_reaction_diffusion_step(
             u, w, I_base, diffused_signal, self.a, self.b, self.tau, dt, self.n_fhn_steps
         )
