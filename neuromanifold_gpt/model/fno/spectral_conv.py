@@ -156,6 +156,10 @@ class SpectralConv1d(nn.Module):
             + torch.einsum("bim,iom->bom", x_imag, weight_real)
         )
 
+        # Handle bfloat16 for torch.complex (requires float/double)
+        if out_real.dtype == torch.bfloat16:
+            return torch.complex(out_real.float(), out_imag.float())
+
         return torch.complex(out_real, out_imag)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

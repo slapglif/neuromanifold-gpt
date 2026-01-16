@@ -53,11 +53,11 @@ if '--help' in sys.argv or '-h' in sys.argv:
     print("    --precision=<str>           Training precision: '32', 'bf16-mixed', 'fp16-mixed' (default: 'bf16-mixed')")
     sys.exit(0)
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Union
 import torch
 import lightning as L
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint, LearningRateMonitor
-from lightning.pytorch.loggers import WandbLogger, TensorBoardLogger
+from lightning.pytorch.loggers import WandbLogger, TensorBoardLogger, Logger
 
 # Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -225,7 +225,7 @@ class NeuroManifoldWithMetrics(L.LightningModule):
         self.model = NeuroManifoldGPT(config)
         self.save_hyperparameters(ignore=['config'])
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None):
+    def forward(self, input_ids: torch.Tensor, labels: Optional[torch.Tensor] = None):
         """Forward pass through model."""
         return self.model(input_ids, labels)
 
@@ -316,7 +316,7 @@ class DemoDataModule(L.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-    def setup(self, stage: str = None):
+    def setup(self, stage: Optional[str] = None):
         """Setup datasets."""
         # In production, load actual data here
         pass
@@ -407,7 +407,7 @@ def main():
     # Create NeuroManifoldConfig
     config = NeuroManifoldConfig(
         n_layer=n_layer,
-        n_head=n_head,
+        n_heads=n_head,
         n_embd=n_embd,
         block_size=block_size,
         vocab_size=vocab_size,
@@ -431,6 +431,7 @@ def main():
     )
 
     # Setup logger
+    logger: Logger
     if wandb_log:
         logger = WandbLogger(
             project=wandb_project,
@@ -468,7 +469,7 @@ def main():
         max_steps=max_steps,
         accelerator='auto',
         devices=devices,
-        precision=precision,
+        precision=precision,  # type: ignore[arg-type]
         logger=logger,
         callbacks=callbacks,
         gradient_clip_val=gradient_clip_val,

@@ -16,7 +16,7 @@ Usage:
 """
 import json
 import math
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Protocol, Union, cast
 from contextlib import nullcontext
 
 import torch
@@ -32,9 +32,21 @@ from neuromanifold_gpt.benchmarks.datasets import (
 )
 
 
+class Tokenizer(Protocol):
+    """Protocol for tokenizer objects used in zero-shot evaluation."""
+
+    def encode(self, text: str) -> List[int]:
+        """Encode text to token IDs."""
+        ...
+
+    def decode(self, tokens: List[int]) -> str:
+        """Decode token IDs to text."""
+        ...
+
+
 def evaluate_lambada(
     model: torch.nn.Module,
-    tokenizer: Any,
+    tokenizer: Tokenizer,
     device: str = 'cuda',
     dtype: str = 'bfloat16',
     max_examples: Optional[int] = None,
@@ -74,7 +86,7 @@ def evaluate_lambada(
     # Setup autocast context
     device_type = 'cuda' if 'cuda' in device else 'cpu'
     ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    ctx: Any = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
     model.eval()
 
@@ -152,7 +164,7 @@ def evaluate_lambada(
 
 def evaluate_multiple_choice(
     model: torch.nn.Module,
-    tokenizer: Any,
+    tokenizer: Tokenizer,
     benchmark: str,
     device: str = 'cuda',
     dtype: str = 'bfloat16',
@@ -219,7 +231,7 @@ def evaluate_multiple_choice(
     # Setup autocast context
     device_type = 'cuda' if 'cuda' in device else 'cpu'
     ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    ctx: Any = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
     model.eval()
 
