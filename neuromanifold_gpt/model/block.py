@@ -111,20 +111,9 @@ class NeuroManifoldBlock(nn.Module):
             self.manifold = None
             self.spectral = None
 
-        # FHN attention (with semi-implicit IMEX scheme)
-        if self.config.use_kaufmann_attention:
-            # The Full Trifecta Model
-            self.attention = KaufmannAttention(
-                self.config.embed_dim,
-                self.config.n_heads,
-                manifold_dim=self.config.manifold_dim,
-                fhn_threshold=self.config.fhn.fhn_threshold,
-                fhn_tau=self.config.fhn.fhn_tau,
-                use_imex=self.config.fhn.use_fhn_imex,
-                use_partitioning=self.config.fhn.use_fhn_partitioning,
-                use_fused=self.config.fhn.use_fhn_fused
-            )
-        else:
+        # Attention: FHN, Knot, or Kaufmann (registry pattern)
+        if self.config.attention_type == "fhn":
+            # FHN attention with semi-implicit IMEX scheme
             self.attention = FHNAttention(
                 embed_dim=self.config.embed_dim,
                 n_heads=self.config.n_heads,
@@ -137,16 +126,27 @@ class NeuroManifoldBlock(nn.Module):
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
                 use_fused=self.config.fhn.use_fhn_fused
             )
-
-        # Knot attention (optional)
-        if self.config.use_knot_attention and not self.config.use_kaufmann_attention:
-            self.knot_attention = KnotAttention(
+        elif self.config.attention_type == "knot":
+            # Knot attention with topological awareness
+            self.attention = KnotAttention(
                 embed_dim=self.config.embed_dim,
                 manifold_dim=self.config.manifold_dim,
                 n_heads=self.config.n_heads
             )
-            # Gating for combining FHN and Knot attention
-            self.attn_gate = nn.Linear(self.config.embed_dim, 2)
+        elif self.config.attention_type == "kaufmann":
+            # The Full Trifecta Model (FHN + Knot + Manifold)
+            self.attention = KaufmannAttention(
+                self.config.embed_dim,
+                self.config.n_heads,
+                manifold_dim=self.config.manifold_dim,
+                fhn_threshold=self.config.fhn.fhn_threshold,
+                fhn_tau=self.config.fhn.fhn_tau,
+                use_imex=self.config.fhn.use_fhn_imex,
+                use_partitioning=self.config.fhn.use_fhn_partitioning,
+                use_fused=self.config.fhn.use_fhn_fused
+            )
+        else:
+            raise ValueError(f"Unknown attention type: {self.config.attention_type}")
 
         # FFN: SwiGLU or ChebyKAN or WaveKAN or FasterKAN
         if self.config.kan.use_kan:
@@ -239,31 +239,16 @@ class NeuroManifoldBlock(nn.Module):
             spectral_freqs = None
             ortho_loss = torch.tensor(0.0, device=x.device)
 
-        # FHN attention + residual with mHC
+        # Attention + residual with mHC
         if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
             attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
-
-            # Knot attention (if enabled)
-            if self.config.use_knot_attention:
-                knot_out, knot_info = self.knot_attention(self.norm1(branch_input), coords)
-                attn_info.update(knot_info)
-                gate = F.softmax(self.attn_gate(branch_input), dim=-1)
-                attn_out = gate[..., 0:1] * attn_out + gate[..., 1:2] * knot_out
-
             # Add residual via H_res + H_post
             x = add_residual_fn(attn_out)
         else:
             # Standard residual connection
             attn_out, attn_info = self.attention(self.norm1(x), spectral_basis)
-
-            if self.config.use_knot_attention:
-                knot_out, knot_info = self.knot_attention(self.norm1(x), coords)
-                attn_info.update(knot_info)
-                gate = F.softmax(self.attn_gate(x), dim=-1)
-                attn_out = gate[..., 0:1] * attn_out + gate[..., 1:2] * knot_out
-
             x = x + attn_out
 
         # MLP + residual with mHC
