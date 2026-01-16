@@ -127,7 +127,7 @@ def default(v, d):
     return v if exists(v) else d
 
 
-def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = None) -> torch.Tensor:
+def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = 1e-6) -> torch.Tensor:
     """Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.
 
     The Birkhoff polytope is the set of doubly stochastic matrices:
@@ -142,8 +142,8 @@ def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, c
         num_iters: Number of alternating normalization iterations
         tau: Temperature for softmax (lower = sharper, closer to permutation)
         convergence_tol: Optional convergence threshold for early stopping.
-            If provided, stops when ||u_new - u_old|| < convergence_tol.
-            Default None uses all num_iters iterations.
+            Stops when ||u_new - u_old|| < convergence_tol.
+            Default 1e-6 enables convergence-based early stopping.
 
     Returns:
         Doubly stochastic matrix on Birkhoff polytope
