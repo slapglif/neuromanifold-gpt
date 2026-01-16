@@ -1,5 +1,17 @@
 """
 Full definition of a GPT Language Model, all of it in this single file.
+
+This implementation features a modular architecture that allows swapping between
+different component implementations without changing the core model structure:
+
+- Normalization: LayerNorm (GPT-2 style) or RMSNorm (LLaMA style)
+- Feed-forward: MLP with GELU activation or SwiGLU (LLaMA style)
+- Attention: Automatic fallback between Flash Attention and manual implementation
+
+Components are selected via GPTConfig parameters (norm_type, ffn_type) and
+instantiated in the Block class, enabling easy experimentation with modern
+architectural improvements while maintaining compatibility with GPT-2 checkpoints.
+
 References:
 1) the official GPT-2 TensorFlow implementation released by OpenAI:
 https://github.com/openai/gpt-2/blob/master/src/model.py
