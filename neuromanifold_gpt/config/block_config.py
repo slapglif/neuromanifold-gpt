@@ -9,7 +9,7 @@ reducing the parameter explosion by grouping related settings into config object
 - MoE (Mixture of Experts) configuration
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -186,3 +186,60 @@ class MoEConfig:
     moe_n_active: int = 2
     use_shared_expert: bool = True
     use_e7_routing: bool = False
+
+
+@dataclass
+class NeuroManifoldBlockConfig:
+    """Master configuration for NeuroManifoldBlock.
+
+    This configuration bundles all sub-configurations for a single transformer block,
+    reducing parameter explosion by grouping related settings into config objects.
+    Each block operates on SDR-encoded representations and applies manifold-constrained
+    transformations with FHN-based attention dynamics.
+
+    The master config composes five specialized sub-configs:
+    - FHN: Fitzhugh-Nagumo soliton wave dynamics for attention propagation
+    - KAN: Kolmogorov-Arnold Network configuration for FFN layers
+    - mHC: Manifold-constrained hyper-connections for training stability
+    - MLA: Multi-head latent attention for KV cache compression (optional)
+    - MoE: Mixture of experts for conditional computation (optional)
+
+    This design follows the composition pattern from DeepSeek/Qwen architectures
+    while maintaining backward compatibility with the NeuroManifoldConfig.
+
+    Attributes:
+        sdr_size: Size of SDR binary vectors in bits (default 2048)
+                  Determines the capacity of sparse representations
+        embed_dim: Embedding dimension, same as n_embd (default 384)
+                   Must be divisible by n_heads for multi-head attention
+        n_heads: Number of attention heads (default 8)
+                 Typical values: 8, 12, 16 for small/medium/large models
+        dropout: Dropout probability for regularization (default 0.0)
+                 0.0 = no dropout (common for small models)
+        bias: Whether to use bias in linear layers (default False)
+              False is common in modern architectures (e.g., GPT-2, Llama)
+        fhn: FHN dynamics configuration for soliton attention
+             Controls wave propagation, threshold, and integration scheme
+        kan: KAN configuration for FFN layers
+             Controls basis function type, parameters, and layer coverage
+        mhc: Manifold-constrained hyper-connections configuration
+             Controls residual routing, Sinkhorn iterations, and stream count
+        mla: Multi-head latent attention configuration (optional)
+             Controls KV compression dimension and RoPE decoupling
+        moe: Mixture of experts configuration (optional)
+             Controls expert count, routing, and shared expert settings
+    """
+
+    # Core block dimensions
+    sdr_size: int = 2048
+    embed_dim: int = 384
+    n_heads: int = 8
+    dropout: float = 0.0
+    bias: bool = False
+
+    # Sub-configurations (using default_factory for mutable defaults)
+    fhn: FHNConfig = field(default_factory=FHNConfig)
+    kan: KANConfig = field(default_factory=KANConfig)
+    mhc: MHCConfig = field(default_factory=MHCConfig)
+    mla: MLAConfig = field(default_factory=MLAConfig)
+    moe: MoEConfig = field(default_factory=MoEConfig)
