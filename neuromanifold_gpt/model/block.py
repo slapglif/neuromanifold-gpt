@@ -201,6 +201,7 @@ class NeuroManifoldBlock(nn.Module):
                     dim=self.config.embed_dim,
                     sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
                     sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
+                    sinkhorn_convergence_tol=self.config.mhc.mhc_sinkhorn_convergence_tol,
                     use_fused=self.config.use_mhc_fused,
                 )
                 self.mhc_mlp = HyperConnections(
@@ -208,6 +209,7 @@ class NeuroManifoldBlock(nn.Module):
                     dim=self.config.embed_dim,
                     sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
                     sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
+                    sinkhorn_convergence_tol=self.config.mhc.mhc_sinkhorn_convergence_tol,
                     use_fused=self.config.use_mhc_fused,
                 )
             else:
