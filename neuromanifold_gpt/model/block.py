@@ -15,6 +15,7 @@ This block wires together all components:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Optional
 
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
@@ -25,6 +26,7 @@ from .kan.cheby import ChebyKANFFN
 from .kan.wave import WaveKANFFN
 from .kan.faster import FasterKANFFN
 from .mhc import HyperConnections, Residual, get_init_and_expand_reduce_stream_functions
+from ..config.block_config import NeuroManifoldBlockConfig
 
 
 class SwiGLU(nn.Module):
@@ -53,8 +55,10 @@ class NeuroManifoldBlock(nn.Module):
 
     def __init__(
         self,
-        sdr_size: int,
-        embed_dim: int,
+        config: Optional[NeuroManifoldBlockConfig] = None,
+        # Individual parameters for backward compatibility
+        sdr_size: Optional[int] = None,
+        embed_dim: Optional[int] = None,
         manifold_dim: int = 64,
         n_eigenvectors: int = 32,
         n_heads: int = 8,
@@ -100,6 +104,66 @@ class NeuroManifoldBlock(nn.Module):
         use_e7_routing: bool = False,
     ):
         super().__init__()
+
+        # Backward compatibility: If config is provided, use it; otherwise use individual params
+        if config is not None:
+            # Extract core parameters from config
+            sdr_size = config.sdr_size
+            embed_dim = config.embed_dim
+            manifold_dim = config.manifold_dim
+            n_eigenvectors = config.n_eigenvectors
+            n_heads = config.n_heads
+            mlp_ratio = config.mlp_ratio
+            dropout = config.dropout
+
+            # Optimization and attention variant flags
+            skip_manifold_spectral = config.skip_manifold_spectral
+            use_knot_attention = config.use_knot_attention
+            use_kaufmann_attention = config.use_kaufmann_attention
+
+            # FHN parameters from config.fhn
+            fhn_threshold = config.fhn.fhn_threshold
+            fhn_tau = config.fhn.fhn_tau
+            pulse_width_base = config.fhn.pulse_width_base
+            n_fhn_steps = config.fhn.n_fhn_steps
+            use_fhn_imex = config.fhn.use_fhn_imex
+            use_fhn_partitioning = config.fhn.use_fhn_partitioning
+            use_fhn_fused = config.fhn.use_fhn_fused
+
+            # KAN parameters from config.kan
+            use_kan = config.kan.use_kan
+            kan_type = config.kan.kan_type
+            kan_degree = config.kan.kan_degree
+            kan_wavelet = config.kan.kan_wavelet
+            use_fast_wavekan = config.kan.use_fast_wavekan
+            kan_num_centers = config.kan.kan_num_centers
+
+            # mHC parameters from config.mhc
+            use_mhc = config.mhc.use_mhc
+            use_full_mhc = config.mhc.use_full_mhc
+            mhc_n_streams = config.mhc.mhc_n_streams
+            mhc_residual_weight = config.mhc.mhc_residual_weight
+            mhc_sinkhorn_iters = config.mhc.mhc_sinkhorn_iters
+            mhc_sinkhorn_tau = config.mhc.mhc_sinkhorn_tau
+
+            # MLA parameters from config.mla
+            use_mla = config.mla.use_mla
+            mla_latent_dim = config.mla.mla_latent_dim
+            mla_rope_dim = config.mla.mla_rope_dim
+
+            # MoE parameters from config.moe
+            use_moe = config.moe.use_moe
+            moe_n_experts = config.moe.moe_n_experts
+            moe_n_active = config.moe.moe_n_active
+            use_shared_expert = config.moe.use_shared_expert
+            use_e7_routing = config.moe.use_e7_routing
+        else:
+            # Validate that required parameters are provided when not using config
+            if sdr_size is None or embed_dim is None:
+                raise ValueError(
+                    "Either 'config' must be provided, or both 'sdr_size' and 'embed_dim' "
+                    "must be specified as individual parameters."
+                )
 
         # SDR to embedding (skip if dimensions match for efficiency)
         if sdr_size != embed_dim:

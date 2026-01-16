@@ -212,12 +212,24 @@ class NeuroManifoldBlockConfig:
                   Determines the capacity of sparse representations
         embed_dim: Embedding dimension, same as n_embd (default 384)
                    Must be divisible by n_heads for multi-head attention
+        manifold_dim: Dimension of the learned manifold space (default 64)
+                      Controls the manifold projection dimensionality
+        n_eigenvectors: Number of eigenvectors for spectral attention (default 32)
+                        Controls spectral decomposition resolution
         n_heads: Number of attention heads (default 8)
                  Typical values: 8, 12, 16 for small/medium/large models
+        mlp_ratio: MLP hidden dimension ratio (default 4.0)
+                   Standard transformer uses 4x expansion in FFN
         dropout: Dropout probability for regularization (default 0.0)
                  0.0 = no dropout (common for small models)
         bias: Whether to use bias in linear layers (default False)
               False is common in modern architectures (e.g., GPT-2, Llama)
+        skip_manifold_spectral: Skip manifold/spectral projection for speed (default False)
+                                Useful for fast training or ablation studies
+        use_knot_attention: Enable knot-theoretic attention (default False)
+                           Experimental: topological attention mechanism
+        use_kaufmann_attention: Enable Kaufmann trifecta attention (default False)
+                               Experimental: combined FHN+Knot+Manifold attention
         fhn: FHN dynamics configuration for soliton attention
              Controls wave propagation, threshold, and integration scheme
         kan: KAN configuration for FFN layers
@@ -233,9 +245,19 @@ class NeuroManifoldBlockConfig:
     # Core block dimensions
     sdr_size: int = 2048
     embed_dim: int = 384
+    manifold_dim: int = 64
+    n_eigenvectors: int = 32
     n_heads: int = 8
+    mlp_ratio: float = 4.0
     dropout: float = 0.0
     bias: bool = False
+
+    # Optimization flags
+    skip_manifold_spectral: bool = False
+
+    # Attention variants
+    use_knot_attention: bool = False
+    use_kaufmann_attention: bool = False
 
     # Sub-configurations (using default_factory for mutable defaults)
     fhn: FHNConfig = field(default_factory=FHNConfig)
@@ -319,9 +341,15 @@ class NeuroManifoldBlockConfig:
         return cls(
             sdr_size=config.sdr_size,
             embed_dim=config.n_embd,
+            manifold_dim=config.manifold_dim,
+            n_eigenvectors=config.n_eigenvectors,
             n_heads=config.n_heads,
+            # mlp_ratio uses default value (not in model config)
             dropout=config.dropout,
             bias=config.bias,
+            skip_manifold_spectral=config.skip_manifold_spectral,
+            use_knot_attention=config.use_knot_attention,
+            use_kaufmann_attention=config.use_kaufmann_attention,
             fhn=fhn_cfg,
             kan=kan_cfg,
             mhc=mhc_cfg,
