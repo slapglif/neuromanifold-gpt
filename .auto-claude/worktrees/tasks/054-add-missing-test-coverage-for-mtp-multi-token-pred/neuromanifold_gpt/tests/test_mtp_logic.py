@@ -661,3 +661,229 @@ class TestMTPEdgeCases:
         # Results should be identical
         assert torch.allclose(loss1, loss2)
         assert torch.allclose(info1['mtp_loss'], info2['mtp_loss'])
+
+
+class TestMTPIntegration:
+    """Tests for MTP integration with model info dict and loss components."""
+
+    def test_mtp_loss_in_info_dict_when_enabled(self):
+        """MTP loss should appear in info dict when MTP is enabled."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 10
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # MTP loss should be present in info dict
+        assert 'mtp_loss' in info
+        assert isinstance(info['mtp_loss'], torch.Tensor)
+        assert info['mtp_loss'].numel() == 1  # Scalar tensor
+        assert info['mtp_loss'] >= 0  # Loss should be non-negative
+
+    def test_mtp_loss_not_in_info_when_disabled(self):
+        """MTP loss should not appear in info dict when MTP is disabled."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = False
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 10
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # MTP loss should not be in info dict or should be zero
+        if 'mtp_loss' in info:
+            assert info['mtp_loss'] == 0.0
+
+    def test_mtp_contribution_to_total_loss(self):
+        """MTP loss contribution to total loss should be correctly weighted."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        config.mtp_loss_weight = 0.3
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 12
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # Total loss should equal ce_loss + mtp_loss_weight * mtp_loss
+        assert 'ce_loss' in info
+        assert 'mtp_loss' in info
+
+        expected_loss = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+        assert torch.allclose(loss, expected_loss, rtol=1e-5, atol=1e-6)
+
+    def test_info_dict_contains_ce_and_mtp_losses(self):
+        """Info dict should contain both ce_loss and mtp_loss when MTP enabled."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 10
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # Both losses should be present
+        assert 'ce_loss' in info
+        assert 'mtp_loss' in info
+
+        # Both should be valid tensors
+        assert isinstance(info['ce_loss'], torch.Tensor)
+        assert isinstance(info['mtp_loss'], torch.Tensor)
+
+        # Both should be scalar values
+        assert info['ce_loss'].numel() == 1
+        assert info['mtp_loss'].numel() == 1
+
+        # Both should be non-negative
+        assert info['ce_loss'] >= 0
+        assert info['mtp_loss'] >= 0
+
+    def test_mtp_loss_value_reasonableness(self):
+        """MTP loss should be a reasonable value relative to CE loss."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        config.mtp_loss_weight = 0.5
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 12
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # MTP loss should be in a reasonable range
+        assert not torch.isnan(info['mtp_loss'])
+        assert not torch.isinf(info['mtp_loss'])
+        assert info['mtp_loss'] > 0  # Should have some loss
+        # MTP loss shouldn't be absurdly larger than CE loss (sanity check)
+        assert info['mtp_loss'] < info['ce_loss'] * 10
+
+    def test_mtp_with_zero_weight_in_info(self):
+        """MTP loss should still be computed and in info dict even with zero weight."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        config.mtp_loss_weight = 0.0  # Zero weight
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 10
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # MTP loss should still be computed and present
+        assert 'mtp_loss' in info
+        assert info['mtp_loss'] >= 0
+        assert not torch.isnan(info['mtp_loss'])
+
+        # Total loss should equal CE loss when MTP weight is zero
+        assert torch.allclose(loss, info['ce_loss'], rtol=1e-5, atol=1e-6)
+
+    def test_mtp_info_dict_different_n_predict(self):
+        """Info dict should correctly report MTP loss for different n_predict values."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_loss_weight = 0.5
+
+        batch_size, seq_len = 2, 12
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        # Test with different n_predict values
+        for n_predict in [2, 3, 4, 6]:
+            config.mtp_n_predict = n_predict
+            model = NeuroManifoldGPT(config)
+            model.eval()
+
+            _, loss, info = model(idx, targets)
+
+            # All should have mtp_loss in info dict
+            assert 'mtp_loss' in info
+            assert 'ce_loss' in info
+            assert info['mtp_loss'] >= 0
+            assert not torch.isnan(info['mtp_loss'])
+
+            # Total loss should be correct
+            expected_loss = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+            assert torch.allclose(loss, expected_loss, rtol=1e-5, atol=1e-6)
+
+    def test_mtp_info_dict_with_other_losses(self):
+        """MTP should integrate correctly with other loss components in info dict."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        config.mtp_loss_weight = 0.5
+        # Enable other loss components
+        config.ortho_loss_weight = 0.1
+        config.discrimination_loss_weight = 0.1
+
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 12
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        _, loss, info = model(idx, targets)
+
+        # All loss components should be present
+        assert 'ce_loss' in info
+        assert 'mtp_loss' in info
+
+        # All should be valid
+        assert not torch.isnan(info['ce_loss'])
+        assert not torch.isnan(info['mtp_loss'])
+        assert not torch.isnan(loss)
+
+        # Total loss should be at least CE + weighted MTP
+        min_expected = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+        assert loss >= min_expected - 1e-5  # Allow small numerical error
+
+    def test_mtp_info_dict_consistency_across_calls(self):
+        """Info dict should consistently report MTP loss across multiple forward passes."""
+        config = NeuroManifoldConfigNano()
+        config.use_mtp = True
+        config.mtp_n_predict = 4
+        model = NeuroManifoldGPT(config)
+        model.eval()
+
+        batch_size, seq_len = 2, 10
+        idx = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+        targets = torch.randint(0, config.vocab_size, (batch_size, seq_len))
+
+        # Multiple forward passes with same input
+        _, loss1, info1 = model(idx, targets)
+        _, loss2, info2 = model(idx, targets)
+        _, loss3, info3 = model(idx, targets)
+
+        # All should have consistent structure
+        assert 'mtp_loss' in info1
+        assert 'mtp_loss' in info2
+        assert 'mtp_loss' in info3
+
+        # All should produce identical results (deterministic in eval mode)
+        assert torch.allclose(info1['mtp_loss'], info2['mtp_loss'])
+        assert torch.allclose(info2['mtp_loss'], info3['mtp_loss'])
+        assert torch.allclose(loss1, loss2)
+        assert torch.allclose(loss2, loss3)
