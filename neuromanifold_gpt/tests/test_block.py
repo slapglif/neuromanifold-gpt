@@ -3,14 +3,19 @@
 import pytest
 import torch
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
+from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 
 
 def test_block_forward_shape():
     """Block should transform SDR to embeddings."""
-    block = NeuroManifoldBlock(
-        sdr_size=2048, embed_dim=384, manifold_dim=64,
-        n_eigenvectors=32, n_heads=8
+    config = NeuroManifoldBlockConfig(
+        sdr_size=2048,
+        embed_dim=384,
+        manifold_dim=64,
+        n_eigenvectors=32,
+        n_heads=8
     )
+    block = NeuroManifoldBlock(config=config)
     sdr = torch.randn(2, 20, 2048)
 
     out, info = block(sdr)
@@ -22,10 +27,14 @@ def test_block_forward_shape():
 
 def test_block_gradient_flow():
     """Gradients should flow through block."""
-    block = NeuroManifoldBlock(
-        sdr_size=2048, embed_dim=384, manifold_dim=64,
-        n_eigenvectors=32, n_heads=8
+    config = NeuroManifoldBlockConfig(
+        sdr_size=2048,
+        embed_dim=384,
+        manifold_dim=64,
+        n_eigenvectors=32,
+        n_heads=8
     )
+    block = NeuroManifoldBlock(config=config)
     sdr = torch.randn(2, 20, 2048, requires_grad=True)
 
     out, _ = block(sdr)

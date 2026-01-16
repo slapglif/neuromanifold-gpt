@@ -11,6 +11,7 @@ import torch.nn as nn
 from rich.console import Console
 from rich.table import Table
 from neuromanifold_gpt.utils.logging import get_logger
+from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 
 logger = get_logger(__name__)
 console = Console()  # Keep for table rendering
@@ -164,17 +165,20 @@ def main():
 
     # 9. Full Block
     logger.info("Profiling NeuroManifoldBlock...")
-    block = NeuroManifoldBlock(
+    from neuromanifold_gpt.config import NeuroManifoldConfig
+    temp_config = NeuroManifoldConfig(
+        n_embd=embed_dim,
+        n_heads=n_heads,
         sdr_size=sdr_size,
-        embed_dim=embed_dim,
         manifold_dim=manifold_dim,
         n_eigenvectors=n_eigenvectors,
-        n_heads=n_heads,
         use_kan=True,
         kan_type="wave",
         kan_wavelet="dog",
         use_fast_wavekan=True,
     )
+    block_cfg = NeuroManifoldBlockConfig.from_model_config(temp_config, layer_idx=0)
+    block = NeuroManifoldBlock(config=block_cfg)
     sdr = torch.randn(BATCH_SIZE, SEQ_LEN, sdr_size, device=DEVICE)
     r = profile_module("NeuroManifoldBlock", block, (sdr,))
     results.append(r)

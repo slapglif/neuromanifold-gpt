@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
+from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
@@ -85,57 +86,18 @@ class NeuroManifoldGPT(nn.Module):
         # Transformer blocks
         # First block receives SDR (if enabled), subsequent blocks receive n_embd
         def make_block(layer_idx):
+            # Create block config from model config
+            block_cfg = NeuroManifoldBlockConfig.from_model_config(config, layer_idx)
+
+            # Override sdr_size for first block if SDR is enabled
             # First block: receives SDR if enabled, else n_embd
             # Other blocks: always receive n_embd from previous block
             if layer_idx == 0 and config.use_sdr:
-                block_sdr_size = config.sdr_size
+                block_cfg.sdr_size = config.sdr_size
             else:
-                block_sdr_size = config.n_embd
-            return NeuroManifoldBlock(
-                sdr_size=block_sdr_size,
-                embed_dim=config.n_embd,
-                manifold_dim=config.manifold_dim,
-                n_eigenvectors=config.n_eigenvectors,
-                n_heads=config.n_heads,
-                dropout=config.dropout,
-                # FHN dynamics with semi-implicit IMEX scheme
-                fhn_threshold=config.fhn_threshold,
-                fhn_tau=config.fhn_tau,
-                pulse_width_base=config.pulse_width_base,
-                n_fhn_steps=config.n_fhn_steps,
-                use_fhn_imex=config.use_fhn_imex,
-                use_fhn_partitioning=config.use_fhn_partitioning,
-                use_fhn_fused=config.use_fhn_fused,
-                # KAN configuration
-                use_kan=config.use_kan,
-                kan_type=config.kan_type,
-                kan_degree=config.kan_degree,
-                kan_wavelet=config.kan_wavelet,
-                use_fast_wavekan=config.use_fast_wavekan,
-                kan_num_centers=config.kan_num_centers,
-                # Knot attention
-                use_knot_attention=config.use_knot_attention,
-                use_kaufmann_attention=config.use_kaufmann_attention,
-                # mHC (Manifold-Constrained Hyper-Connections)
-                use_mhc=config.use_mhc,
-                use_full_mhc=config.use_full_mhc,
-                mhc_n_streams=config.mhc_n_streams,
-                mhc_residual_weight=config.mhc_residual_weight,
-                mhc_sinkhorn_iters=getattr(config, 'mhc_sinkhorn_iters', 5),
-                mhc_sinkhorn_tau=getattr(config, 'mhc_sinkhorn_tau', 0.05),
-                # Speed optimization
-                skip_manifold_spectral=config.skip_manifold_spectral,
-                # MLA (Multi-Head Latent Attention) - DeepSeek style
-                use_mla=getattr(config, 'use_mla', False),
-                mla_latent_dim=getattr(config, 'mla_latent_dim', 64),
-                mla_rope_dim=getattr(config, 'mla_rope_dim', 32),
-                # MoE (Mixture of Experts) - DeepSeek style
-                use_moe=getattr(config, 'use_moe', False),
-                moe_n_experts=getattr(config, 'moe_n_experts', 8),
-                moe_n_active=getattr(config, 'moe_n_active', 2),
-                use_shared_expert=getattr(config, 'use_shared_expert', True),
-                use_e7_routing=getattr(config, 'use_e7_routing', False),
-            )
+                block_cfg.sdr_size = config.n_embd
+
+            return NeuroManifoldBlock(config=block_cfg)
         self.blocks = nn.ModuleList([make_block(i) for i in range(config.n_layer)])
 
         # mHC stream expansion/reduction (for multi-stream mHC)
