@@ -23,6 +23,7 @@ from rich.table import Table
 
 # Import model components
 from neuromanifold_gpt.config import NeuroManifoldConfig
+from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.manifold import ManifoldProjection
@@ -323,22 +324,8 @@ def main():
     # 9. Full NeuroManifoldBlock
     # =========================================================================
     logger.info("Profiling NeuroManifoldBlock...")
-    block = NeuroManifoldBlock(
-        sdr_size=config.sdr_size,
-        embed_dim=config.n_embd,
-        manifold_dim=config.manifold_dim,
-        n_eigenvectors=config.n_eigenvectors,
-        n_heads=config.n_heads,
-        fhn_threshold=config.fhn_threshold,
-        fhn_tau=config.fhn_tau,
-        n_fhn_steps=config.n_fhn_steps,
-        use_fhn_imex=config.use_fhn_imex,
-        use_fhn_partitioning=config.use_fhn_partitioning,
-        use_kan=config.use_kan,
-        kan_type=config.kan_type,
-        kan_wavelet=config.kan_wavelet,
-        use_fast_wavekan=config.use_fast_wavekan,
-    )
+    block_cfg = NeuroManifoldBlockConfig.from_model_config(config, layer_idx=0)
+    block = NeuroManifoldBlock(config=block_cfg)
 
     def block_input():
         sdr = torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE)
