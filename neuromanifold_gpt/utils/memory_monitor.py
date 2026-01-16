@@ -243,3 +243,45 @@ class GPUMemoryMonitor:
             "avg_utilization": round(sum(utilization_values) / sample_count, 3),
             "sample_count": sample_count,
         }
+
+    def clear_history(self):
+        """
+        Clear all recorded memory samples from history.
+
+        Useful for resetting memory profiling between training phases or
+        experiments without recreating the monitor instance.
+
+        Example:
+            >>> monitor = GPUMemoryMonitor()
+            >>> monitor.record_sample()
+            >>> monitor.clear_history()
+            >>> len(monitor.memory_history)
+            0
+        """
+        self.memory_history.clear()
+
+    def export_timeline(self) -> list:
+        """
+        Export memory history as a list for profiling reports.
+
+        Returns the complete memory history as a list of dictionaries,
+        where each dictionary contains a snapshot of memory statistics.
+        Useful for generating memory profiling reports and visualizations.
+
+        Returns:
+            list: List of memory sample dictionaries, each containing:
+                - allocated_gb: Memory allocated at sample time
+                - reserved_gb: Memory reserved at sample time
+                - peak_gb: Peak memory at sample time
+                - total_gb: Total GPU memory
+                - free_gb: Free memory at sample time
+                - utilization: Memory utilization (0.0-1.0)
+
+        Example:
+            >>> monitor = GPUMemoryMonitor()
+            >>> monitor.record_sample()
+            >>> monitor.record_sample()
+            >>> timeline = monitor.export_timeline()
+            >>> print(f"Recorded {len(timeline)} samples")
+        """
+        return list(self.memory_history)
