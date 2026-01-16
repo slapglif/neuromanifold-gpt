@@ -7,7 +7,7 @@ Combines:
 - Manifold-Spectral-Soliton Attention Blocks
 - SDR Engram Memory
 - Language Model Head
-- Ramanujan Periodic Positional Embeddings (New!)
+- Configurable Positional Embeddings (Learned, Ramanujan, RoPE, ALiBi)
 """
 
 import torch
@@ -20,6 +20,8 @@ from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
 from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
+from neuromanifold_gpt.model.embeddings.rotary import RotaryPositionalEmbedding
+from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
 from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
@@ -67,20 +69,41 @@ class NeuroManifoldGPT(nn.Module):
             )
             # Projection for feeding block output back as SDR-like input
             self.embed_to_sdr = nn.Linear(config.n_embd, config.sdr_size)
-
-            # Ramanujan Positional Embedding (Add to SDR projection output in loop)
-            # We initialize it with n_embd dimension, as it will be added to the embedding space
-            self.ramanujan_pos = RamanujanPositionalEmbedding(
-                config.block_size, config.n_embd
-            )
         else:
             # Standard embedding (direct to n_embd)
             self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
-            # Use Ramanujan for position instead of standard Learned/Sinusoidal
+            self.embed_to_sdr = None
+
+        # Position Embedding (configurable: learned, ramanujan, rotary, alibi)
+        self.pos_emb_type = getattr(config, 'pos_emb_type', 'learned')
+
+        if self.pos_emb_type == 'learned':
+            # Standard learned positional embeddings
+            self.position_embedding = nn.Embedding(config.block_size, config.n_embd)
+        elif self.pos_emb_type == 'ramanujan':
+            # Ramanujan periodic embeddings (original default)
             self.position_embedding = RamanujanPositionalEmbedding(
                 config.block_size, config.n_embd
             )
-            self.embed_to_sdr = None
+        elif self.pos_emb_type == 'rotary':
+            # RoPE (Rotary Position Embeddings) - applied to Q/K in attention
+            # Store for potential use in attention layers
+            self.position_embedding = RotaryPositionalEmbedding(
+                embed_dim=config.n_embd,
+                head_dim=config.head_dim,
+                max_seq_len=config.block_size
+            )
+        elif self.pos_emb_type == 'alibi':
+            # ALiBi (Attention with Linear Biases) - applied as bias to attention scores
+            # Store for potential use in attention layers
+            self.position_embedding = ALiBiPositionalBias(
+                n_heads=config.n_heads,
+                embed_dim=config.n_embd,
+                max_seq_len=config.block_size
+            )
+        else:
+            raise ValueError(f"Unknown pos_emb_type: {self.pos_emb_type}. "
+                           f"Must be one of: learned, ramanujan, rotary, alibi")
 
         # Transformer blocks
         # First block receives SDR (if enabled), subsequent blocks receive n_embd
@@ -305,12 +328,24 @@ class NeuroManifoldGPT(nn.Module):
         else:
             # Standard embedding
             tok_emb = self.token_embedding(tokens)
-            # Use Ramanujan Position Embedding
-            # Indices are 0..T-1
-            pos_emb = self.position_embedding(
-                torch.arange(T, device=device).unsqueeze(0)
-            )  # (1, T, D)
-            x = tok_emb + pos_emb  # (B, T, n_embd)
+            # Apply position embeddings based on type
+            if self.pos_emb_type in ['learned', 'ramanujan']:
+                # Learned or Ramanujan: Add to token embeddings
+                # Indices are 0..T-1
+                pos_emb = self.position_embedding(
+                    torch.arange(T, device=device).unsqueeze(0)
+                )  # (1, T, D)
+                x = tok_emb + pos_emb  # (B, T, n_embd)
+            elif self.pos_emb_type == 'rotary':
+                # RoPE: Applied to Q/K in attention layers (not to embeddings)
+                # For now, skip adding position info at embedding level
+                x = tok_emb
+            elif self.pos_emb_type == 'alibi':
+                # ALiBi: Applied as bias to attention scores (not to embeddings)
+                # For now, skip adding position info at embedding level
+                x = tok_emb
+            else:
+                x = tok_emb
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)  # Dummy SDR
             sdr_scores = None
 
@@ -411,10 +446,13 @@ class NeuroManifoldGPT(nn.Module):
                     # Expand for multi-stream mHC if enabled
                     sdr_in = self.expand_stream(sdr) if self.mhc_enabled else sdr
                     x, info = block(sdr_in)
-                    # Add Ramanujan Positional Embedding here (to x)
+                    # Add Position Embedding here (to x) based on type
                     # x is (B*S, T, n_embd) if mHC, else (B, T, n_embd)
-                    pos_emb = self.ramanujan_pos(torch.zeros(1, T, device=device))
-                    x = x + pos_emb
+                    if self.pos_emb_type in ['learned', 'ramanujan']:
+                        # Learned or Ramanujan: Add to embeddings
+                        pos_emb = self.position_embedding(torch.arange(T, device=device).unsqueeze(0))
+                        x = x + pos_emb
+                    # For rotary/alibi: skip adding at embedding level (applied in attention)
 
                     # Apply pending memory retrieval after first block produces x
                     # This augments representations with retrieved engrams
