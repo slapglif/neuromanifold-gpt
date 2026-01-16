@@ -354,6 +354,13 @@ class OptunaTuner:
             final_val_loss = float(val_loss)
             logger.info(f"Trial {trial.number} final val/loss: {final_val_loss:.4f}")
 
+            # Log final validation loss to WandB
+            if self.wandb_log and pl_logger is not None:
+                pl_logger.experiment.log({
+                    "trial/final_val_loss": final_val_loss,
+                    "trial/number": trial.number,
+                })
+
             return final_val_loss
 
         except optuna.TrialPruned:
@@ -413,6 +420,21 @@ class OptunaTuner:
         logger.info(f"  Complete trials: {len(complete_trials)}")
         logger.info(f"  Pruned trials: {len(pruned_trials)}")
         logger.info(f"  Failed trials: {len(study.trials) - len(complete_trials) - len(pruned_trials)}")
+
+        # Log optimization summary to WandB
+        if self.wandb_log:
+            import wandb
+            if wandb.run is not None:
+                wandb.log({
+                    "optuna/best_trial_number": study.best_trial.number,
+                    "optuna/best_val_loss": self.best_value,
+                    "optuna/n_complete_trials": len(complete_trials),
+                    "optuna/n_pruned_trials": len(pruned_trials),
+                    "optuna/n_failed_trials": len(study.trials) - len(complete_trials) - len(pruned_trials),
+                })
+                # Log best hyperparameters
+                for key, value in self.best_params.items():
+                    wandb.log({f"optuna/best_{key}": value})
 
         return study
 
