@@ -26,12 +26,216 @@ Example:
 
 import time
 import random
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
+from dataclasses import dataclass, field
+from pathlib import Path
+import json
 from loguru import logger
 
 from neuromanifold_gpt.nas.search_space import SearchSpace, ArchitectureConfig
-from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator, ComputeBudget
+from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator, ComputeBudget, EvaluationResult
 from neuromanifold_gpt.nas.searcher import Searcher, SearchResult
+
+
+@dataclass
+class SearchResults:
+    """Container for tracking architecture search results with top-K selection.
+
+    This class provides incremental result tracking during search, with
+    efficient top-K selection and checkpoint capability. It's designed to
+    work alongside the search process, maintaining statistics and enabling
+    periodic checkpointing.
+
+    Attributes:
+        architectures: List of evaluated architecture configurations
+        results: List of evaluation results (parallel to architectures)
+        search_time: Total time spent searching (seconds)
+        n_evaluations: Total number of evaluations performed
+        metadata: Additional tracking information
+
+    Example:
+        >>> results = SearchResults()
+        >>> results.add_result(architecture, evaluation_result)
+        >>> top_3 = results.get_top_k(3)
+        >>> results.save_checkpoint("search_checkpoint.json")
+    """
+    architectures: List[ArchitectureConfig] = field(default_factory=list)
+    results: List[EvaluationResult] = field(default_factory=list)
+    search_time: float = 0.0
+    n_evaluations: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def add_result(
+        self,
+        architecture: ArchitectureConfig,
+        result: EvaluationResult,
+    ) -> None:
+        """Add a new evaluation result to the tracking.
+
+        Args:
+            architecture: The evaluated architecture configuration
+            result: The evaluation result for this architecture
+        """
+        self.architectures.append(architecture)
+        self.results.append(result)
+        self.n_evaluations += 1
+
+    def get_top_k(
+        self,
+        k: int = 5,
+        metric: str = "perplexity",
+    ) -> List[tuple[ArchitectureConfig, EvaluationResult]]:
+        """Get top-K architectures by specified metric.
+
+        Args:
+            k: Number of top architectures to return
+            metric: Metric to sort by ("perplexity", "loss", "params")
+
+        Returns:
+            List of (architecture, result) tuples, sorted by metric
+
+        Example:
+            >>> top_5 = results.get_top_k(5, metric="perplexity")
+            >>> for arch, res in top_5:
+            ...     print(f"{arch.architecture_id}: {res.perplexity:.2f}")
+        """
+        # Pair architectures with results
+        pairs = list(zip(self.architectures, self.results))
+
+        # Filter successful results
+        successful_pairs = [(arch, res) for arch, res in pairs if res.success]
+
+        if not successful_pairs:
+            return []
+
+        # Sort by specified metric
+        if metric == "perplexity":
+            successful_pairs.sort(key=lambda x: x[1].perplexity)
+        elif metric == "loss":
+            successful_pairs.sort(key=lambda x: x[1].final_loss)
+        elif metric == "params":
+            successful_pairs.sort(key=lambda x: x[1].n_params)
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+
+        return successful_pairs[:k]
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get current search statistics.
+
+        Returns:
+            Dictionary with search statistics including:
+            - n_evaluations: Total number of evaluations
+            - n_successful: Number of successful evaluations
+            - n_failed: Number of failed evaluations
+            - search_time: Total search time in seconds
+            - best_perplexity: Best perplexity found (if any)
+            - best_loss: Best loss found (if any)
+        """
+        stats = {
+            "n_evaluations": self.n_evaluations,
+            "n_successful": sum(1 for res in self.results if res.success),
+            "n_failed": sum(1 for res in self.results if not res.success),
+            "search_time": self.search_time,
+        }
+
+        # Add best metrics if we have successful results
+        top_1 = self.get_top_k(1)
+        if top_1:
+            _, best_result = top_1[0]
+            stats["best_perplexity"] = best_result.perplexity
+            stats["best_loss"] = best_result.final_loss
+            stats["best_params"] = best_result.n_params
+
+        return stats
+
+    def save_checkpoint(self, filepath: Path) -> None:
+        """Save current search results to checkpoint file.
+
+        Args:
+            filepath: Path to save the checkpoint
+
+        Example:
+            >>> results.save_checkpoint("checkpoints/search_iter_100.json")
+        """
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        checkpoint = {
+            "architectures": [arch.to_dict() for arch in self.architectures],
+            "results": [
+                {
+                    "architecture_id": res.architecture_id,
+                    "final_loss": res.final_loss,
+                    "perplexity": res.perplexity,
+                    "n_params": res.n_params,
+                    "time_per_iter_ms": res.time_per_iter_ms,
+                    "n_iters": res.n_iters,
+                    "success": res.success,
+                    "error_message": res.error_message,
+                }
+                for res in self.results
+            ],
+            "search_time": self.search_time,
+            "n_evaluations": self.n_evaluations,
+            "metadata": self.metadata,
+            "statistics": self.get_statistics(),
+        }
+
+        with open(filepath, "w") as f:
+            json.dump(checkpoint, f, indent=2)
+
+        logger.info(f"Saved checkpoint to {filepath}")
+
+    @classmethod
+    def load_checkpoint(cls, filepath: Path) -> "SearchResults":
+        """Load search results from checkpoint file.
+
+        Args:
+            filepath: Path to the checkpoint file
+
+        Returns:
+            SearchResults instance loaded from checkpoint
+
+        Example:
+            >>> results = SearchResults.load_checkpoint("checkpoints/search_iter_100.json")
+            >>> print(f"Resuming from {results.n_evaluations} evaluations")
+        """
+        with open(filepath, "r") as f:
+            checkpoint = json.load(f)
+
+        # Reconstruct architectures
+        architectures = [
+            ArchitectureConfig.from_dict(arch_dict)
+            for arch_dict in checkpoint["architectures"]
+        ]
+
+        # Reconstruct results
+        results = [
+            EvaluationResult(**res_dict)
+            for res_dict in checkpoint["results"]
+        ]
+
+        instance = cls(
+            architectures=architectures,
+            results=results,
+            search_time=checkpoint["search_time"],
+            n_evaluations=checkpoint["n_evaluations"],
+            metadata=checkpoint.get("metadata", {}),
+        )
+
+        logger.info(f"Loaded checkpoint from {filepath}")
+        logger.info(f"Resumed {instance.n_evaluations} evaluations")
+
+        return instance
+
+    def __len__(self) -> int:
+        """Get number of evaluations tracked.
+
+        Returns:
+            Number of evaluation results
+        """
+        return len(self.results)
 
 
 class RandomSearch(Searcher):
