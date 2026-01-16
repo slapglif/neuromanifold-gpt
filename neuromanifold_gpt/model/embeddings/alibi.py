@@ -63,7 +63,8 @@ class ALiBiPositionalBias(nn.Module):
             slopes_b = get_slopes_power_of_2(2 * closest_power_of_2)[::2]
             # Concatenate to get n_heads slopes
             remaining = n_heads - closest_power_of_2
-            return torch.cat([slopes_a, slopes_b[:remaining]])
+            all_slopes = torch.cat([slopes_a, slopes_b[:remaining]])
+            return torch.sort(all_slopes, descending=True).values
 
     def _build_cache(self, seq_len):
         """
@@ -88,8 +89,8 @@ class ALiBiPositionalBias(nn.Module):
         bias = -self.slopes[:, None, None] * distances[None, :, :]
 
         # Add batch dimension for broadcasting with attention scores
-        # Final shape: [n_heads, 1, seq_len, seq_len]
-        self.register_buffer('bias_cached', bias.unsqueeze(1), persistent=False)
+        # Final shape: [1, n_heads, seq_len, seq_len]
+        self.register_buffer('bias_cached', bias.unsqueeze(0), persistent=False)
         self.cached_seq_len = seq_len
 
     def forward(self, seq_len):

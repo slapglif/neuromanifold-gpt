@@ -270,8 +270,8 @@ def test_rotary_pos_emb_initialization():
     # Check position embedding exists
     assert hasattr(model, 'position_embedding')
     assert hasattr(model.position_embedding, 'inv_freq')
-    assert hasattr(model.position_embedding, 'cos_cache')
-    assert hasattr(model.position_embedding, 'sin_cache')
+    assert hasattr(model.position_embedding, 'cos_cached')
+    assert hasattr(model.position_embedding, 'sin_cached')
 
 
 def test_alibi_pos_emb_initialization():
@@ -282,7 +282,7 @@ def test_alibi_pos_emb_initialization():
     # Check position embedding exists
     assert hasattr(model, 'position_embedding')
     assert hasattr(model.position_embedding, 'slopes')
-    assert hasattr(model.position_embedding, 'bias_cache')
+    assert hasattr(model.position_embedding, 'bias_cached')
     assert model.position_embedding.slopes.shape[0] == config.n_heads
 
 

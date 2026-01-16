@@ -29,7 +29,7 @@ def test_alibi_forward_shape():
     bias = alibi(seq_len)
 
     # Shape should be [n_heads, 1, seq_len, seq_len]
-    assert bias.shape == (n_heads, 1, seq_len, seq_len)
+    assert bias.shape == (1, n_heads, seq_len, seq_len)
 
 
 def test_alibi_different_seq_lengths():
@@ -39,7 +39,7 @@ def test_alibi_different_seq_lengths():
 
     for seq_len in [1, 8, 16, 32, 64]:
         bias = alibi(seq_len)
-        assert bias.shape == (n_heads, 1, seq_len, seq_len)
+        assert bias.shape == (1, n_heads, seq_len, seq_len)
         assert torch.isfinite(bias).all()
 
 
@@ -58,7 +58,7 @@ def test_alibi_cache_extension():
 
     # Cache should have been extended
     assert alibi.cached_seq_len >= long_seq_len
-    assert bias.shape == (n_heads, 1, long_seq_len, long_seq_len)
+    assert bias.shape == (1, n_heads, long_seq_len, long_seq_len)
 
 
 def test_alibi_slopes_power_of_2():
@@ -99,7 +99,7 @@ def test_alibi_bias_formula():
     # Check a few specific positions for head 0
     slope_0 = alibi.slopes[0].item()
 
-    # bias[h, 0, i, j] = -slope[h] * |i - j|
+    # bias[0, h, i, j] = -slope[h] * |i - j|
     # Position [0, 0]: distance = 0
     assert abs(bias[0, 0, 0, 0].item()) < 1e-6
 
@@ -126,7 +126,7 @@ def test_alibi_diagonal_is_zero():
 
     # Extract diagonal for each head
     for h in range(n_heads):
-        diagonal = torch.diagonal(bias[h, 0])
+        diagonal = torch.diagonal(bias[0, h])
         assert torch.allclose(diagonal, torch.zeros_like(diagonal), atol=1e-6)
 
 
@@ -140,7 +140,7 @@ def test_alibi_symmetry():
 
     # Check symmetry for all heads
     for h in range(n_heads):
-        bias_matrix = bias[h, 0]
+        bias_matrix = bias[0, h]
         assert torch.allclose(bias_matrix, bias_matrix.T, atol=1e-6)
 
 
@@ -157,7 +157,7 @@ def test_alibi_negative_values():
 
     # All off-diagonal elements should be negative
     for h in range(n_heads):
-        off_diagonal_values = bias[h, 0][mask]
+        off_diagonal_values = bias[0, h][mask]
         assert (off_diagonal_values < 0).all()
 
 
@@ -172,7 +172,7 @@ def test_alibi_increasing_penalty_with_distance():
     # For each head, check that bias gets more negative as distance increases
     for h in range(n_heads):
         # Look at first row (position 0 attending to others)
-        first_row = bias[h, 0, 0, :]
+        first_row = bias[0, h, 0, :]
 
         # Values should decrease (become more negative) with index
         # first_row[0] = 0, first_row[1] < 0, first_row[2] < first_row[1], etc.
@@ -197,7 +197,7 @@ def test_alibi_single_token():
 
     bias = alibi(1)
 
-    assert bias.shape == (n_heads, 1, 1, 1)
+    assert bias.shape == (1, n_heads, 1, 1)
     # Single token has no distance, bias should be 0
     assert torch.allclose(bias, torch.zeros_like(bias), atol=1e-6)
 
@@ -277,7 +277,7 @@ def test_alibi_extrapolation():
     # Should work with longer sequence
     bias = alibi(test_seq_len)
 
-    assert bias.shape == (n_heads, 1, test_seq_len, test_seq_len)
+    assert bias.shape == (1, n_heads, test_seq_len, test_seq_len)
     assert torch.isfinite(bias).all()
 
     # Verify formula still holds at longer distances
@@ -304,7 +304,7 @@ def test_alibi_head_specialization():
 
     # At distance 10, compare penalty magnitude
     penalty_head0 = abs(bias[0, 0, 0, 10].item())
-    penalty_head_last = abs(bias[n_heads - 1, 0, 0, 10].item())
+    penalty_head_last = abs(bias[0, n_heads - 1, 0, 10].item())
 
     # First head should have larger absolute penalty
     assert penalty_head0 > penalty_head_last
@@ -334,7 +334,7 @@ def test_alibi_small_head_count():
         alibi = ALiBiPositionalBias(n_heads, 512)
         bias = alibi(10)
 
-        assert bias.shape == (n_heads, 1, 10, 10)
+        assert bias.shape == (1, n_heads, 10, 10)
         assert torch.isfinite(bias).all()
 
 
@@ -345,7 +345,7 @@ def test_alibi_large_head_count():
 
     bias = alibi(16)
 
-    assert bias.shape == (n_heads, 1, 16, 16)
+    assert bias.shape == (1, n_heads, 16, 16)
     assert torch.isfinite(bias).all()
     assert alibi.slopes.shape == (n_heads,)
     # All slopes should be positive
