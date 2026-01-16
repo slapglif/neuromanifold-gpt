@@ -265,6 +265,61 @@ For simple model benchmarking and profiling, `bench.py` might be useful. It's id
 
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
 
+## ralph loop configuration system
+
+The Ralph Loop is a rapid iteration framework for NeuroManifold GPT experiments with tight constraints (val_loss < 1.5, training_time < 100s on consumer GPUs). The configuration system has been refactored from 73 duplicated config files into a composition-based architecture that eliminates 92% of code duplication.
+
+### Quick Start
+
+Load any of the 73 Ralph Loop iterations:
+
+```python
+from neuromanifold_gpt.config.ralph_configs import get_ralph_config
+
+# Load a specific Ralph iteration
+config = get_ralph_config(1)
+print(f"Batch size: {config.batch_size}")
+```
+
+Create custom configurations using the builder pattern:
+
+```python
+from neuromanifold_gpt.config.ralph_builder import RalphConfigBuilder
+
+# Build custom config with delta overrides
+config = RalphConfigBuilder().with_overrides(
+    batch_size=32,
+    n_layer=4,
+    n_embd=512,
+    use_kan=True,
+    learning_rate=1e-3
+).build()
+```
+
+### Architecture
+
+The new system uses a three-layer architecture:
+
+1. **RalphBaseConfig** (`neuromanifold_gpt/config/ralph_base.py`) - Single source of truth with 60+ typed parameters
+2. **RalphConfigBuilder** (`neuromanifold_gpt/config/ralph_builder.py`) - Fluent API for composition with delta-based overrides
+3. **Registry** (`neuromanifold_gpt/config/ralph_configs/`) - Maps iteration numbers to configurations
+
+### Benefits
+
+- **92% code reduction**: ~4380 lines → ~300 lines
+- **Type safety**: Dataclass validation vs untyped globals
+- **DRY principle**: Define configs by specifying only deltas from base
+- **Backward compatible**: All 73 original iterations preserved
+- **Maintainable**: Structural changes in one place instead of 73 files
+
+### Documentation
+
+For complete details on the Ralph Loop configuration system, see:
+- **[Ralph Config System Guide](docs/ralph-config-system.md)** - Comprehensive documentation with examples
+- **[Configuration Reference](docs/configuration-reference.md)** - Full parameter documentation
+
+The old `config/ralph_iter*.py` files have been archived to `config/archive/ralph_iterations/` for historical reference.
+
 ## logging
 
 nanoGPT uses a unified logging module that combines [loguru](https://github.com/Delgan/loguru)'s structured logging with [rich](https://github.com/Textualize/rich)'s beautiful formatting for consistent, readable console output across all scripts.
