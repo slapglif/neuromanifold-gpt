@@ -116,3 +116,73 @@ class MHCConfig:
     mhc_residual_weight: float = 0.9
     mhc_sinkhorn_iters: int = 5
     mhc_sinkhorn_tau: float = 0.05
+
+
+@dataclass
+class MLAConfig:
+    """Configuration for MLA (Multi-Head Latent Attention).
+
+    MLA implements DeepSeek-style KV compression for memory efficiency.
+    Compresses key-value cache to low-dimensional latent space, achieving
+    ~8x memory reduction compared to standard multi-head attention.
+
+    This is particularly useful for long-context scenarios where KV cache
+    memory becomes a bottleneck. The latent compression is learned jointly
+    with the attention mechanism.
+
+    Key innovation: Decoupled RoPE (Rotary Position Embedding) dimension
+    allows separate handling of positional information from content.
+
+    Attributes:
+        use_mla: Enable MLA for KV compression (default False)
+                 Off by default as it adds architectural complexity
+        mla_latent_dim: KV compression dimension (default 64)
+                        Lower values = more compression but less capacity
+                        Typically 1/4 to 1/8 of the embedding dimension
+        mla_rope_dim: Decoupled RoPE dimension (default 32)
+                      Dimension for rotary position embeddings
+                      Usually 1/2 of latent_dim for efficiency
+    """
+
+    use_mla: bool = False
+    mla_latent_dim: int = 64
+    mla_rope_dim: int = 32
+
+
+@dataclass
+class MoEConfig:
+    """Configuration for MoE (Mixture of Experts).
+
+    MoE implements DeepSeek-style auxiliary-loss-free Mixture of Experts.
+    Uses bias-based load balancing instead of auxiliary loss terms for
+    better training stability and performance.
+
+    Traditional MoE uses auxiliary losses to encourage load balancing,
+    which can hurt model quality. DeepSeek's approach uses learned biases
+    for each expert, avoiding this trade-off.
+
+    Architecture includes optional shared expert (always active) and
+    E7 curriculum-based routing for progressive learning.
+
+    Attributes:
+        use_moe: Enable MoE for conditional computation (default False)
+                 Off by default as it significantly increases parameters
+        moe_n_experts: Total number of experts (default 8)
+                       More experts = more capacity but higher memory cost
+                       Typical range: 8-64 experts
+        moe_n_active: Number of active experts per token (default 2)
+                      Trade-off between computation and expressivity
+                      Typical: 2 for efficiency, 4-8 for quality
+        use_shared_expert: Always-active shared expert (default True)
+                          DeepSeek-style shared expert captures common patterns
+                          Improves stability and reduces expert collapse
+        use_e7_routing: Route by E7 curriculum tier (default False)
+                        Uses E7 lattice structure for progressive routing
+                        Experimental: curriculum-based expert specialization
+    """
+
+    use_moe: bool = False
+    moe_n_experts: int = 8
+    moe_n_active: int = 2
+    use_shared_expert: bool = True
+    use_e7_routing: bool = False
