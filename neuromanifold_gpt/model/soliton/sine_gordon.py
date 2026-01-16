@@ -3,7 +3,7 @@
 Sine-Gordon Equation Solver for Soliton Propagation.
 
 The Sine-Gordon equation:
-    φ_tt - φ_xx + sin(φ) = 0
+    phi_tt - phi_xx + sin(phi) = 0
 
 Supports topological soliton solutions (kinks/antikinks) that:
 - Maintain shape during propagation
@@ -16,8 +16,8 @@ Key properties for language modeling:
 - Collision invariance allows compositionality
 
 Analytic soliton solution (kink):
-    φ(x,t) = 4 * arctan(exp(γ(x - vt)))
-    where γ = 1/√(1-v²) is the Lorentz factor
+    phi(x,t) = 4 * arctan(exp(gamma(x - vt)))
+    where gamma = 1/sqrt(1-v^2) is the Lorentz factor
 
 Reference:
 - "Solitons and the Inverse Scattering Transform" - Ablowitz & Segur
@@ -47,8 +47,8 @@ def sine_gordon_rk4_step(
     Note: u_xx must be computed externally (spectral/FD not JIT-compatible).
 
     Args:
-        u: Wave field φ
-        u_t: Time derivative ∂φ/∂t
+        u: Wave field phi
+        u_t: Time derivative dphi/dt
         dt: Time step (scalar tensor)
         c_sq: Wave speed squared (learnable parameter)
         u_xx_func_result: Pre-computed second spatial derivative
@@ -56,10 +56,10 @@ def sine_gordon_rk4_step(
     Returns:
         Tuple of (u_new, u_t_new)
     """
-    # RK4 for second-order ODE: u_tt = c² * u_xx - sin(u)
+    # RK4 for second-order ODE: u_tt = c^2 * u_xx - sin(u)
     # Convert to first-order system: [u, v] where v = u_t
     # du/dt = v
-    # dv/dt = c² * u_xx - sin(u)
+    # dv/dt = c^2 * u_xx - sin(u)
 
     # k1
     k1_u = u_t
@@ -94,12 +94,12 @@ class SineGordonSolver(PDESolver):
     """
     Solver for the Sine-Gordon equation.
 
-    The Sine-Gordon equation: φ_tt - c²φ_xx + sin(φ) = 0
+    The Sine-Gordon equation: phi_tt - c^2*phi_xx + sin(phi) = 0
 
     This PDE admits topological soliton solutions (kinks) that:
     - Propagate with constant velocity without changing shape
     - Pass through each other during collisions (phase shift only)
-    - Carry quantized topological charge Q = (φ(+∞) - φ(-∞)) / 2π
+    - Carry quantized topological charge Q = (phi(+inf) - phi(-inf)) / 2*pi
 
     For language modeling, we use solitons to represent:
     - Semantic units that maintain coherence over long distances
@@ -135,13 +135,13 @@ class SineGordonSolver(PDESolver):
             dt: Time step for numerical integration (smaller = more stable)
             dx: Spatial step for finite differences
             n_steps: Default number of integration steps per forward pass
-            wave_speed: Wave propagation speed c (appears as c² in the equation)
+            wave_speed: Wave propagation speed c (appears as c^2 in the equation)
             use_spectral: Use FFT-based spectral derivatives (more accurate)
             use_rk4: Use RK4 time stepping (more accurate than Euler)
             clamp_min: Minimum value for clamping (numerical stability)
             clamp_max: Maximum value for clamping (numerical stability)
             dropout: Dropout probability for regularization
-            damping: Optional damping coefficient (adds -γ·φ_t term)
+            damping: Optional damping coefficient (adds -gamma*phi_t term)
         """
         super().__init__(
             dim=dim,
@@ -157,11 +157,11 @@ class SineGordonSolver(PDESolver):
         self.use_rk4 = use_rk4
         self.damping = damping
 
-        # Learnable wave speed squared (c²)
+        # Learnable wave speed squared (c^2)
         self.c_squared = nn.Parameter(torch.tensor(wave_speed ** 2))
 
         # Optional: learnable nonlinearity strength
-        # Standard Sine-Gordon has sin(φ), but we can learn a scaling
+        # Standard Sine-Gordon has sin(phi), but we can learn a scaling
         self.nonlin_scale = nn.Parameter(torch.tensor(1.0))
 
     def compute_rhs(
@@ -170,25 +170,25 @@ class SineGordonSolver(PDESolver):
         u_t: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Compute right-hand side: φ_tt = c²·φ_xx - sin(φ) - γ·φ_t
+        Compute right-hand side: phi_tt = c^2*phi_xx - sin(phi) - gamma*phi_t
 
         Args:
-            u: Wave field φ of shape (B, T, D) or (B, H, T, D)
-            u_t: Time derivative ∂φ/∂t (required for second-order)
+            u: Wave field phi of shape (B, T, D) or (B, H, T, D)
+            u_t: Time derivative dphi/dt (required for second-order)
 
         Returns:
-            Acceleration ∂²φ/∂t²
+            Acceleration d^2phi/dt^2
         """
-        # Spatial second derivative: φ_xx
+        # Spatial second derivative: phi_xx
         u_xx = self.spatial_derivative(u, order=2)
 
-        # Nonlinear term: sin(φ) scaled by learnable parameter
+        # Nonlinear term: sin(phi) scaled by learnable parameter
         sin_term = torch.sin(self.nonlin_scale * u)
 
-        # RHS = c²·φ_xx - sin(φ)
+        # RHS = c^2*phi_xx - sin(phi)
         rhs = self.c_squared * u_xx - sin_term
 
-        # Optional damping: -γ·φ_t
+        # Optional damping: -gamma*phi_t
         if self.damping > 0 and u_t is not None:
             rhs = rhs - self.damping * u_t
 
@@ -196,37 +196,37 @@ class SineGordonSolver(PDESolver):
 
     def compute_potential_energy(self, u: torch.Tensor) -> torch.Tensor:
         """
-        Compute Sine-Gordon potential energy: V(φ) = 1 - cos(φ)
+        Compute Sine-Gordon potential energy: V(phi) = 1 - cos(phi)
 
         The full Hamiltonian is:
-        H = ∫ [½·φ_t² + ½·c²·φ_x² + (1 - cos(φ))] dx
+        H = integral [1/2*phi_t^2 + 1/2*c^2*phi_x^2 + (1 - cos(phi))] dx
 
         Args:
-            u: Wave field φ
+            u: Wave field phi
 
         Returns:
             Potential energy per batch element
         """
-        # V(φ) = 1 - cos(φ), integrated over space
+        # V(phi) = 1 - cos(phi), integrated over space
         potential = (1 - torch.cos(self.nonlin_scale * u)).sum(dim=(-2, -1))
         return potential
 
     def compute_topological_charge(self, u: torch.Tensor) -> torch.Tensor:
         """
-        Compute topological charge Q = (1/2π) ∫ φ_x dx = [φ(+∞) - φ(-∞)] / 2π
+        Compute topological charge Q = (1/2*pi) * integral phi_x dx = [phi(+inf) - phi(-inf)] / 2*pi
 
         For kink: Q = +1
         For antikink: Q = -1
         Charge is conserved during evolution.
 
         Args:
-            u: Wave field φ of shape (B, T, D) or (B, H, T, D)
+            u: Wave field phi of shape (B, T, D) or (B, H, T, D)
 
         Returns:
             Topological charge per batch element, shape (B,) or (B, H)
         """
         # Boundary difference (assuming periodic -> 0, or use endpoints)
-        # For finite domain: Q ≈ (u[:, -1, :] - u[:, 0, :]) / (2π)
+        # For finite domain: Q approx (u[:, -1, :] - u[:, 0, :]) / (2*pi)
         phi_diff = u[..., -1, :] - u[..., 0, :]
         charge = phi_diff / (2 * torch.pi)
 
@@ -244,14 +244,14 @@ class SineGordonSolver(PDESolver):
         Evolve wave field according to Sine-Gordon equation.
 
         Args:
-            u: Initial wave field φ(x,0) of shape (B, T, D) or (B, H, T, D)
+            u: Initial wave field phi(x,0) of shape (B, T, D) or (B, H, T, D)
             n_steps: Number of time steps (overrides self.n_steps)
-            u_t: Initial velocity ∂φ/∂t|_{t=0} (optional, defaults to zeros)
+            u_t: Initial velocity dphi/dt|_{t=0} (optional, defaults to zeros)
             return_trajectory: If True, return full trajectory (expensive)
 
         Returns:
             Tuple of (u_final, info) where:
-            - u_final: Evolved wave field φ(x, T)
+            - u_final: Evolved wave field phi(x, T)
             - info: Dictionary containing:
                 - 'energy': Final total energy
                 - 'energy_initial': Initial energy (for conservation check)
@@ -330,8 +330,8 @@ class SineGordonSolver(PDESolver):
         """
         Create an analytical kink soliton solution.
 
-        The kink solution: φ(x,t) = 4·arctan(exp(γ·(x - x₀ - v·t)))
-        where γ = 1/√(1-v²) is the Lorentz factor.
+        The kink solution: phi(x,t) = 4*arctan(exp(gamma*(x - x0 - v*t)))
+        where gamma = 1/sqrt(1-v^2) is the Lorentz factor.
 
         Useful for:
         - Testing the solver against known solutions
@@ -359,15 +359,15 @@ class SineGordonSolver(PDESolver):
         v = min(max(velocity, -0.99), 0.99)
         gamma = 1.0 / torch.sqrt(torch.tensor(1.0 - v**2, device=device, dtype=dtype))
 
-        # Kink profile: φ = 4·arctan(exp(γ·(x - v·t)))
-        # At t=0: φ = 4·arctan(exp(γ·x))
+        # Kink profile: phi = 4*arctan(exp(gamma*(x - v*t)))
+        # At t=0: phi = 4*arctan(exp(gamma*x))
         # Scale spatial coordinate by wave speed
         c = torch.sqrt(self.c_squared.abs())
         scale = (gamma * c * seq_len).clamp(min=0.1)
 
         phi = 4 * torch.atan(torch.exp(scale * x))
 
-        # Time derivative: φ_t = -4γv·sech(γ(x-vt))·c / √(1+(...)²)
+        # Time derivative: phi_t = -4*gamma*v*sech(gamma(x-vt))*c / sqrt(1+(...)^2)
         # At t=0, simplify using chain rule
         exp_term = torch.exp(scale * x)
         sech_sq = 4 * exp_term / (1 + exp_term**2)**2

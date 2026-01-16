@@ -13,6 +13,7 @@ Combines:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
@@ -352,7 +353,14 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     # First block: SDR -> x
                     # Expand for multi-stream mHC if enabled
                     sdr_in = self.expand_stream(sdr) if self.mhc_enabled else sdr
-                    x, info = block(sdr_in)
+
+                    # Apply gradient checkpointing if enabled
+                    # Trades compute for memory by recomputing activations during backward pass
+                    if self.config.gradient_checkpointing and self.training:
+                        x, info = checkpoint(block, sdr_in, use_reentrant=False)
+                    else:
+                        x, info = block(sdr_in)
+
                     # Add Ramanujan Positional Embedding here (to x)
                     # x is (B*S, T, n_embd) if mHC, else (B, T, n_embd)
                     pos_emb = self.ramanujan_pos(torch.zeros(1, T, device=device))
@@ -371,7 +379,10 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                         # Local variable - no need to clear, goes out of scope naturally
                 else:
                     # Block already applies internal residuals
-                    x, info = block(x)
+                    if self.config.gradient_checkpointing and self.training:
+                        x, info = checkpoint(block, x, use_reentrant=False)
+                    else:
+                        x, info = block(x)
             else:
                 # Dense Mode: Pass embeddings directly
                 if i == 0 and self.mhc_enabled:
@@ -379,7 +390,10 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     x = self.expand_stream(x)
                 # Block already applies internal residuals (x + attn_out, x + mlp_out)
                 # DO NOT add another residual here - that was doubling the signal
-                x, info = block(x)
+                if self.config.gradient_checkpointing and self.training:
+                    x, info = checkpoint(block, x, use_reentrant=False)
+                else:
+                    x, info = block(x)
 
             block_infos.append(info)
             # Accumulate orthogonality regularization loss

@@ -4,17 +4,11 @@ This module defines the configuration structure for the NeuroManifoldGPT model,
 including settings for:
 - SDR (Sparse Distributed Representation) encoding
 - Manifold projection and spectral decomposition
-- Attention mechanism selection via attention_type parameter
 - Soliton attention dynamics
 - Engram memory hierarchy
 - DAG planning and imagination modules
-
-The primary interface for attention selection is the `attention_type` parameter,
-which accepts values: "fhn", "kaufmann", "knot", "standard", or "mla".
-Legacy boolean flags (use_kaufmann_attention, use_knot_attention) are deprecated.
 """
 
-import warnings
 from dataclasses import dataclass, field
 
 
@@ -34,8 +28,6 @@ class NeuroManifoldConfig:
     Attributes:
         vocab_size: Vocabulary size (default 50304 for GPT-2 + padding)
         block_size: Maximum sequence length (context window)
-        attention_type: Attention mechanism selector - "fhn", "kaufmann", "knot", "standard", or "mla"
-                       This is the primary interface for selecting attention type.
         sdr_size: Size of SDR binary vectors (bits)
         sdr_sparsity: Target sparsity ratio (~2% for biological plausibility)
         sdr_n_active: Number of active bits (computed from size * sparsity)
@@ -68,8 +60,6 @@ class NeuroManifoldConfig:
         beta2: AdamW beta2 parameter (default 0.95, MiniMax: faster adaptation)
         optimizer_eps: AdamW epsilon (default 1e-15, MiniMax: handles tiny gradients)
         grad_clip: Gradient clipping norm (default 1.0)
-        use_knot_attention: DEPRECATED - Use attention_type="knot" instead
-        use_kaufmann_attention: DEPRECATED - Use attention_type="kaufmann" instead
     """
 
     # Vocabulary and sequence
@@ -134,14 +124,12 @@ class NeuroManifoldConfig:
     mhc_residual_weight: float = 0.9  # Initial identity mapping bias
     mhc_sinkhorn_iters: int = 5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
     mhc_sinkhorn_tau: float = 0.05  # Sinkhorn temperature for smoothness
+    use_mhc_fused: bool = False  # Use Triton-optimized fused mHC operations for performance
 
     # Attention configuration
-    # Use attention_type to select attention mechanism (recommended)
-    attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", "knot", "standard", or "mla"
-
-    # DEPRECATED: Use attention_type instead of these boolean flags
-    use_knot_attention: bool = False  # DEPRECATED: Use attention_type="knot" instead
-    use_kaufmann_attention: bool = False  # DEPRECATED: Use attention_type="kaufmann" instead
+    attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"
+    use_knot_attention: bool = False  # Enable Knot-Theoretic attention
+    use_kaufmann_attention: bool = False  # Enable Kaufmann Trifecta Attention (The Endgame)
     use_qk_norm: bool = True  # Qwen3/GLM-4.5: RMSNorm on Q,K prevents attention logit explosion
 
     # KAN configuration
@@ -281,21 +269,6 @@ class NeuroManifoldConfig:
             self.skip_metric_tensor = True
             self.n_fhn_steps = 1  # Reduce FHN steps
             self.sdr_size = min(self.sdr_size, 512)  # Cap SDR size
-
-        # Deprecation warnings for old boolean attention flags
-        if self.use_kaufmann_attention:
-            warnings.warn(
-                "use_kaufmann_attention is deprecated. Use attention_type='kaufmann' instead.",
-                DeprecationWarning,
-                stacklevel=2
-            )
-
-        if self.use_knot_attention:
-            warnings.warn(
-                "use_knot_attention is deprecated. Use attention_type='knot' instead.",
-                DeprecationWarning,
-                stacklevel=2
-            )
 
         # Compute number of active SDR bits
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
