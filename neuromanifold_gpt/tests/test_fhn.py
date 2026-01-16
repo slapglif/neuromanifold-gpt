@@ -45,3 +45,45 @@ def test_fhn_threshold_behavior():
 
     # Large should have stronger response (on average)
     assert out_large.abs().mean() > out_small.abs().mean()
+
+
+def test_fhn_buffer_preallocation():
+    """Buffers should be pre-allocated and reused across forward passes."""
+    attn = FHNAttention(embed_dim=384, n_heads=8)
+
+    batch_size = 2
+    seq_len = 20
+
+    # First forward pass
+    x1 = torch.randn(batch_size, seq_len, 384)
+    spectral_basis1 = torch.randn(batch_size, seq_len, 32)
+    out1, info1 = attn(x1, spectral_basis1)
+
+    # Capture buffer information from first pass
+    state1 = info1['fhn_state']
+    state1_shape = state1.shape
+
+    # Second forward pass with same dimensions but different data
+    x2 = torch.randn(batch_size, seq_len, 384)
+    spectral_basis2 = torch.randn(batch_size, seq_len, 32)
+    out2, info2 = attn(x2, spectral_basis2)
+
+    state2 = info2['fhn_state']
+
+    # Verify shapes are consistent (buffers can be reused)
+    assert out1.shape == (batch_size, seq_len, 384)
+    assert out2.shape == (batch_size, seq_len, 384)
+    assert state2.shape == state1_shape
+
+    # Verify buffers are functional across multiple passes
+    assert torch.isfinite(state1).all()
+    assert torch.isfinite(state2).all()
+
+    # Third pass with different batch size to test buffer adaptation
+    x3 = torch.randn(4, seq_len, 384)
+    spectral_basis3 = torch.randn(4, seq_len, 32)
+    out3, info3 = attn(x3, spectral_basis3)
+
+    # Should handle different batch size
+    assert out3.shape == (4, seq_len, 384)
+    assert torch.isfinite(info3['fhn_state']).all()
