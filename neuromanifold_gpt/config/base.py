@@ -66,6 +66,9 @@ class NeuroManifoldConfig:
     vocab_size: int = 50304
     block_size: int = 1024
 
+    # Position embedding type: 'learned', 'ramanujan', 'rotary', or 'alibi'
+    pos_emb_type: str = 'learned'
+
     use_sdr: bool = False  # Dense embeddings (faster, less memory) - SDR disabled
     sdr_size: int = 2048
     sdr_sparsity: float = 0.02 # Restored to 2% sparsity for stability
