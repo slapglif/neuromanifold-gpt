@@ -197,6 +197,7 @@ class FHNAttention(nn.Module):
         self.n_fhn_steps = n_fhn_steps
         self.use_partitioning = use_partitioning
         self.pos_emb_type = pos_emb_type
+        self.use_flash_fhn_fusion = use_flash_fhn_fusion
 
         # Warn users about deprecated manual attention path
         if not use_flash_fhn_fusion:
@@ -334,10 +335,18 @@ class FHNAttention(nn.Module):
         out = rearrange(out, "b h t d -> b t (h d)")
         out = self.out_proj(out)
 
+        # Compute output statistics
+        output_stats = {
+            "mean": out.mean().item(),
+            "std": out.std().item(),
+            "variance": out.var().item(),
+        }
+
         info = {
             "pulse_widths": pulse_widths,
             "fhn_state": fhn_state_val,
             "attn_probs": attn_probs,
+            "output_stats": output_stats,
         }
 
         return out, info
