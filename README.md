@@ -271,29 +271,64 @@ The Ralph Loop is a rapid iteration framework for NeuroManifold GPT experiments 
 
 ### Quick Start
 
-Load any of the 73 Ralph Loop iterations:
+**Load existing Ralph Loop iterations:**
 
 ```python
-from neuromanifold_gpt.config.ralph_configs import get_ralph_config
+from neuromanifold_gpt.config.ralph_configs import get_ralph_config, list_ralph_iterations
 
-# Load a specific Ralph iteration
+# Load a specific Ralph iteration (1-73 available)
 config = get_ralph_config(1)
-print(f"Batch size: {config.batch_size}")
+print(f"Model: {config.n_layer}L-{config.n_head}H-{config.n_embd}D")
+print(f"Training: {config.max_iters} iterations at lr={config.learning_rate}")
+print(f"Features: KAN={config.use_kan}, mHC={config.use_mhc}")
+
+# List all available iterations
+iterations = list_ralph_iterations()
+print(f"{len(iterations)} Ralph iterations available")
 ```
 
-Create custom configurations using the builder pattern:
+**Create custom configurations with the builder pattern:**
 
 ```python
 from neuromanifold_gpt.config.ralph_builder import RalphConfigBuilder
 
-# Build custom config with delta overrides
+# Specify only what differs from RalphBaseConfig defaults
 config = RalphConfigBuilder().with_overrides(
-    batch_size=32,
+    # Model architecture
     n_layer=4,
     n_embd=512,
+    n_head=8,
+
+    # NeuroManifold features
     use_kan=True,
-    learning_rate=1e-3
+    kan_type="faster",
+    use_mhc=True,
+
+    # Training params
+    batch_size=32,
+    max_iters=2000,
+    learning_rate=1e-3,
+
+    # Output
+    out_dir="out-custom-experiment"
 ).build()
+
+# All other params inherit from RalphBaseConfig defaults
+assert config.dataset == "shakespeare_char"  # Inherited
+assert config.precision == "bf16-mixed"      # Inherited
+```
+
+**Run usage examples:**
+
+```bash
+# See all usage patterns
+python examples/ralph_config_usage.py
+
+# List available iterations
+python examples/ralph_config_usage.py --list
+
+# Load specific iteration details
+python examples/ralph_config_usage.py --iteration=10
 ```
 
 ### Architecture
@@ -316,7 +351,9 @@ The new system uses a three-layer architecture:
 
 For complete details on the Ralph Loop configuration system, see:
 - **[Ralph Config System Guide](docs/ralph-config-system.md)** - Comprehensive documentation with examples
+- **[Usage Examples](examples/ralph_config_usage.py)** - Runnable code examples showing all patterns
 - **[Configuration Reference](docs/configuration-reference.md)** - Full parameter documentation
+- **[Migration Context](config/archive/ralph_iterations/README.md)** - Why the refactor was needed
 
 The old `config/ralph_iter*.py` files have been archived to `config/archive/ralph_iterations/` for historical reference.
 

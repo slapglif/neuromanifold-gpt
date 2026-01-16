@@ -7,7 +7,13 @@ with delta-based overrides. This allows for:
 - Clear documentation of what changed from defaults
 - Easy composition of configuration variants
 
-Example:
+The builder pattern enables defining configs by specifying only the parameters
+that differ from RalphBaseConfig defaults, eliminating duplication and making
+configs more maintainable.
+
+Example - Basic usage:
+    >>> from neuromanifold_gpt.config.ralph_builder import RalphConfigBuilder
+    >>>
     >>> builder = RalphConfigBuilder()
     >>> config = builder.with_overrides(
     ...     batch_size=32,
@@ -18,11 +24,51 @@ Example:
     32
     >>> config.n_layer
     4
+
+Example - Custom experiment config:
+    >>> config = RalphConfigBuilder().with_overrides(
+    ...     # Model architecture
+    ...     n_layer=8,
+    ...     n_embd=512,
+    ...     n_head=8,
+    ...
+    ...     # NeuroManifold features
+    ...     use_kan=True,
+    ...     kan_type="faster",
+    ...     use_mhc=True,
+    ...     mhc_n_streams=4,
+    ...
+    ...     # Training
+    ...     max_iters=5000,
+    ...     learning_rate=1e-3,
+    ...     batch_size=32,
+    ...
+    ...     # Output
+    ...     out_dir="out-custom-experiment"
+    ... ).build()
+    >>> # All unspecified params inherit from RalphBaseConfig defaults
+    >>> config.dataset  # "shakespeare_char" (inherited)
+    'shakespeare_char'
+    >>> config.precision  # "bf16-mixed" (inherited)
+    'bf16-mixed'
+
+Example - Method chaining:
+    >>> builder = RalphConfigBuilder()
+    >>> builder.with_overrides(batch_size=32, n_layer=4)
+    <RalphConfigBuilder object>
+    >>> builder.with_overrides(learning_rate=1e-3)  # Can chain multiple calls
+    <RalphConfigBuilder object>
+    >>> config = builder.build()
+
+See also:
+    - neuromanifold_gpt.config.ralph_base: Base configuration with all defaults
+    - neuromanifold_gpt.config.ralph_configs: Registry of existing iterations
+    - examples/ralph_config_usage.py: Complete usage examples
 """
 
 from typing import Any
 
-from neuromanifold_gpt.config.ralph_base import RalphBaseConfig
+from .ralph_base import RalphBaseConfig
 
 
 class RalphConfigBuilder:
