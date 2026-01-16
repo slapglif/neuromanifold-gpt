@@ -16,43 +16,23 @@ Example:
 
 __version__ = "0.1.0"
 
-# Lazy imports to allow utils.logging to be imported without torch
-def __getattr__(name):
-    """Lazy import to avoid importing torch when not needed."""
-    if name == "NeuroManifoldConfig":
-        from neuromanifold_gpt.config import NeuroManifoldConfig
-        return NeuroManifoldConfig
-    elif name == "NeuroManifoldConfigNano":
-        from neuromanifold_gpt.config import NeuroManifoldConfigNano
-        return NeuroManifoldConfigNano
-    elif name == "NeuroManifoldGPT":
-        from neuromanifold_gpt.model import NeuroManifoldGPT
-        return NeuroManifoldGPT
-    elif name == "NeuroManifoldBlock":
-        from neuromanifold_gpt.model import NeuroManifoldBlock
-        return NeuroManifoldBlock
-    elif name == "FHNAttention":
-        from neuromanifold_gpt.model import FHNAttention
-        return FHNAttention
-    elif name == "ManifoldProjection":
-        from neuromanifold_gpt.model import ManifoldProjection
-        return ManifoldProjection
-    elif name == "SDREngramMemory":
-        from neuromanifold_gpt.model import SDREngramMemory
-        return SDREngramMemory
-    elif name == "SDROperations":
-        from neuromanifold_gpt.model import SDROperations
-        return SDROperations
-    elif name == "SemanticFoldingEncoder":
-        from neuromanifold_gpt.model import SemanticFoldingEncoder
-        return SemanticFoldingEncoder
-    elif name == "SpectralDecomposition":
-        from neuromanifold_gpt.model import SpectralDecomposition
-        return SpectralDecomposition
-    elif name == "NeuroManifoldLightning":
-        from neuromanifold_gpt.train import NeuroManifoldLightning
-        return NeuroManifoldLightning
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+# Core model and config
+from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
+from neuromanifold_gpt.model import (
+    NeuroManifoldGPT,
+    NeuroManifoldBlock,
+    FHNAttention,
+    ManifoldProjection,
+    SDREngramMemory,
+    SDROperations,
+    SemanticFoldingEncoder,
+    SpectralDecomposition,
+)
+
+# Training module
+# NOTE: Temporarily commented out to avoid import issues with old train.py
+# The new training modules are in neuromanifold_gpt.training package
+# from neuromanifold_gpt.train import NeuroManifoldLightning
 
 __all__ = [
     # Version
@@ -72,5 +52,5 @@ __all__ = [
     "SemanticFoldingEncoder",
     "SpectralDecomposition",
     # Training
-    "NeuroManifoldLightning",
+    # "NeuroManifoldLightning",  # Old training module - use neuromanifold_gpt.training instead
 ]

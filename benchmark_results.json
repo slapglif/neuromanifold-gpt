@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-15T23:36:13.293181",
+    "quick_test": true,
+    "total_time_seconds": 410.4054775238037
+  },
+  "quality": {
+    "error": "22580"
+  },
+  "speed": {
+    "status": "completed",
+    "note": "See console output for detailed timing results"
+  },
+  "memory": {
+    "status": "completed",
+    "note": "See console output for detailed memory usage results"
+  }
+}
