@@ -117,6 +117,7 @@ class FHNDynamics(nn.Module):
         # Initialize with minimal shape (1, 1, 1, dim) to be resized on first forward
         self.register_buffer("v_buffer", torch.zeros(1, 1, 1, dim), persistent=False)
         self.register_buffer("w_buffer", torch.zeros(1, 1, 1, dim), persistent=False)
+        self.cached_shape = (1, 1, 1, dim)
 
     def forward(
         self, stimulus: torch.Tensor, n_steps: int = 2
@@ -133,9 +134,19 @@ class FHNDynamics(nn.Module):
         threshold_gate = torch.sigmoid((stimulus.abs() - self.threshold) * 10.0)
         I = stimulus_normed * (0.1 + 0.9 * threshold_gate)  # Soft transition
 
-        # Initialize state
-        v = torch.zeros_like(stimulus)
-        w = torch.zeros_like(stimulus)
+        # Initialize state using pre-allocated buffers
+        # Resize buffers if stimulus shape has changed
+        if stimulus.shape != self.cached_shape:
+            self.v_buffer = torch.zeros_like(stimulus)
+            self.w_buffer = torch.zeros_like(stimulus)
+            self.cached_shape = stimulus.shape
+        else:
+            # Reuse buffers by zeroing them out
+            self.v_buffer.zero_()
+            self.w_buffer.zero_()
+
+        v = self.v_buffer
+        w = self.w_buffer
 
         # Execute dynamics using JIT-compiled kernel
         if self.use_imex:
