@@ -80,3 +80,39 @@ class KANConfig:
     use_fast_wavekan: bool = True
     kan_num_centers: int = 3
     use_kan_everywhere: bool = False
+
+
+@dataclass
+class MHCConfig:
+    """Configuration for mHC (Manifold-Constrained Hyper-Connections).
+
+    mHC implements DeepSeek-style hyper-connections for training stability.
+    Reference: https://arxiv.org/abs/2512.24880
+
+    Architecture: x_{l+1} = H_res @ x_l + H_post^T @ F(H_pre @ x_l)
+    - H_res: Doubly stochastic residual matrix via Sinkhorn-Knopp (Birkhoff polytope)
+    - H_pre/H_post: Routing matrices with softmax over streams for multi-stream processing
+
+    This provides better gradient flow and training stability compared to standard
+    residual connections, especially for deep networks.
+
+    Attributes:
+        use_mhc: Enable mHC for training stability (default True)
+        use_full_mhc: Use full multi-stream mHC vs simplified version (default True)
+                      Full version has parallel streams with learned routing
+        mhc_n_streams: Number of parallel streams for full mHC (default 2)
+                       2 streams provide good efficiency/expressivity trade-off
+        mhc_residual_weight: Initial identity mapping bias (default 0.9)
+                             Higher values bias toward identity at initialization
+        mhc_sinkhorn_iters: Sinkhorn-Knopp iterations for doubly stochastic projection (default 5)
+                            3-5 iterations are sufficient for convergence
+        mhc_sinkhorn_tau: Sinkhorn temperature for smoothness (default 0.05)
+                          Lower values make distribution sharper
+    """
+
+    use_mhc: bool = True
+    use_full_mhc: bool = True
+    mhc_n_streams: int = 2
+    mhc_residual_weight: float = 0.9
+    mhc_sinkhorn_iters: int = 5
+    mhc_sinkhorn_tau: float = 0.05
