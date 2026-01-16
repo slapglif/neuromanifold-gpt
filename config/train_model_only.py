@@ -6,8 +6,10 @@ eval_interval = 250
 eval_iters = 200
 log_interval = 10
 
-# Enable model-only checkpoint saving
-# This saves ONLY model weights (no optimizer state)
+# Enable separated checkpoint system
+save_separate_optimizer = True
+
+# Save only model weights (no optimizer state)
 # Benefits:
 # - 50%+ smaller checkpoint files
 # - Perfect for inference, evaluation, or sharing models
