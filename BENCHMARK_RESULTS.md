@@ -4,12 +4,13 @@
 
 This document presents comprehensive benchmarks comparing **NeuroManifold Attention** (with FHN soliton dynamics, SDR encoding, and spectral manifold projections) against **Standard Transformer Attention** on GPT-2 124M architecture.
 
-**Key Findings:**
+**Key Findings** (Updated with real Shakespeare dataset and OOM fixes):
 
-- **Quality**: Standard attention achieved 2.97× lower perplexity (59,885 vs 177,663) on validation data
+- **Dataset**: Now using real Shakespeare character-level data (1M train, 111K val tokens) instead of dummy data
+- **Quality**: Standard attention achieved 2.56× lower perplexity (58,802 vs 150,683) on validation data
 - **Memory**: NeuroManifold attention requires 2.86-3.13× more memory than standard attention
-- **Speed**: NeuroManifold implementation encountered memory limitations during speed benchmarks
-- **Diversity**: Standard attention generated slightly more diverse text (97.7% unique unigrams vs 88.5%)
+- **Speed**: NeuroManifold is 3.3-4× slower (0.25-0.30× throughput) - successfully measured after memory optimizations
+- **Parameter Count**: NeuroManifold uses 2.08× more parameters (337M vs 162M)
 
 **Recommendation**: For production GPT-2 124M models, standard attention is recommended. NeuroManifold attention mechanisms show promise but require further optimization and larger-scale training to demonstrate advantages.
 
@@ -51,10 +52,10 @@ This document presents comprehensive benchmarks comparing **NeuroManifold Attent
 
 | Metric | Standard | NeuroManifold | Ratio |
 |--------|----------|---------------|-------|
-| **Validation Loss** | 11.00 | 12.09 | 1.10× |
-| **Training Loss** | 10.99 | 12.10 | 1.10× |
-| **Perplexity** | **59,885** | **177,663** | **2.97×** |
-| **Train-Val Gap** | -0.014 | +0.010 | - |
+| **Validation Loss** | 10.98 | 11.92 | 1.09× |
+| **Training Loss** | 10.98 | 11.92 | 1.09× |
+| **Perplexity** | **58,802** | **150,683** | **2.56×** |
+| **Train-Val Gap** | +0.0008 | -0.0054 | - |
 
 **Analysis:**
 
@@ -91,9 +92,35 @@ This document presents comprehensive benchmarks comparing **NeuroManifold Attent
 
 ### Results
 
-**Status**: ⚠️ **Benchmark Incomplete**
+**Status**: ✓ **Benchmark Complete** (Fixed after memory optimizations)
 
-The speed benchmark encountered an out-of-memory (OOM) error during execution:
+Speed benchmarks successfully completed after implementing memory optimizations:
+- Reduced batch sizes in quick-test mode (batch_size=1)
+- Added GPU memory clearing between model tests
+- Explicit model deletion with 2-second cleanup delay
+
+| Configuration | Standard (tokens/sec) | NeuroManifold (tokens/sec) | Ratio |
+|---------------|----------------------|----------------------------|-------|
+| **Seq 128, Batch 1** | 938.2 | 284.1 | 0.30× |
+| **Seq 256, Batch 1** | 1820.4 | 452.6 | 0.25× |
+
+**Timing Breakdown (Seq 128, Batch 1)**:
+
+| Metric | Standard (ms) | NeuroManifold (ms) | Ratio |
+|--------|--------------|-------------------|-------|
+| **Forward Pass** | 53.1 | 171.4 | 3.23× |
+| **Backward Pass** | 83.4 | 279.2 | 3.35× |
+| **Total Time** | 136.4 | 450.6 | 3.30× |
+
+**Timing Breakdown (Seq 256, Batch 1)**:
+
+| Metric | Standard (ms) | NeuroManifold (ms) | Ratio |
+|--------|--------------|-------------------|-------|
+| **Forward Pass** | 55.6 | 248.6 | 4.47× |
+| **Backward Pass** | 85.0 | 317.0 | 3.73× |
+| **Total Time** | 140.6 | 565.6 | 4.02× |
+
+Previously encountered OOM error (now fixed):
 
 ```
 CUDA out of memory. Tried to allocate 2.00 MiB.
