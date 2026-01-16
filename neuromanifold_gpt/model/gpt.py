@@ -121,20 +121,20 @@ class NeuroManifoldGPT(nn.Module):
                 use_full_mhc=config.use_full_mhc,
                 mhc_n_streams=config.mhc_n_streams,
                 mhc_residual_weight=config.mhc_residual_weight,
-                mhc_sinkhorn_iters=getattr(config, 'mhc_sinkhorn_iters', 5),
-                mhc_sinkhorn_tau=getattr(config, 'mhc_sinkhorn_tau', 0.05),
+                mhc_sinkhorn_iters=config.mhc_sinkhorn_iters,
+                mhc_sinkhorn_tau=config.mhc_sinkhorn_tau,
                 # Speed optimization
                 skip_manifold_spectral=config.skip_manifold_spectral,
                 # MLA (Multi-Head Latent Attention) - DeepSeek style
-                use_mla=getattr(config, 'use_mla', False),
-                mla_latent_dim=getattr(config, 'mla_latent_dim', 64),
-                mla_rope_dim=getattr(config, 'mla_rope_dim', 32),
+                use_mla=config.use_mla,
+                mla_latent_dim=config.mla_latent_dim,
+                mla_rope_dim=config.mla_rope_dim,
                 # MoE (Mixture of Experts) - DeepSeek style
-                use_moe=getattr(config, 'use_moe', False),
-                moe_n_experts=getattr(config, 'moe_n_experts', 8),
-                moe_n_active=getattr(config, 'moe_n_active', 2),
-                use_shared_expert=getattr(config, 'use_shared_expert', True),
-                use_e7_routing=getattr(config, 'use_e7_routing', False),
+                use_moe=config.use_moe,
+                moe_n_experts=config.moe_n_experts,
+                moe_n_active=config.moe_n_active,
+                use_shared_expert=config.use_shared_expert,
+                use_e7_routing=config.use_e7_routing,
             )
         self.blocks = nn.ModuleList([make_block(i) for i in range(config.n_layer)])
 
@@ -151,7 +151,7 @@ class NeuroManifoldGPT(nn.Module):
 
         # Language model head
         # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
-        self.lm_head_fp32 = getattr(config, 'lm_head_fp32', True)
+        self.lm_head_fp32 = config.lm_head_fp32
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         if self.lm_head_fp32:
             # Keep lm_head in FP32 even during mixed precision training
@@ -160,14 +160,14 @@ class NeuroManifoldGPT(nn.Module):
         # Multi-Token Prediction (MTP) heads - DeepSeek/Meta style
         # Each head predicts token at position t+k (k=2,3,...,n_predict)
         # Head 1 (t+1) is the main lm_head, auxiliary heads predict further ahead
-        self.use_mtp = getattr(config, 'use_mtp', False)
-        self.mtp_n_predict = getattr(config, 'mtp_n_predict', 4)
-        self.mtp_loss_weight = getattr(config, 'mtp_loss_weight', 0.1)
+        self.use_mtp = config.use_mtp
+        self.mtp_n_predict = config.mtp_n_predict
+        self.mtp_loss_weight = config.mtp_loss_weight
 
         # Configurable auxiliary loss weights (allows reducing auxiliary impact)
-        self.ortho_loss_weight = getattr(config, 'ortho_loss_weight', 1.0)
-        self.discrimination_loss_weight = getattr(config, 'discrimination_loss_weight', 0.5)
-        self.contrastive_loss_weight = getattr(config, 'contrastive_loss_weight', 1.0)
+        self.ortho_loss_weight = config.ortho_loss_weight
+        self.discrimination_loss_weight = config.discrimination_loss_weight
+        self.contrastive_loss_weight = config.contrastive_loss_weight
 
         if self.use_mtp and self.mtp_n_predict > 1:
             # Auxiliary prediction heads for t+2, t+3, ..., t+n_predict
@@ -192,15 +192,15 @@ class NeuroManifoldGPT(nn.Module):
         )
 
         # Hybrid Reasoning (Qwen3 style thinking/non-thinking modes)
-        self.use_hybrid_reasoning = getattr(config, 'use_hybrid_reasoning', False)
+        self.use_hybrid_reasoning = config.use_hybrid_reasoning
         if self.use_hybrid_reasoning:
             self.hybrid_reasoning = HybridReasoningModule(
                 embed_dim=config.n_embd,
-                n_thinking_layers=getattr(config, 'n_thinking_layers', 2),
+                n_thinking_layers=config.n_thinking_layers,
                 n_heads=config.n_heads,
                 dropout=config.dropout,
                 use_e7_prior=True,
-                thinking_threshold=getattr(config, 'thinking_threshold', 0.5),
+                thinking_threshold=config.thinking_threshold,
             )
 
         # ========================================
@@ -208,41 +208,41 @@ class NeuroManifoldGPT(nn.Module):
         # ========================================
 
         # ForcedDAGPlanner - Decompose tasks into DAGs for systematic reasoning
-        self.use_dag_planner = getattr(config, 'use_dag_planner', False)
+        self.use_dag_planner = config.use_dag_planner
         if self.use_dag_planner:
             self.dag_planner = ForcedDAGPlanner(
                 embed_dim=config.n_embd,
                 manifold_dim=config.manifold_dim,
-                max_nodes=getattr(config, 'dag_max_nodes', 32),
-                min_nodes=getattr(config, 'dag_min_nodes', 3),
+                max_nodes=config.dag_max_nodes,
+                min_nodes=config.dag_min_nodes,
             )
 
         # HierarchicalEngramMemory - L1/L2/L3 tiered memory (optional upgrade)
-        self.use_hierarchical_memory = getattr(config, 'use_hierarchical_memory', False)
+        self.use_hierarchical_memory = config.use_hierarchical_memory
         if self.use_hierarchical_memory:
             self.hierarchical_memory = HierarchicalEngramMemory(
                 sdr_size=config.sdr_size,
                 n_active=config.sdr_n_active,
                 content_dim=config.n_embd,
-                l1_capacity=getattr(config, 'hierarchical_l1_capacity', 64),
-                l2_capacity=getattr(config, 'hierarchical_l2_capacity', 512),
-                l3_capacity=getattr(config, 'hierarchical_l3_capacity', 4096),
+                l1_capacity=config.hierarchical_l1_capacity,
+                l2_capacity=config.hierarchical_l2_capacity,
+                l3_capacity=config.hierarchical_l3_capacity,
             )
 
         # ConsistencyImaginationModule - Counterfactual exploration
-        self.use_imagination = getattr(config, 'use_imagination', False)
+        self.use_imagination = config.use_imagination
         if self.use_imagination:
             self.imagination = ConsistencyImaginationModule(
                 embed_dim=config.n_embd,
                 manifold_dim=config.manifold_dim,
-                n_imagination_steps=getattr(config, 'imagination_steps', 4),
+                n_imagination_steps=config.imagination_steps,
             )
-            self.imagination_n_alternatives = getattr(config, 'imagination_n_alternatives', 4)
+            self.imagination_n_alternatives = config.imagination_n_alternatives
 
         # Memory Active Retrieval configuration
-        self.memory_active_retrieval = getattr(config, 'memory_active_retrieval', False)
-        self.memory_retrieval_top_k = getattr(config, 'memory_retrieval_top_k', 3)
-        self.memory_retrieval_weight = getattr(config, 'memory_retrieval_weight', 0.1)
+        self.memory_active_retrieval = config.memory_active_retrieval
+        self.memory_retrieval_top_k = config.memory_retrieval_top_k
+        self.memory_retrieval_weight = config.memory_retrieval_weight
 
         # Projection to combine retrieved memory with input (only if retrieval enabled)
         if self.memory_active_retrieval:
@@ -254,7 +254,7 @@ class NeuroManifoldGPT(nn.Module):
 
         # Replace ALL nn.Linear with FasterKAN (except lm_head)
         # This applies to: manifold projection, spectral decomposition, attention projections
-        if getattr(config, "use_kan_everywhere", False):
+        if config.use_kan_everywhere:
             replace_linear_with_fasterkan(
                 self,
                 num_centers=config.kan_num_centers,
@@ -267,7 +267,7 @@ class NeuroManifoldGPT(nn.Module):
         Uses DeepSeek-V3 style std=0.006 by default (configurable via init_std).
         Smaller initialization leads to faster early convergence.
         """
-        init_std = getattr(self.config, 'init_std', 0.006)
+        init_std = self.config.init_std
         if isinstance(module, nn.Linear):
             nn.init.normal_(module.weight, mean=0.0, std=init_std)
             if module.bias is not None:
