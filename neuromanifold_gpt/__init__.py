@@ -17,17 +17,32 @@ Example:
 __version__ = "0.1.0"
 
 # Core model and config
-from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
-from neuromanifold_gpt.model import (
-    NeuroManifoldGPT,
-    NeuroManifoldBlock,
-    FHNAttention,
-    ManifoldProjection,
-    SDREngramMemory,
-    SDROperations,
-    SemanticFoldingEncoder,
-    SpectralDecomposition,
-)
+# NOTE: Model imports temporarily wrapped in try/except for error tests (requires torch)
+try:
+    from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
+    from neuromanifold_gpt.model import (
+        NeuroManifoldGPT,
+        NeuroManifoldBlock,
+        FHNAttention,
+        ManifoldProjection,
+        SDREngramMemory,
+        SDROperations,
+        SemanticFoldingEncoder,
+        SpectralDecomposition,
+    )
+except ImportError:
+    # If torch is not available, skip model imports
+    # This allows error tests and config tests to run without torch
+    NeuroManifoldConfig = None
+    NeuroManifoldConfigNano = None
+    NeuroManifoldGPT = None
+    NeuroManifoldBlock = None
+    FHNAttention = None
+    ManifoldProjection = None
+    SDREngramMemory = None
+    SDROperations = None
+    SemanticFoldingEncoder = None
+    SpectralDecomposition = None
 
 # Training module
 # NOTE: Temporarily commented out to avoid import issues with old train.py
