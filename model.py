@@ -1,22 +1,10 @@
 """
-Full definition of a GPT Language Model, all of it in this single file.
-
-This implementation features a modular architecture that allows swapping between
-different component implementations without changing the core model structure:
-
-- Normalization: LayerNorm (GPT-2 style) or RMSNorm (LLaMA style)
-- Feed-forward: MLP with GELU activation or SwiGLU (LLaMA style)
-- Attention: Automatic fallback between Flash Attention and manual implementation
-
-Components are selected via GPTConfig parameters (norm_type, ffn_type) and
-instantiated in the Block class, enabling easy experimentation with modern
-architectural improvements while maintaining compatibility with GPT-2 checkpoints.
+GPT Language Model with modular architecture: swap between LayerNorm/RMSNorm,
+GELU/SwiGLU FFN, and Flash/manual attention via GPTConfig parameters.
 
 References:
-1) the official GPT-2 TensorFlow implementation released by OpenAI:
-https://github.com/openai/gpt-2/blob/master/src/model.py
-2) huggingface/transformers PyTorch implementation:
-https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+1) OpenAI GPT-2: https://github.com/openai/gpt-2/blob/master/src/model.py
+2) HuggingFace: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
 
 import math
@@ -39,31 +27,18 @@ class LayerNorm(nn.Module):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 class RMSNorm(nn.Module):
-    """ Root Mean Square Layer Normalization (RMSNorm).
-
-    Simpler than LayerNorm: no mean centering, no bias.
-    Used in LLaMA, Mistral, and other modern LLMs for better efficiency.
-    """
-
+    """ Root Mean Square Layer Normalization (LLaMA/Mistral style). Simpler than LayerNorm. """
     def __init__(self, ndim, eps=1e-5):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(ndim))
 
     def forward(self, input):
-        # Compute RMS: sqrt(mean(x^2))
-        # input shape: (B, T, ndim) or any shape with last dim = ndim
         variance = input.pow(2).mean(dim=-1, keepdim=True)
-        input = input * torch.rsqrt(variance + self.eps)
-        return self.weight * input
+        return self.weight * input * torch.rsqrt(variance + self.eps)
 
 class CausalSelfAttention(nn.Module):
-    """Multi-head causal self-attention mechanism.
-
-    Implements scaled dot-product attention with causal masking to prevent
-    attending to future tokens. Supports Flash Attention for improved efficiency.
-    """
-
+    """Multi-head causal self-attention with Flash Attention support."""
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
@@ -112,11 +87,7 @@ class CausalSelfAttention(nn.Module):
         return y
 
 class MLP(nn.Module):
-    """Standard GPT-2 style feed-forward network with GELU activation.
-
-    Two-layer MLP with expansion factor of 4: dim -> 4*dim -> dim
-    """
-
+    """GPT-2 style feed-forward network with GELU (dim -> 4*dim -> dim)."""
     def __init__(self, config):
         super().__init__()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
@@ -132,14 +103,7 @@ class MLP(nn.Module):
         return x
 
 class SwiGLU(nn.Module):
-    """LLaMA-style SwiGLU FFN.
-
-    FFN(x) = (SiLU(xW_gate) ⊙ xW_up) W_down
-
-    Uses 2/3 hidden dim to match parameter count of standard FFN.
-    More expressive than GELU with similar compute.
-    """
-
+    """LLaMA-style SwiGLU FFN: (SiLU(xW_gate) ⊙ xW_up) W_down. More expressive than GELU."""
     def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0, bias: bool = False):
         super().__init__()
         # LLaMA-style: 2/3 hidden dim for gate+up, then down
@@ -152,34 +116,17 @@ class SwiGLU(nn.Module):
         return self.dropout(self.w_down(F.silu(self.w_gate(x)) * self.w_up(x)))
 
 class Block(nn.Module):
-    """Transformer block with pre-normalization.
-
-    Applies attention and feed-forward layers with residual connections.
-    Supports pluggable normalization (LayerNorm/RMSNorm) and FFN types (GELU/SwiGLU).
-    """
-
+    """Transformer block with pluggable normalization (LayerNorm/RMSNorm) and FFN (GELU/SwiGLU)."""
     def __init__(self, config):
         super().__init__()
-        # Select normalization based on config.norm_type
-        if config.norm_type == 'rmsnorm':
-            self.ln_1 = RMSNorm(config.n_embd)
-            self.ln_2 = RMSNorm(config.n_embd)
-        else:
-            # Default to LayerNorm
-            self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
-            self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
-
+        norm = RMSNorm if config.norm_type == 'rmsnorm' else lambda d: LayerNorm(d, bias=config.bias)
+        self.ln_1 = norm(config.n_embd)
+        self.ln_2 = norm(config.n_embd)
         self.attn = CausalSelfAttention(config)
-
-        # Select FFN based on config.ffn_type
         if config.ffn_type == 'swiglu':
-            # SwiGLU FFN (LLaMA-style, 2/3 hidden dim to match param count)
-            # Standard FFN: 2 * dim * hidden = 2 * d * 4d = 8d²
-            # SwiGLU: 3 * dim * hidden = 3 * d * (8/3)d = 8d² (same params)
-            mlp_hidden = int(config.n_embd * 4.0 * 2 / 3)
+            mlp_hidden = int(config.n_embd * 4.0 * 2 / 3)  # Match param count with standard FFN
             self.mlp = SwiGLU(config.n_embd, mlp_hidden, dropout=config.dropout, bias=config.bias)
         else:
-            # Default GELU FFN
             self.mlp = MLP(config)
 
     def forward(self, x):
@@ -200,27 +147,13 @@ class GPTConfig:
     norm_type: str = 'layernorm' # 'layernorm' or 'rmsnorm'
 
 class GPT(nn.Module):
-    """GPT Language Model with modular architecture components.
-
-    Decoder-only transformer supporting various architectural choices:
-    - Normalization: LayerNorm or RMSNorm
-    - FFN: GELU or SwiGLU activation
-    - Attention: Standard or Flash Attention
-    """
-
+    """GPT Language Model with modular normalization, FFN, and attention components."""
     def __init__(self, config):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config
-
-        # Select final normalization based on config.norm_type
-        if config.norm_type == 'rmsnorm':
-            ln_f = RMSNorm(config.n_embd)
-        else:
-            # Default to LayerNorm
-            ln_f = LayerNorm(config.n_embd, bias=config.bias)
-
+        ln_f = RMSNorm(config.n_embd) if config.norm_type == 'rmsnorm' else LayerNorm(config.n_embd, bias=config.bias)
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
@@ -246,12 +179,7 @@ class GPT(nn.Module):
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
     def get_num_params(self, non_embedding=True):
-        """
-        Return the number of parameters in the model.
-        For non-embedding count (default), the position embeddings get subtracted.
-        The token embeddings would too, except due to the parameter sharing these
-        params are actually used as weights in the final layer, so we include them.
-        """
+        """Return number of parameters. For non_embedding, position embeddings are excluded."""
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
             n_params -= self.transformer.wpe.weight.numel()
@@ -385,28 +313,16 @@ class GPT(nn.Module):
         return optimizer
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):
-        """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
-        # first estimate the number of flops we do per iteration.
-        # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
+        """Estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS."""
         N = self.get_num_params()
         cfg = self.config
         L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd//cfg.n_head, cfg.block_size
-        flops_per_token = 6*N + 12*L*H*Q*T
-        flops_per_fwdbwd = flops_per_token * T
-        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
-        # express our flops throughput as ratio of A100 bfloat16 peak flops
-        flops_achieved = flops_per_iter * (1.0/dt) # per second
-        flops_promised = 312e12 # A100 GPU bfloat16 peak flops is 312 TFLOPS
-        mfu = flops_achieved / flops_promised
-        return mfu
+        flops_per_iter = (6*N + 12*L*H*Q*T) * T * fwdbwd_per_iter
+        return (flops_per_iter / dt) / 312e12  # A100 bfloat16 peak: 312 TFLOPS
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
-        """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
-        """
+        """Generate tokens autoregressively. idx: (b,t) LongTensor. Use model.eval() mode."""
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
