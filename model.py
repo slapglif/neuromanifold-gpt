@@ -134,9 +134,16 @@ class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        # Select normalization based on config.norm_type
+        if config.norm_type == 'rmsnorm':
+            self.ln_1 = RMSNorm(config.n_embd)
+            self.ln_2 = RMSNorm(config.n_embd)
+        else:
+            # Default to LayerNorm
+            self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+            self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
 
         # Select FFN based on config.ffn_type
         if config.ffn_type == 'swiglu':
