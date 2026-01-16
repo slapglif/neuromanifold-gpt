@@ -27,6 +27,7 @@ from neuromanifold_gpt.training.config import TrainConfig
 from neuromanifold_gpt.training.data_modules import StreamingDataModule, TextDataModule
 from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 from neuromanifold_gpt.training.callbacks import SampleGenerationCallback, MFUCallback
+from neuromanifold_gpt.training.checkpoint_callback import SeparatedCheckpointCallback
 from model import GPTConfig, GPT
 
 
@@ -156,6 +157,17 @@ def train(config: TrainConfig) -> None:
                 save_last=True,
             )
         )
+
+    if config.save_separate_optimizer:
+        callbacks.append(
+            SeparatedCheckpointCallback(
+                save_dir=config.out_dir,
+                save_interval=config.eval_interval,
+                save_model_only=config.save_model_only,
+                filename_prefix="checkpoint",
+            )
+        )
+        logger.info(f"Enabled separated checkpoint saving (model_only={config.save_model_only})")
 
     if config.early_stopping_patience > 0:
         callbacks.append(
