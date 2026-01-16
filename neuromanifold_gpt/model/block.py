@@ -93,9 +93,10 @@ class NeuroManifoldBlock(nn.Module):
         >>> output, info = block(sdr_input)  # (B, T, sdr_size) -> (B, T, embed_dim)
     """
 
-    def __init__(self, config: NeuroManifoldBlockConfig):
+    def __init__(self, config: NeuroManifoldBlockConfig, position_embedding: nn.Module = None):
         super().__init__()
         self.config = config
+        self.position_embedding = position_embedding
 
         # SDR to embedding (skip if dimensions match for efficiency)
         if self.config.sdr_size != self.config.embed_dim:

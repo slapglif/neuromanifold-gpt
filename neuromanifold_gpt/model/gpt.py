@@ -133,7 +133,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             else:
                 block_cfg.sdr_size = config.n_embd
 
-            return NeuroManifoldBlock(config=block_cfg)
+            return NeuroManifoldBlock(config=block_cfg, position_embedding=self.position_embedding)
         self.blocks = nn.ModuleList([make_block(i) for i in range(config.n_layer)])
 
         # mHC stream expansion/reduction (for multi-stream mHC)
