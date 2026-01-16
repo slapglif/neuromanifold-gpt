@@ -1,11 +1,11 @@
 {
   "active": true,
   "spec": "033-neuromanifold-attention-benchmarks",
-  "state": "building",
+  "state": "complete",
   "subtasks": {
-    "completed": 11,
+    "completed": 13,
     "total": 13,
-    "in_progress": 1,
+    "in_progress": 0,
     "failed": 0
   },
   "phase": {
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 12,
+    "number": 13,
     "started_at": "2026-01-15T21:53:37.855089"
   },
-  "last_update": "2026-01-15T22:39:49.816195"
+  "last_update": "2026-01-15T23:16:54.605949"
 }
