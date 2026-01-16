@@ -3,23 +3,23 @@
   "spec": "045-vectorize-repetition-penalty-in-generate-with-scat",
   "state": "building",
   "subtasks": {
-    "completed": 1,
+    "completed": 3,
     "total": 5,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Vectorize Repetition Penalty",
+    "current": "Performance Verification",
     "id": null,
-    "total": 3
+    "total": 2
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 3,
+    "number": 5,
     "started_at": "2026-01-16T01:15:32.709563"
   },
-  "last_update": "2026-01-16T01:25:25.189438"
+  "last_update": "2026-01-16T01:36:14.081843"
 }
