@@ -60,10 +60,38 @@ class TrainConfig:
     - Logging and monitoring (WandB integration)
     - Sampling and evaluation
 
-    The config supports two modes:
-    1. Direct model_config: Pass a NeuroManifoldConfig or GPTConfig object
-    2. Individual parameters: Set n_layer, n_embd, etc. for backward compatibility
-       (auto-creates model_config in __post_init__)
+    MODEL CONFIGURATION COMPOSITION PATTERN:
+    ========================================
+    This config uses a composition pattern to eliminate duplication between
+    TrainConfig and model-specific configs (NeuroManifoldConfig/GPTConfig).
+
+    Two usage modes are supported:
+
+    1. DIRECT COMPOSITION (Recommended):
+       Pass a pre-configured model config object. This provides full access to
+       all model parameters, type safety, and reusable configuration.
+
+       Example:
+           from neuromanifold_gpt.config.base import NeuroManifoldConfig
+           model_cfg = NeuroManifoldConfig(n_layer=12, n_embd=768, n_heads=12)
+           train_cfg = TrainConfig(model_config=model_cfg, dataset="shakespeare")
+
+    2. BACKWARD COMPATIBILITY MODE (Legacy):
+       Set individual model parameters (n_layer, n_embd, etc.) directly on
+       TrainConfig. If model_config is None, __post_init__ automatically creates
+       the appropriate config object.
+
+       Example:
+           train_cfg = TrainConfig(
+               model_type="neuromanifold",
+               n_layer=12,
+               n_embd=768,
+               n_heads=12,
+               dataset="shakespeare"
+           )
+
+    Both modes are equivalent in functionality. Mode 1 is preferred for new code
+    as it provides better separation of concerns and type safety.
 
     Attributes:
         out_dir: Output directory for checkpoints and logs
@@ -122,12 +150,42 @@ class TrainConfig:
     streaming: bool = False  # Use HuggingFace streaming for general text
     vocab_size: int = 0  # 0 = auto-detect, 50257 = GPT-2 BPE
 
-    # Model configuration
+    # Model configuration - Composition Pattern
+    # =========================================
+    # This configuration supports two ways to specify model architecture:
+    #
+    # 1. DIRECT COMPOSITION (Recommended for new code):
+    #    Pass a pre-configured NeuroManifoldConfig or GPTConfig object.
+    #    This approach:
+    #    - Provides full access to all model parameters
+    #    - Ensures type safety and validation
+    #    - Makes configuration reusable across scripts
+    #
+    #    Example:
+    #        from neuromanifold_gpt.config.base import NeuroManifoldConfig
+    #        model_config = NeuroManifoldConfig(n_layer=12, n_embd=768, n_heads=12)
+    #        train_config = TrainConfig(model_config=model_config)
+    #
+    # 2. BACKWARD COMPATIBILITY MODE (Legacy):
+    #    Set individual parameters (n_layer, n_embd, etc.) directly.
+    #    If model_config is None, __post_init__ automatically creates the
+    #    appropriate config object based on model_type and these parameters.
+    #
+    #    Example:
+    #        train_config = TrainConfig(
+    #            model_type="neuromanifold",
+    #            n_layer=12,
+    #            n_embd=768,
+    #            n_heads=12
+    #        )
+    #
+    # The composition pattern eliminates duplication between TrainConfig and
+    # model-specific configs while maintaining backward compatibility.
     model_type: str = "neuromanifold"  # "neuromanifold" or "gpt"
     model_config: Optional[NeuroManifoldConfig | GPTConfig] = None
 
     # Model architecture parameters (for backward compatibility)
-    # If model_config is None, these will be used to create it
+    # These are only used if model_config is None (see __post_init__)
     n_layer: Optional[int] = None
     n_embd: Optional[int] = None
     n_head: Optional[int] = None  # For GPTConfig
@@ -167,12 +225,27 @@ class TrainConfig:
     wandb_run_name: str = "neuromanifold"
 
     def __post_init__(self):
-        """Create model_config from individual parameters if not provided."""
+        """Create model_config from individual parameters if not provided.
+
+        Implements the backward compatibility mode of the composition pattern:
+        - If model_config is already set: Use it directly (direct composition)
+        - If model_config is None: Auto-create from individual parameters
+
+        This approach:
+        1. Collects all non-None individual parameters (n_layer, n_embd, etc.)
+        2. Adds training-level parameters (vocab_size, block_size) if set
+        3. Creates the appropriate config object (GPTConfig or NeuroManifoldConfig)
+           based on model_type
+        4. Handles model-specific parameter naming (n_head vs n_heads)
+
+        After this method completes, self.model_config is guaranteed to be set,
+        either from direct composition or auto-creation.
+        """
         if self.model_config is None:
-            # Build kwargs from individual parameters
+            # Backward compatibility mode: Build model_config from individual parameters
             config_kwargs = {}
 
-            # Add common parameters
+            # Collect common parameters shared by both GPTConfig and NeuroManifoldConfig
             if self.n_layer is not None:
                 config_kwargs['n_layer'] = self.n_layer
             if self.n_embd is not None:
@@ -182,20 +255,19 @@ class TrainConfig:
             if self.bias is not None:
                 config_kwargs['bias'] = self.bias
 
-            # Add vocab_size and block_size if set
+            # Add training-level parameters that also live in model configs
             if self.vocab_size > 0:
                 config_kwargs['vocab_size'] = self.vocab_size
             if self.block_size > 0:
                 config_kwargs['block_size'] = self.block_size
 
             # Create appropriate config based on model_type
+            # Note: GPT uses 'n_head', NeuroManifold uses 'n_heads' (different naming)
             if self.model_type == "gpt":
-                # GPT uses n_head (not n_heads)
                 if self.n_head is not None:
                     config_kwargs['n_head'] = self.n_head
                 self.model_config = GPTConfig(**config_kwargs)
             else:
-                # NeuroManifold uses n_heads (not n_head)
                 if self.n_heads is not None:
                     config_kwargs['n_heads'] = self.n_heads
                 self.model_config = NeuroManifoldConfig(**config_kwargs)
