@@ -635,43 +635,235 @@ class EvolutionarySearch(Searcher):
         return offspring_results
 
     def _update_population(self) -> None:
-        """Update population with best individuals (elitism + offspring selection)."""
+        """Update population with best individuals (elitism + offspring selection).
+
+        Uses elitism to preserve top performers and diversity-based selection
+        to maintain population diversity.
+        """
         # Calculate number of elite individuals to preserve
         n_elite = max(1, int(self.population_size * self.elitism_ratio))
 
-        # Combine population and recent offspring
-        all_architectures = self.population + [
-            arch for arch in self.evaluated_architectures[-len(self.evaluated_architectures):]
+        # Separate current population and new offspring
+        offspring = [
+            arch for arch in self.evaluated_architectures
             if arch.search_iteration == self.generation
         ]
-        all_results = self.population_results + [
+        offspring_results = [
             res for arch, res in zip(
-                self.evaluated_architectures[-len(self.evaluated_architectures):],
-                self.evaluation_results[-len(self.evaluation_results):]
+                self.evaluated_architectures,
+                self.evaluation_results
             )
             if arch.search_iteration == self.generation
         ]
 
-        # Sort by perplexity (successful evaluations first, then failed)
-        successful_pairs = [
-            (arch, res) for arch, res in zip(all_architectures, all_results)
-            if res.success
+        # Sort current population by perplexity (best first)
+        pop_pairs = list(zip(self.population, self.population_results))
+        successful_pop = [(arch, res) for arch, res in pop_pairs if res.success]
+        failed_pop = [(arch, res) for arch, res in pop_pairs if not res.success]
+        successful_pop.sort(key=lambda x: x[1].perplexity)
+
+        # Preserve elite individuals from current population
+        elite_pairs = successful_pop[:n_elite]
+        logger.info(f"Preserving {len(elite_pairs)} elite individuals")
+
+        # Combine remaining population with offspring
+        remaining_pop = successful_pop[n_elite:] + failed_pop
+        offspring_pairs = list(zip(offspring, offspring_results))
+
+        # Sort offspring by fitness
+        successful_offspring = [(arch, res) for arch, res in offspring_pairs if res.success]
+        failed_offspring = [(arch, res) for arch, res in offspring_pairs if not res.success]
+        successful_offspring.sort(key=lambda x: x[1].perplexity)
+
+        # Combine non-elite candidates
+        candidate_pairs = successful_offspring + remaining_pop + failed_offspring
+
+        # Select remaining individuals with diversity consideration
+        n_remaining = self.population_size - len(elite_pairs)
+        selected_pairs = self._select_diverse_individuals(
+            candidate_pairs,
+            elite_pairs,
+            n_remaining
+        )
+
+        # Update population with elite + diverse selected
+        all_selected = elite_pairs + selected_pairs
+        self.population = [arch for arch, _ in all_selected]
+        self.population_results = [res for _, res in all_selected]
+
+    def _select_diverse_individuals(
+        self,
+        candidates: List[Tuple[ArchitectureConfig, EvaluationResult]],
+        elite: List[Tuple[ArchitectureConfig, EvaluationResult]],
+        n_select: int,
+    ) -> List[Tuple[ArchitectureConfig, EvaluationResult]]:
+        """Select individuals balancing fitness and diversity.
+
+        Args:
+            candidates: List of candidate (architecture, result) pairs
+            elite: List of elite (architecture, result) pairs already selected
+            n_select: Number of individuals to select
+
+        Returns:
+            List of selected (architecture, result) pairs
+        """
+        if len(candidates) <= n_select:
+            return candidates
+
+        selected = []
+        remaining = candidates.copy()
+
+        # Select individuals iteratively, balancing fitness and diversity
+        for _ in range(n_select):
+            if not remaining:
+                break
+
+            # Calculate diversity score for each candidate
+            best_candidate_idx = 0
+            best_score = float('-inf')
+
+            for i, (cand_arch, cand_res) in enumerate(remaining):
+                # Fitness score (lower perplexity is better, use negative)
+                if cand_res.success:
+                    fitness_score = -cand_res.perplexity
+                else:
+                    fitness_score = float('-inf')
+
+                # Diversity score (distance from already selected)
+                diversity_score = self._calculate_diversity_score(
+                    cand_arch,
+                    [arch for arch, _ in elite + selected]
+                )
+
+                # Combined score (weighted sum)
+                # Weight fitness more heavily (0.7) vs diversity (0.3)
+                combined_score = 0.7 * fitness_score + 0.3 * diversity_score
+
+                if combined_score > best_score:
+                    best_score = combined_score
+                    best_candidate_idx = i
+
+            # Add best candidate to selected
+            selected.append(remaining.pop(best_candidate_idx))
+
+        return selected
+
+    def _calculate_diversity_score(
+        self,
+        architecture: ArchitectureConfig,
+        population: List[ArchitectureConfig],
+    ) -> float:
+        """Calculate diversity score for an architecture relative to a population.
+
+        Higher score means more diverse (further from existing population).
+
+        Args:
+            architecture: Architecture to score
+            population: Population to compare against
+
+        Returns:
+            Diversity score (higher = more diverse)
+        """
+        if not population:
+            return 1.0
+
+        # Calculate minimum distance to any individual in population
+        distances = [
+            self._architecture_distance(architecture, other)
+            for other in population
         ]
-        failed_pairs = [
-            (arch, res) for arch, res in zip(all_architectures, all_results)
-            if not res.success
+
+        # Return minimum distance (most similar individual)
+        return min(distances)
+
+    def _architecture_distance(
+        self,
+        arch1: ArchitectureConfig,
+        arch2: ArchitectureConfig,
+    ) -> float:
+        """Calculate normalized distance between two architectures.
+
+        Uses weighted Hamming distance for discrete parameters and
+        normalized Euclidean distance for continuous parameters.
+
+        Args:
+            arch1: First architecture
+            arch2: Second architecture
+
+        Returns:
+            Normalized distance in [0, 1]
+        """
+        differences = 0
+        total_params = 0
+
+        # Discrete parameters (use Hamming distance)
+        discrete_params = [
+            ('n_layer', self.search_space.n_layer_choices),
+            ('n_embd', self.search_space.n_embd_choices),
+            ('n_heads', self.search_space.n_heads_choices),
+            ('attention_type', self.search_space.attention_type_choices),
+            ('use_qk_norm', self.search_space.use_qk_norm_choices),
+            ('use_mhc', self.search_space.use_mhc_choices),
+            ('use_mla', self.search_space.use_mla_choices),
+            ('use_moe', self.search_space.use_moe_choices),
+            ('use_kan', self.search_space.use_kan_choices),
+            ('kan_type', self.search_space.kan_type_choices),
+            ('kan_num_centers', self.search_space.kan_num_centers_choices),
+            ('fhn_tau', self.search_space.fhn_tau_choices),
+            ('use_fhn_parallel', self.search_space.use_fhn_parallel_choices),
+            ('manifold_dim', self.search_space.manifold_dim_choices),
+            ('n_eigenvectors', self.search_space.n_eigenvectors_choices),
+            ('use_multiscale_manifold', self.search_space.use_multiscale_manifold_choices),
         ]
 
-        successful_pairs.sort(key=lambda x: x[1].perplexity)
+        for param_name, _ in discrete_params:
+            val1 = getattr(arch1, param_name)
+            val2 = getattr(arch2, param_name)
+            if val1 != val2:
+                differences += 1
+            total_params += 1
 
-        # Select best individuals for new population
-        sorted_pairs = successful_pairs + failed_pairs
-        n_select = min(self.population_size, len(sorted_pairs))
-        selected_pairs = sorted_pairs[:n_select]
+        # Continuous parameters (use normalized absolute difference)
+        continuous_params = [
+            ('fhn_threshold', self.search_space.fhn_threshold_range),
+            ('dropout', self.search_space.dropout_range),
+        ]
 
-        # Update population
-        self.population = [arch for arch, _ in selected_pairs]
-        self.population_results = [res for _, res in selected_pairs]
+        for param_name, value_range in continuous_params:
+            val1 = getattr(arch1, param_name)
+            val2 = getattr(arch2, param_name)
+            range_size = value_range[1] - value_range[0]
+            if range_size > 0:
+                normalized_diff = abs(val1 - val2) / range_size
+                differences += normalized_diff
+            total_params += 1
+
+        # Return normalized distance
+        if total_params == 0:
+            return 0.0
+        return differences / total_params
+
+    def _calculate_population_diversity(self) -> float:
+        """Calculate average diversity of the current population.
+
+        Returns:
+            Average pairwise distance between all individuals
+        """
+        if len(self.population) < 2:
+            return 0.0
+
+        total_distance = 0.0
+        n_pairs = 0
+
+        for i in range(len(self.population)):
+            for j in range(i + 1, len(self.population)):
+                total_distance += self._architecture_distance(
+                    self.population[i],
+                    self.population[j]
+                )
+                n_pairs += 1
+
+        return total_distance / n_pairs if n_pairs > 0 else 0.0
 
     def _log_generation_stats(self) -> None:
         """Log statistics for the current generation."""
@@ -682,9 +874,13 @@ class EvolutionarySearch(Searcher):
             best_ppl = min(res.perplexity for res in successful_results)
             avg_ppl = sum(res.perplexity for res in successful_results) / len(successful_results)
 
+            # Calculate population diversity
+            diversity = self._calculate_population_diversity()
+
             logger.info(f"Generation {self.generation} statistics:")
             logger.info(f"  Best perplexity: {best_ppl:.2f}")
             logger.info(f"  Average perplexity: {avg_ppl:.2f}")
+            logger.info(f"  Population diversity: {diversity:.3f}")
             logger.info(f"  Successful evaluations: {len(successful_results)}/{len(self.population_results)}")
         else:
             logger.warning(f"Generation {self.generation}: No successful evaluations")
