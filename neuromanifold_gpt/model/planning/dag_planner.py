@@ -1,28 +1,26 @@
-# neuromanifold_gpt/model/planning/dag_planner.py
 """
-Forced DAG Planner - Placeholder stub
+DAG Planner - Forced Directed Acyclic Graph planning.
 
-This is a placeholder for the ForcedDAGPlanner class.
-Full implementation to be added in a future feature.
+Stub implementation.
 """
-
 import torch
 import torch.nn as nn
 
 
 class ForcedDAGPlanner(nn.Module):
     """
-    Placeholder for Forced DAG Planner.
+    Forced DAG planner for structured reasoning.
 
-    This is a stub implementation to satisfy imports.
-    The full implementation is planned for a future feature.
+    Stub implementation - allows imports to succeed until full implementation is ready.
     """
 
-    def __init__(self, embed_dim, num_steps=5):
+    def __init__(self, dim, max_depth=8, max_nodes=32, min_nodes=3):
         super().__init__()
-        self.embed_dim = embed_dim
-        self.num_steps = num_steps
+        self.dim = dim
+        self.max_depth = max_depth
+        self.max_nodes = max_nodes
+        self.min_nodes = min_nodes
 
     def forward(self, x):
-        """Placeholder forward pass - just returns input unchanged"""
+        """Stub forward pass - returns input unchanged."""
         return x

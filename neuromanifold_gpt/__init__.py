@@ -32,8 +32,9 @@ from neuromanifold_gpt.model import (
 # Training module (optional - requires lightning)
 try:
     from neuromanifold_gpt.train import NeuroManifoldLightning
+    _HAS_LIGHTNING = True
 except ImportError:
-    NeuroManifoldLightning = None
+    _HAS_LIGHTNING = False
 
 __all__ = [
     # Version
@@ -52,6 +53,8 @@ __all__ = [
     "SDROperations",
     "SemanticFoldingEncoder",
     "SpectralDecomposition",
-    # Training
-    "NeuroManifoldLightning",
 ]
+
+# Add training module to __all__ if available
+if _HAS_LIGHTNING:
+    __all__.append("NeuroManifoldLightning")

@@ -1,29 +1,25 @@
-# neuromanifold_gpt/model/imagination.py
 """
-Consistency Imagination Module - Placeholder stub
+Consistency Imagination Module - Stub implementation.
 
-This is a placeholder for the ConsistencyImaginationModule class.
-Full implementation to be added in a future feature.
+Full implementation pending.
 """
-
 import torch
 import torch.nn as nn
 
 
 class ConsistencyImaginationModule(nn.Module):
     """
-    Placeholder for Consistency Imagination Module.
+    Consistency-based imagination module for predictive modeling.
 
-    This is a stub implementation to satisfy imports.
-    The full implementation is planned for a future feature.
+    Stub implementation - allows imports to succeed until full implementation is ready.
     """
 
-    def __init__(self, embed_dim, manifold_dim, num_imagination_steps=2):
+    def __init__(self, dim, steps=4, imagination_dim=256):
         super().__init__()
-        self.embed_dim = embed_dim
-        self.manifold_dim = manifold_dim
-        self.num_imagination_steps = num_imagination_steps
+        self.dim = dim
+        self.steps = steps
+        self.imagination_dim = imagination_dim
 
     def forward(self, x):
-        """Placeholder forward pass - just returns input unchanged"""
+        """Stub forward pass - returns input unchanged."""
         return x

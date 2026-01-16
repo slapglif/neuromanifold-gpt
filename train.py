@@ -41,12 +41,6 @@ from loguru import logger
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
-from neuromanifold_gpt.utils.memory_optimizer import (
-    detect_gpu_memory,
-    estimate_model_memory,
-    recommend_batch_size,
-)
-from neuromanifold_gpt.utils.memory_monitor import GPUMemoryMonitor
 from model import GPTConfig, GPT
 
 
@@ -55,7 +49,92 @@ from model import GPTConfig, GPT
 # -----------------------------------------------------------------------------
 @dataclass
 class TrainConfig:
-    """Training configuration with all hyperparameters."""
+    """Training configuration for NeuroManifoldGPT and baseline GPT.
+
+    This configuration manages all aspects of the training pipeline including:
+    - I/O and checkpointing
+    - Dataset loading and preprocessing
+    - Model selection and architecture (NeuroManifoldGPT or GPT)
+    - Training hyperparameters (learning rate, optimization, schedules)
+    - Hardware settings (devices, precision)
+    - Logging and monitoring (WandB integration)
+    - Sampling and evaluation
+
+    MODEL CONFIGURATION COMPOSITION PATTERN:
+    ========================================
+    This config uses a composition pattern to eliminate duplication between
+    TrainConfig and model-specific configs (NeuroManifoldConfig/GPTConfig).
+
+    Two usage modes are supported:
+
+    1. DIRECT COMPOSITION (Recommended):
+       Pass a pre-configured model config object. This provides full access to
+       all model parameters, type safety, and reusable configuration.
+
+       Example:
+           from neuromanifold_gpt.config.base import NeuroManifoldConfig
+           model_cfg = NeuroManifoldConfig(n_layer=12, n_embd=768, n_heads=12)
+           train_cfg = TrainConfig(model_config=model_cfg, dataset="shakespeare")
+
+    2. BACKWARD COMPATIBILITY MODE (Legacy):
+       Set individual model parameters (n_layer, n_embd, etc.) directly on
+       TrainConfig. If model_config is None, __post_init__ automatically creates
+       the appropriate config object.
+
+       Example:
+           train_cfg = TrainConfig(
+               model_type="neuromanifold",
+               n_layer=12,
+               n_embd=768,
+               n_heads=12,
+               dataset="shakespeare"
+           )
+
+    Both modes are equivalent in functionality. Mode 1 is preferred for new code
+    as it provides better separation of concerns and type safety.
+
+    Attributes:
+        out_dir: Output directory for checkpoints and logs
+        eval_interval: Steps between evaluations
+        log_interval: Steps between logging metrics
+        eval_iters: Number of iterations for evaluation
+        save_checkpoints: Whether to save model checkpoints
+        dataset: Dataset name (e.g., "shakespeare_char")
+        batch_size: Training batch size
+        block_size: Maximum sequence length
+        num_workers: Number of data loader workers
+        streaming: Use HuggingFace streaming for general text datasets
+        vocab_size: Vocabulary size (0 = auto-detect from data)
+        model_type: Model architecture ("neuromanifold" or "gpt")
+        model_config: Complete model configuration object (NeuroManifoldConfig or GPTConfig)
+        n_layer: Number of transformer layers (for backward compatibility)
+        n_embd: Embedding dimension (for backward compatibility)
+        n_head: Number of attention heads for GPT (for backward compatibility)
+        n_heads: Number of attention heads for NeuroManifold (for backward compatibility)
+        dropout: Dropout probability (for backward compatibility)
+        bias: Whether to use bias in linear layers (for backward compatibility)
+        max_iters: Maximum training iterations
+        gradient_accumulation_steps: Gradient accumulation steps
+        learning_rate: Peak learning rate
+        min_lr: Minimum learning rate for decay schedule
+        weight_decay: Weight decay for AdamW optimizer
+        beta1: AdamW beta1 parameter
+        beta2: AdamW beta2 parameter
+        grad_clip: Gradient clipping norm
+        warmup_iters: Linear warmup iterations
+        lr_decay_iters: Learning rate decay schedule length
+        early_stopping_patience: Patience for early stopping (in eval intervals)
+        sample_interval: Steps between generating samples
+        sample_max_tokens: Maximum tokens to generate in samples
+        sample_temperature: Sampling temperature
+        sample_top_k: Top-k sampling parameter
+        devices: Number of GPUs/devices to use
+        precision: Training precision ("bf16-mixed", "fp16-mixed", "32")
+        compile_model: Whether to compile model with torch.compile
+        wandb_log: Whether to log to Weights & Biases
+        wandb_project: WandB project name
+        wandb_run_name: WandB run name
+    """
     # I/O
     out_dir: str = "out-lightning"
     eval_interval: int = 2000
@@ -71,38 +150,48 @@ class TrainConfig:
     streaming: bool = False  # Use HuggingFace streaming for general text
     vocab_size: int = 0  # 0 = auto-detect, 50257 = GPT-2 BPE
 
-    # Model
+    # Model configuration - Composition Pattern
+    # =========================================
+    # This configuration supports two ways to specify model architecture:
+    #
+    # 1. DIRECT COMPOSITION (Recommended for new code):
+    #    Pass a pre-configured NeuroManifoldConfig or GPTConfig object.
+    #    This approach:
+    #    - Provides full access to all model parameters
+    #    - Ensures type safety and validation
+    #    - Makes configuration reusable across scripts
+    #
+    #    Example:
+    #        from neuromanifold_gpt.config.base import NeuroManifoldConfig
+    #        model_config = NeuroManifoldConfig(n_layer=12, n_embd=768, n_heads=12)
+    #        train_config = TrainConfig(model_config=model_config)
+    #
+    # 2. BACKWARD COMPATIBILITY MODE (Legacy):
+    #    Set individual parameters (n_layer, n_embd, etc.) directly.
+    #    If model_config is None, __post_init__ automatically creates the
+    #    appropriate config object based on model_type and these parameters.
+    #
+    #    Example:
+    #        train_config = TrainConfig(
+    #            model_type="neuromanifold",
+    #            n_layer=12,
+    #            n_embd=768,
+    #            n_heads=12
+    #        )
+    #
+    # The composition pattern eliminates duplication between TrainConfig and
+    # model-specific configs while maintaining backward compatibility.
     model_type: str = "neuromanifold"  # "neuromanifold" or "gpt"
-    n_layer: int = 6
-    n_head: int = 6
-    n_embd: int = 384
-    dropout: float = 0.0
-    bias: bool = False
+    model_config: Optional[NeuroManifoldConfig | GPTConfig] = None
 
-    # NeuroManifold specific
-    sdr_size: int = 2048
-    manifold_dim: int = 64
-    n_eigenvectors: int = 32
-    use_sdr: bool = False
-    use_kan: bool = True
-    kan_type: str = "faster"
-    kan_wavelet: str = "dog"
-    use_fast_wavekan: bool = True
-    kan_num_centers: int = 3
-    fhn_threshold: float = 0.5
-    fhn_tau: float = 12.5
-    n_fhn_steps: int = 2
-    use_fhn_imex: bool = True
-    use_fhn_partitioning: bool = True
-    use_fhn_fused: bool = False
-    use_mhc: bool = True
-    use_full_mhc: bool = True
-    mhc_n_streams: int = 2
-    use_kaufmann_attention: bool = False
-    attention: str = "standard"  # Attention mechanism: standard, soliton, sdr, fast-spectral
-
-    # Speed optimization
-    skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
+    # Model architecture parameters (for backward compatibility)
+    # These are only used if model_config is None (see __post_init__)
+    n_layer: Optional[int] = None
+    n_embd: Optional[int] = None
+    n_head: Optional[int] = None  # For GPTConfig
+    n_heads: Optional[int] = None  # For NeuroManifoldConfig
+    dropout: Optional[float] = None
+    bias: Optional[bool] = None
 
     # Training
     max_iters: int = 5000
@@ -129,12 +218,59 @@ class TrainConfig:
     devices: int = 1
     precision: str = "bf16-mixed"
     compile_model: bool = False
-    gradient_checkpointing: bool = False
 
     # Logging
     wandb_log: bool = False
     wandb_project: str = "neuromanifold-gpt"
     wandb_run_name: str = "neuromanifold"
+
+    def __post_init__(self):
+        """Create model_config from individual parameters if not provided.
+
+        Implements the backward compatibility mode of the composition pattern:
+        - If model_config is already set: Use it directly (direct composition)
+        - If model_config is None: Auto-create from individual parameters
+
+        This approach:
+        1. Collects all non-None individual parameters (n_layer, n_embd, etc.)
+        2. Adds training-level parameters (vocab_size, block_size) if set
+        3. Creates the appropriate config object (GPTConfig or NeuroManifoldConfig)
+           based on model_type
+        4. Handles model-specific parameter naming (n_head vs n_heads)
+
+        After this method completes, self.model_config is guaranteed to be set,
+        either from direct composition or auto-creation.
+        """
+        if self.model_config is None:
+            # Backward compatibility mode: Build model_config from individual parameters
+            config_kwargs = {}
+
+            # Collect common parameters shared by both GPTConfig and NeuroManifoldConfig
+            if self.n_layer is not None:
+                config_kwargs['n_layer'] = self.n_layer
+            if self.n_embd is not None:
+                config_kwargs['n_embd'] = self.n_embd
+            if self.dropout is not None:
+                config_kwargs['dropout'] = self.dropout
+            if self.bias is not None:
+                config_kwargs['bias'] = self.bias
+
+            # Add training-level parameters that also live in model configs
+            if self.vocab_size > 0:
+                config_kwargs['vocab_size'] = self.vocab_size
+            if self.block_size > 0:
+                config_kwargs['block_size'] = self.block_size
+
+            # Create appropriate config based on model_type
+            # Note: GPT uses 'n_head', NeuroManifold uses 'n_heads' (different naming)
+            if self.model_type == "gpt":
+                if self.n_head is not None:
+                    config_kwargs['n_head'] = self.n_head
+                self.model_config = GPTConfig(**config_kwargs)
+            else:
+                if self.n_heads is not None:
+                    config_kwargs['n_heads'] = self.n_heads
+                self.model_config = NeuroManifoldConfig(**config_kwargs)
 
 
 # -----------------------------------------------------------------------------
@@ -562,152 +698,6 @@ class MFUCallback(Callback):
             pass
 
 
-class MemoryMonitorCallback(Callback):
-    """Track GPU and CPU memory usage during training."""
-
-    def __init__(self, log_interval: int = 100):
-        self.log_interval = log_interval
-
-    def on_train_batch_end(
-        self,
-        trainer: pl.Trainer,
-        pl_module: NeuroManifoldLitModule,
-        outputs,
-        batch,
-        batch_idx: int,
-    ) -> None:
-        if batch_idx % self.log_interval != 0:
-            return
-
-        # Track GPU memory if available
-        if torch.cuda.is_available():
-            device_idx = pl_module.device.index if hasattr(pl_module.device, "index") else 0
-            if device_idx is None:
-                device_idx = 0
-
-            try:
-                # Memory in GB
-                mem_allocated = torch.cuda.memory_allocated(device_idx) / 1e9
-                mem_reserved = torch.cuda.memory_reserved(device_idx) / 1e9
-                mem_max_allocated = torch.cuda.max_memory_allocated(device_idx) / 1e9
-
-                pl_module.log("memory/gpu_allocated_gb", mem_allocated, on_step=True)
-                pl_module.log("memory/gpu_reserved_gb", mem_reserved, on_step=True)
-                pl_module.log("memory/gpu_max_allocated_gb", mem_max_allocated, on_step=True)
-
-                # Calculate memory utilization percentage
-                if torch.cuda.get_device_properties(device_idx).total_memory > 0:
-                    total_mem = torch.cuda.get_device_properties(device_idx).total_memory / 1e9
-                    util_pct = (mem_allocated / total_mem) * 100
-                    pl_module.log("memory/gpu_utilization_pct", util_pct, on_step=True, prog_bar=True)
-
-            except Exception:
-                pass
-
-
-# -----------------------------------------------------------------------------
-# Memory Reporting
-# -----------------------------------------------------------------------------
-def print_startup_memory_report(
-    model: torch.nn.Module,
-    config: TrainConfig,
-) -> None:
-    """
-    Print startup memory report with VRAM detection and batch size recommendation.
-
-    Shows:
-    - Available VRAM detected
-    - Model parameter count
-    - Current batch size vs recommended
-    - Estimated memory usage
-    """
-    logger.info("\n" + "=" * 80)
-    logger.info("MEMORY REPORT")
-    logger.info("=" * 80)
-
-    # GPU detection
-    monitor = GPUMemoryMonitor()
-    gpu_name = monitor.get_device_name()
-    vram_gb = detect_gpu_memory()
-
-    if vram_gb > 0:
-        logger.info(f"GPU Device: {gpu_name}")
-        logger.info(f"Available VRAM: {vram_gb:.2f} GB")
-    else:
-        logger.info("GPU Device: None (CPU mode)")
-        logger.info("Available VRAM: 0.00 GB")
-
-    # Model size
-    n_params = sum(p.numel() for p in model.parameters())
-    model_size_m = n_params / 1e6
-    logger.info(f"Model Parameters: {model_size_m:.2f}M ({n_params:,})")
-
-    # Batch size recommendation
-    if vram_gb > 0:
-        # Determine dtype bytes based on precision
-        dtype_bytes = 2 if "16" in config.precision else 4
-        if "bf16" in config.precision:
-            dtype_bytes = 2
-
-        recommended_batch_size = recommend_batch_size(
-            vram_gb=vram_gb,
-            model_size_m=int(model_size_m),
-            seq_len=config.block_size,
-            dtype_bytes=dtype_bytes,
-            safety_factor=0.8,
-        )
-
-        logger.info(f"\nBatch Size Configuration:")
-        logger.info(f"  Current batch size: {config.batch_size}")
-        logger.info(f"  Recommended batch size: {recommended_batch_size}")
-        logger.info(f"  Gradient accumulation steps: {config.gradient_accumulation_steps}")
-        logger.info(f"  Effective batch size: {config.batch_size * config.gradient_accumulation_steps}")
-
-        # Warning if current batch size is significantly larger than recommended
-        if config.batch_size > recommended_batch_size * 1.5:
-            logger.warning(
-                f"⚠️  Current batch size ({config.batch_size}) is significantly larger than "
-                f"recommended ({recommended_batch_size}). This may cause OOM errors!"
-            )
-        elif config.batch_size < recommended_batch_size * 0.5:
-            logger.info(
-                f"ℹ️  You can potentially increase batch size to ~{recommended_batch_size} "
-                f"for better GPU utilization."
-            )
-
-        # Memory usage estimate
-        estimated_memory = estimate_model_memory(
-            n_params=n_params,
-            batch_size=config.batch_size,
-            seq_len=config.block_size,
-            dtype_bytes=dtype_bytes,
-        )
-
-        logger.info(f"\nEstimated Memory Usage:")
-        logger.info(f"  Training (current batch): ~{estimated_memory:.2f} GB")
-        logger.info(f"  Available VRAM: {vram_gb:.2f} GB")
-        logger.info(f"  Estimated utilization: {(estimated_memory / vram_gb * 100):.1f}%")
-
-        if estimated_memory > vram_gb * 0.95:
-            logger.warning(
-                f"⚠️  Estimated memory usage ({estimated_memory:.2f} GB) is close to or "
-                f"exceeds available VRAM ({vram_gb:.2f} GB)! OOM errors likely!"
-            )
-    else:
-        logger.info(f"\nBatch Size Configuration:")
-        logger.info(f"  Current batch size: {config.batch_size}")
-        logger.info(f"  No GPU detected - training on CPU")
-
-    # Gradient checkpointing status
-    logger.info(f"\nMemory Optimization:")
-    if config.gradient_checkpointing:
-        logger.info(f"  ✓ Gradient checkpointing: ENABLED (trades compute for memory)")
-    else:
-        logger.info(f"  ✗ Gradient checkpointing: DISABLED (use --gradient_checkpointing to enable)")
-
-    logger.info("=" * 80 + "\n")
-
-
 # -----------------------------------------------------------------------------
 # Main Training Function
 # -----------------------------------------------------------------------------
@@ -741,63 +731,10 @@ def train(config: TrainConfig) -> None:
     if config.vocab_size > 0:
         data_module.vocab_size = config.vocab_size
 
-    # Build model config
-    if config.model_type == "neuromanifold":
-        model_config = NeuroManifoldConfig(
-            vocab_size=data_module.vocab_size,
-            block_size=config.block_size,
-            n_layer=config.n_layer,
-            n_heads=config.n_head,
-            n_embd=config.n_embd,
-            dropout=config.dropout,
-            bias=config.bias,
-            # SDR
-            use_sdr=config.use_sdr,
-            sdr_size=config.sdr_size,
-            # Manifold
-            manifold_dim=config.manifold_dim,
-            n_eigenvectors=config.n_eigenvectors,
-            # KAN
-            use_kan=config.use_kan,
-            kan_type=config.kan_type,
-            kan_wavelet=config.kan_wavelet,
-            use_fast_wavekan=config.use_fast_wavekan,
-            kan_num_centers=config.kan_num_centers,
-            # FHN
-            fhn_threshold=config.fhn_threshold,
-            fhn_tau=config.fhn_tau,
-            n_fhn_steps=config.n_fhn_steps,
-            use_fhn_imex=config.use_fhn_imex,
-            use_fhn_partitioning=config.use_fhn_partitioning,
-            use_fhn_fused=config.use_fhn_fused,
-            # mHC
-            use_mhc=config.use_mhc,
-            use_full_mhc=config.use_full_mhc,
-            mhc_n_streams=config.mhc_n_streams,
-            # Attention
-            use_kaufmann_attention=config.use_kaufmann_attention,
-            # Speed optimization
-            skip_manifold_spectral=config.skip_manifold_spectral,
-            # Training
-            learning_rate=config.learning_rate,
-            weight_decay=config.weight_decay,
-            beta1=config.beta1,
-            beta2=config.beta2,
-            grad_clip=config.grad_clip,
-            # Memory optimization
-            gradient_checkpointing=config.gradient_checkpointing,
-        )
-    else:
-        model_config = GPTConfig(
-            vocab_size=data_module.vocab_size,
-            block_size=config.block_size,
-            n_layer=config.n_layer,
-            n_head=config.n_head,
-            n_embd=config.n_embd,
-            dropout=config.dropout,
-            bias=config.bias,
-            gradient_checkpointing=config.gradient_checkpointing,
-        )
+    # Use model config directly, updating vocab_size and block_size from data
+    model_config = config.model_config
+    model_config.vocab_size = data_module.vocab_size
+    model_config.block_size = config.block_size
 
     # Build Lightning module
     lit_module = NeuroManifoldLitModule(
@@ -805,9 +742,6 @@ def train(config: TrainConfig) -> None:
         train_config=config,
         itos=data_module.itos,
     )
-
-    # Print startup memory report
-    print_startup_memory_report(lit_module.model, config)
 
     # Compile model if requested
     if config.compile_model:
@@ -854,7 +788,6 @@ def train(config: TrainConfig) -> None:
         )
 
     callbacks.append(MFUCallback(log_interval=config.log_interval))
-    callbacks.append(MemoryMonitorCallback(log_interval=config.log_interval))
 
     # Logger
     pl_logger = None
@@ -927,16 +860,7 @@ if __name__ == "__main__":
         elif field_type == float:
             parser.add_argument(f"--{f}", type=float, default=None)
         elif field_type == str:
-            if f == "attention":
-                parser.add_argument(
-                    f"--{f}",
-                    type=str,
-                    default=None,
-                    choices=["standard", "soliton", "sdr", "fast-spectral"],
-                    help="Attention mechanism type: standard, soliton, sdr, fast-spectral"
-                )
-            else:
-                parser.add_argument(f"--{f}", type=str, default=None)
+            parser.add_argument(f"--{f}", type=str, default=None)
 
     args = parser.parse_args()
 

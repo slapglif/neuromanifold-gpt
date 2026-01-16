@@ -1,29 +1,23 @@
-# neuromanifold_gpt/model/hybrid_reasoning.py
 """
-Hybrid Reasoning Module - Placeholder stub
+Hybrid Reasoning Module - Stub implementation.
 
-This is a placeholder for the HybridReasoningModule class.
-Full implementation to be added in a future feature.
+Full implementation pending.
 """
-
 import torch
 import torch.nn as nn
 
 
 class HybridReasoningModule(nn.Module):
     """
-    Placeholder for Hybrid Reasoning Module.
+    Hybrid reasoning module combining symbolic and neural processing.
 
-    This is a stub implementation to satisfy imports.
-    The full implementation is planned for a future feature.
+    Stub implementation - allows imports to succeed until full implementation is ready.
     """
 
-    def __init__(self, embed_dim, manifold_dim, num_reasoning_steps=3):
+    def __init__(self, config):
         super().__init__()
-        self.embed_dim = embed_dim
-        self.manifold_dim = manifold_dim
-        self.num_reasoning_steps = num_reasoning_steps
+        self.config = config
 
     def forward(self, x):
-        """Placeholder forward pass - just returns input unchanged"""
+        """Stub forward pass - returns input unchanged."""
         return x
