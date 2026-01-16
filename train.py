@@ -49,7 +49,64 @@ from model import GPTConfig, GPT
 # -----------------------------------------------------------------------------
 @dataclass
 class TrainConfig:
-    """Training configuration with all hyperparameters."""
+    """Training configuration for NeuroManifoldGPT and baseline GPT.
+
+    This configuration manages all aspects of the training pipeline including:
+    - I/O and checkpointing
+    - Dataset loading and preprocessing
+    - Model selection and architecture (NeuroManifoldGPT or GPT)
+    - Training hyperparameters (learning rate, optimization, schedules)
+    - Hardware settings (devices, precision)
+    - Logging and monitoring (WandB integration)
+    - Sampling and evaluation
+
+    The config supports two modes:
+    1. Direct model_config: Pass a NeuroManifoldConfig or GPTConfig object
+    2. Individual parameters: Set n_layer, n_embd, etc. for backward compatibility
+       (auto-creates model_config in __post_init__)
+
+    Attributes:
+        out_dir: Output directory for checkpoints and logs
+        eval_interval: Steps between evaluations
+        log_interval: Steps between logging metrics
+        eval_iters: Number of iterations for evaluation
+        save_checkpoints: Whether to save model checkpoints
+        dataset: Dataset name (e.g., "shakespeare_char")
+        batch_size: Training batch size
+        block_size: Maximum sequence length
+        num_workers: Number of data loader workers
+        streaming: Use HuggingFace streaming for general text datasets
+        vocab_size: Vocabulary size (0 = auto-detect from data)
+        model_type: Model architecture ("neuromanifold" or "gpt")
+        model_config: Complete model configuration object (NeuroManifoldConfig or GPTConfig)
+        n_layer: Number of transformer layers (for backward compatibility)
+        n_embd: Embedding dimension (for backward compatibility)
+        n_head: Number of attention heads for GPT (for backward compatibility)
+        n_heads: Number of attention heads for NeuroManifold (for backward compatibility)
+        dropout: Dropout probability (for backward compatibility)
+        bias: Whether to use bias in linear layers (for backward compatibility)
+        max_iters: Maximum training iterations
+        gradient_accumulation_steps: Gradient accumulation steps
+        learning_rate: Peak learning rate
+        min_lr: Minimum learning rate for decay schedule
+        weight_decay: Weight decay for AdamW optimizer
+        beta1: AdamW beta1 parameter
+        beta2: AdamW beta2 parameter
+        grad_clip: Gradient clipping norm
+        warmup_iters: Linear warmup iterations
+        lr_decay_iters: Learning rate decay schedule length
+        early_stopping_patience: Patience for early stopping (in eval intervals)
+        sample_interval: Steps between generating samples
+        sample_max_tokens: Maximum tokens to generate in samples
+        sample_temperature: Sampling temperature
+        sample_top_k: Top-k sampling parameter
+        devices: Number of GPUs/devices to use
+        precision: Training precision ("bf16-mixed", "fp16-mixed", "32")
+        compile_model: Whether to compile model with torch.compile
+        wandb_log: Whether to log to Weights & Biases
+        wandb_project: WandB project name
+        wandb_run_name: WandB run name
+    """
     # I/O
     out_dir: str = "out-lightning"
     eval_interval: int = 2000
