@@ -1,5 +1,4 @@
-# neuromanifold_gpt/model/attention/mla.py
-"""Stub for MLA attention - to be implemented."""
+"""MLA Attention - Placeholder for testing."""
 import torch
 import torch.nn as nn
 
@@ -12,5 +11,6 @@ class RMSNorm(nn.Module):
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
+    def forward(self, x):
+        norm = x.pow(2).mean(-1, keepdim=True).sqrt()
+        return x / (norm + self.eps) * self.weight
