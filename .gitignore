@@ -17,6 +17,7 @@ venv/
 *.egg-info/
 out/
 out-lightning/
+out-*/
 lightning_logs/
 wandb/
 .pytest_cache/
