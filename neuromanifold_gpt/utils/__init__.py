@@ -8,6 +8,7 @@ from neuromanifold_gpt.utils.checkpoints import (
     select_checkpoint,
     find_best_checkpoint,
     list_checkpoints,
+    export_checkpoints_metadata,
 )
 from neuromanifold_gpt.utils.logging import get_logger, configure_logging, RichLogger
 
@@ -15,6 +16,7 @@ __all__ = [
     "select_checkpoint",
     "find_best_checkpoint",
     "list_checkpoints",
+    "export_checkpoints_metadata",
     "get_logger",
     "configure_logging",
     "RichLogger",

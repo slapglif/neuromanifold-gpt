@@ -7,8 +7,8 @@ Solitons are stable, localized wave packets that maintain their shape during
 propagation and survive collisions - ideal for modeling semantic units.
 
 Key PDE types implemented in subclasses:
-- Sine-Gordon: φ_tt - φ_xx + sin(φ) = 0 (topological solitons)
-- KdV: u_t + 6u·u_x + u_xxx = 0 (dispersive waves)
+- Sine-Gordon: phi_tt - phi_xx + sin(phi) = 0 (topological solitons)
+- KdV: u_t + 6u*u_x + u_xxx = 0 (dispersive waves)
 - Heimburg-Jackson: Thermodynamic soliton model for neural membranes
 
 The base class provides:
@@ -137,7 +137,7 @@ class PDESolver(nn.Module, ABC):
             u_t: Time derivative (for second-order equations)
 
         Returns:
-            Time derivative du/dt (or d²u/dt² for second-order)
+            Time derivative du/dt (or d^2u/dt^2 for second-order)
         """
         pass
 
@@ -177,7 +177,7 @@ class PDESolver(nn.Module, ABC):
         # Get size along derivative dimension
         n = u.shape[dim]
 
-        # Compute wavenumbers: k = 2π * [0, 1, ..., n/2, -n/2+1, ..., -1] / (n * dx)
+        # Compute wavenumbers: k = 2*pi * [0, 1, ..., n/2, -n/2+1, ..., -1] / (n * dx)
         k = torch.fft.fftfreq(n, d=self.dx, device=u.device, dtype=u.dtype)
         k = 2 * torch.pi * k
 
@@ -355,7 +355,7 @@ class PDESolver(nn.Module, ABC):
         else:
             kinetic = torch.zeros(u.shape[0], device=u.device)
 
-        # Gradient energy: 0.5 * (∂u/∂x)^2
+        # Gradient energy: 0.5 * (du/dx)^2
         u_x = self.spatial_derivative(u, order=1)
         gradient = 0.5 * (u_x**2).sum(dim=(-2, -1))
 

@@ -226,10 +226,10 @@ class NeuroManifoldBlockConfig:
               False is common in modern architectures (e.g., GPT-2, Llama)
         skip_manifold_spectral: Skip manifold/spectral projection for speed (default False)
                                 Useful for fast training or ablation studies
-        use_knot_attention: Enable knot-theoretic attention (default False)
-                           Experimental: topological attention mechanism
-        use_kaufmann_attention: Enable Kaufmann trifecta attention (default False)
-                               Experimental: combined FHN+Knot+Manifold attention
+        attention_type: Type of attention mechanism ("fhn", "knot", or "kaufmann", default "fhn")
+                       - "fhn": FitzHugh-Nagumo soliton wave dynamics attention
+                       - "knot": Knot-theoretic topological attention (experimental)
+                       - "kaufmann": Kaufmann trifecta (FHN+Knot+Manifold, experimental)
         fhn: FHN dynamics configuration for soliton attention
              Controls wave propagation, threshold, and integration scheme
         kan: KAN configuration for FFN layers
@@ -251,13 +251,13 @@ class NeuroManifoldBlockConfig:
     mlp_ratio: float = 4.0
     dropout: float = 0.0
     bias: bool = False
+    block_size: int = 1024  # Maximum sequence length for causal mask
 
     # Optimization flags
     skip_manifold_spectral: bool = False
 
-    # Attention variants
-    use_knot_attention: bool = False
-    use_kaufmann_attention: bool = False
+    # Attention type (registry pattern)
+    attention_type: str = "fhn"  # "fhn", "knot", or "kaufmann"
 
     # Sub-configurations (using default_factory for mutable defaults)
     fhn: FHNConfig = field(default_factory=FHNConfig)
@@ -337,6 +337,16 @@ class NeuroManifoldBlockConfig:
             use_e7_routing=config.use_e7_routing,
         )
 
+        # Map boolean flags to attention_type string (backward compatibility)
+        # Boolean flags take precedence for backward compatibility
+        if hasattr(config, 'use_kaufmann_attention') and config.use_kaufmann_attention:
+            attention_type = "kaufmann"
+        elif hasattr(config, 'use_knot_attention') and config.use_knot_attention:
+            attention_type = "knot"
+        else:
+            # Use attention_type from config (defaults to "fhn" if not set)
+            attention_type = getattr(config, 'attention_type', 'fhn')
+
         # Create and return the block config with all sub-configs
         return cls(
             sdr_size=config.sdr_size,
@@ -347,9 +357,9 @@ class NeuroManifoldBlockConfig:
             # mlp_ratio uses default value (not in model config)
             dropout=config.dropout,
             bias=config.bias,
+            block_size=config.block_size,
             skip_manifold_spectral=config.skip_manifold_spectral,
-            use_knot_attention=config.use_knot_attention,
-            use_kaufmann_attention=config.use_kaufmann_attention,
+            attention_type=attention_type,
             fhn=fhn_cfg,
             kan=kan_cfg,
             mhc=mhc_cfg,

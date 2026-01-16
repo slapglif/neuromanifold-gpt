@@ -1,0 +1,26 @@
+Subtask 1-4: Update NeuroManifoldGPT to pass attention_type to blocks
+Status: COMPLETED (no changes required)
+
+Investigation revealed this subtask was already completed as part of subtask-1-3.
+
+Current Implementation (already correct):
+- gpt.py make_block() uses NeuroManifoldBlockConfig.from_model_config(config, layer_idx)
+- from_model_config() extracts attention_type from config.attention_type
+- Backward compatibility: maps boolean flags to attention_type strings
+- Block receives attention_type via config parameter
+
+Code Flow:
+NeuroManifoldGPT.__init__ (gpt.py:46)
+  -> make_block(layer_idx) (gpt.py:85-97)
+    -> NeuroManifoldBlockConfig.from_model_config(config, layer_idx) (gpt.py:87)
+      -> Extracts attention_type (block_config.py:339-346)
+      -> Returns block_cfg with attention_type (block_config.py:359)
+    -> NeuroManifoldBlock(config=block_cfg) (gpt.py:97)
+
+Backward Compatibility (block_config.py:339-346):
+- config.attention_type if present -> use directly
+- use_kaufmann_attention=True -> attention_type="kaufmann"
+- use_knot_attention=True -> attention_type="knot"
+- Default -> attention_type="fhn"
+
+No modifications needed to gpt.py - implementation is correct and complete.

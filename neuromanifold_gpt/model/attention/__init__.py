@@ -1,6 +1,18 @@
 # neuromanifold_gpt/model/attention/__init__.py
 """Attention mechanisms for NeuroManifoldGPT.
 
+This module provides a registry-based attention selection system. Use the
+`attention_type` parameter in NeuroManifoldConfig to select the mechanism:
+
+  - "standard": Standard causal self-attention (baseline)
+  - "fhn": FitzHugh-Nagumo neural dynamics attention (default)
+  - "knot": Topological knot-theory based attention
+  - "kaufmann": Combined FHN + Knot reaction-diffusion system
+  - "mla": DeepSeek-style KV cache compression attention
+
+  DEPRECATED: Boolean flags use_kaufmann_attention and use_knot_attention
+  are deprecated. Use attention_type instead.
+
 Exports:
     StandardAttention: Standard causal self-attention (baseline)
     FHNAttention: FitzHugh-Nagumo neural dynamics attention
@@ -8,6 +20,7 @@ Exports:
     KnotAttention: Topological knot-theory based attention
     KaufmannAttention: Combined FHN + Knot reaction-diffusion system
     RMSNorm: Root Mean Square Layer Normalization
+    get_attention_class: Registry function for attention type selection
 
 The attention mechanisms implement biologically-inspired neural dynamics
 rather than standard softmax attention, enabling wave-like information
@@ -42,6 +55,9 @@ def get_attention_class(attention_type: str):
             - "knot": Topological knot-theory based attention
             - "kaufmann": Combined FHN + Knot reaction-diffusion system
             - "mla": DeepSeek-style KV cache compression attention
+            - "soliton": Alias for "fhn" (excitable wave dynamics)
+            - "sdr": Alias for "knot" (SDR memory with knot attention)
+            - "fast-spectral": Alias for "fhn" (uses spectral basis)
 
     Returns:
         Attention class constructor
@@ -49,6 +65,14 @@ def get_attention_class(attention_type: str):
     Raises:
         ValueError: If attention_type is unknown
     """
+    # Handle aliases
+    if attention_type == "soliton":
+        attention_type = "fhn"
+    elif attention_type == "sdr":
+        attention_type = "knot"
+    elif attention_type == "fast-spectral":
+        attention_type = "fhn"
+
     if attention_type == "standard":
         return StandardAttention
     elif attention_type == "fhn":

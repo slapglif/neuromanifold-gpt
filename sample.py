@@ -8,7 +8,10 @@ import torch
 import tiktoken
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.config.training import SamplingConfig
+from neuromanifold_gpt.config.loader import load_config
 from neuromanifold_gpt.utils.checkpoints import select_checkpoint
+from neuromanifold_gpt.utils.checkpoint_loader import load_model_only
 from neuromanifold_gpt.utils.progress import checkpoint_progress
 from neuromanifold_gpt.utils.logging import get_logger
 from model import GPT, GPTConfig
@@ -16,18 +19,21 @@ from model import GPT, GPTConfig
 logger = get_logger(__name__)
 
 # -----------------------------------------------------------------------------
-init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
-out_dir = 'out' # ignored if init_from is not 'resume'
-start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
-num_samples = 10 # number of samples to draw
-max_new_tokens = 500 # number of tokens generated in each sample
-temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability
-seed = 1337
-device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
-compile = False # use PyTorch 2.0 to compile the model to be faster
-exec(open('configurator.py').read()) # overrides from command line or config file
+# Load configuration with type-safe CLI overrides
+config = load_config(SamplingConfig)
+
+# Extract config values for local use
+init_from = config.init_from
+out_dir = config.out_dir
+start = config.start
+num_samples = config.num_samples
+max_new_tokens = config.max_new_tokens
+temperature = config.temperature
+top_k = config.top_k
+seed = config.seed
+device = config.device
+dtype = config.dtype
+compile = config.compile
 # -----------------------------------------------------------------------------
 
 torch.manual_seed(seed)
@@ -44,9 +50,9 @@ if init_from == 'resume':
     ckpt_path = select_checkpoint(out_dir)
     if ckpt_path is None:
         raise FileNotFoundError(f"No checkpoints found in {out_dir}")
-    # Weights only load issue in PyTorch 2.6+ with custom configs (trust local source)
+    # Use unified checkpoint loader (supports both unified and separated formats)
     with checkpoint_progress("Loading checkpoint from disk"):
-        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+        checkpoint = load_model_only(ckpt_path, device=device, weights_only=False)
     
     # Check if it's a NeuroManifold checkpoint (has 'config' object) or legacy nanoGPT
     if 'config' in checkpoint and isinstance(checkpoint['config'], (NeuroManifoldConfig, type(None))):

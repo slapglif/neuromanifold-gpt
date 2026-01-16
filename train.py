@@ -52,6 +52,7 @@ from loguru import logger
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.config.loader import load_config
 from model import GPTConfig, GPT
 
 
@@ -59,7 +60,7 @@ from model import GPTConfig, GPT
 # Default Configuration
 # -----------------------------------------------------------------------------
 @dataclass
-class TrainConfig:
+class TrainingConfig:
     """Training configuration with all hyperparameters."""
     # I/O
     out_dir: str = "out-shakespeare-char"
@@ -67,6 +68,8 @@ class TrainConfig:
     log_interval: int = 10
     eval_iters: int = 200
     save_checkpoints: bool = True
+    save_separate_optimizer: bool = False
+    save_model_only: bool = False
 
     # Data
     dataset: str = "shakespeare_char"
@@ -111,6 +114,7 @@ class TrainConfig:
     # Training
     max_iters: int = 5000
     gradient_accumulation_steps: int = 1
+    gradient_checkpointing: bool = False
     learning_rate: float = 1e-3
     min_lr: float = 1e-4
     weight_decay: float = 0.1
@@ -282,7 +286,7 @@ class NeuroManifoldLitModule(pl.LightningModule):
     def __init__(
         self,
         model_config: NeuroManifoldConfig | GPTConfig,
-        train_config: TrainConfig,
+        train_config: TrainingConfig,
         itos: Optional[Dict[int, str]] = None,
     ):
         super().__init__()
@@ -568,7 +572,7 @@ class MFUCallback(Callback):
 # -----------------------------------------------------------------------------
 # Main Training Function
 # -----------------------------------------------------------------------------
-def train(config: TrainConfig) -> None:
+def train(config: TrainingConfig) -> None:
     """Main training entry point."""
     pl.seed_everything(1337)
 
@@ -636,6 +640,7 @@ def train(config: TrainConfig) -> None:
             # Speed optimization
             skip_manifold_spectral=config.skip_manifold_spectral,
             # Training
+            gradient_checkpointing=config.gradient_checkpointing,
             learning_rate=config.learning_rate,
             weight_decay=config.weight_decay,
             beta1=config.beta1,
@@ -651,6 +656,7 @@ def train(config: TrainConfig) -> None:
             n_embd=config.n_embd,
             dropout=config.dropout,
             bias=config.bias,
+            gradient_checkpointing=config.gradient_checkpointing,
         )
 
     # Build Lightning module
@@ -762,40 +768,8 @@ def train(config: TrainConfig) -> None:
 # Entry Point
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Train NeuroManifoldGPT")
-    parser.add_argument("--config", type=str, help="Path to config file")
-
-    # Allow overriding any config value - defaults to None so config file takes precedence
-    for f in TrainConfig.__dataclass_fields__:
-        field_type = TrainConfig.__dataclass_fields__[f].type
-        if field_type == bool:
-            parser.add_argument(f"--{f}", type=lambda x: x.lower() == "true", default=None)
-        elif field_type == int:
-            parser.add_argument(f"--{f}", type=int, default=None)
-        elif field_type == float:
-            parser.add_argument(f"--{f}", type=float, default=None)
-        elif field_type == str:
-            parser.add_argument(f"--{f}", type=str, default=None)
-
-    args = parser.parse_args()
-
-    # Start with defaults
-    config = TrainConfig()
-
-    # Load config file if provided (overrides defaults)
-    if args.config:
-        config_globals = {}
-        exec(open(args.config).read(), config_globals)
-        for k, v in config_globals.items():
-            if hasattr(config, k):
-                setattr(config, k, v)
-
-    # CLI args override config file (only if explicitly provided)
-    for k, v in vars(args).items():
-        if k != "config" and v is not None and hasattr(config, k):
-            setattr(config, k, v)
+    # Load configuration with type-safe CLI overrides
+    config = load_config(TrainingConfig, sys.argv[1:])
 
     # Run training
     train(config)

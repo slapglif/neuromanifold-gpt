@@ -34,6 +34,8 @@ class TrainConfig:
         log_interval: Log metrics every N training steps
         eval_iters: Number of iterations for evaluation
         save_checkpoints: Whether to save model checkpoints
+        save_separate_optimizer: Save optimizer state separately from model
+        save_model_only: Save only model weights without optimizer state
         dataset: Dataset name (e.g., "shakespeare_char")
         batch_size: Training batch size per device
         block_size: Maximum sequence length (context window)
@@ -95,6 +97,8 @@ class TrainConfig:
     log_interval: int = 10
     eval_iters: int = 200
     save_checkpoints: bool = True
+    save_separate_optimizer: bool = False
+    save_model_only: bool = False
 
     # Data
     dataset: str = "shakespeare_char"

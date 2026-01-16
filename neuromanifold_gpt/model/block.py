@@ -201,12 +201,14 @@ class NeuroManifoldBlock(nn.Module):
                     dim=self.config.embed_dim,
                     sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
                     sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
+                    use_fused=self.config.use_mhc_fused,
                 )
                 self.mhc_mlp = HyperConnections(
                     self.config.mhc.mhc_n_streams,
                     dim=self.config.embed_dim,
                     sinkhorn_iters=self.config.mhc.mhc_sinkhorn_iters,
                     sinkhorn_tau=self.config.mhc.mhc_sinkhorn_tau,
+                    use_fused=self.config.use_mhc_fused,
                 )
             else:
                 # Single-stream fallback (simple residual)

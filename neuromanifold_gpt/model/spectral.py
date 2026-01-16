@@ -11,6 +11,88 @@ import torch.nn.functional as F
 from einops import rearrange, einsum
 
 
+def _spectral_decomposition_forward(
+    coords: torch.Tensor,
+    use_learned_basis: bool,
+    spectral_proj_output: torch.Tensor,
+    freq_embed: torch.Tensor,
+    random_features: torch.Tensor,
+    sigma: torch.Tensor,
+    n_eig: int,
+    ortho_weight: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Spectral decomposition forward pass computation.
+
+    This function is compiled with torch.compile for kernel fusion.
+
+    Args:
+        coords: (B, T, manifold_dim) manifold coordinates
+        use_learned_basis: Whether to use learned basis or random features
+        spectral_proj_output: (B, T, n_eig) output from spectral_proj if learned basis, else None
+        freq_embed: (n_eig,) learned frequencies if learned basis, else None
+        random_features: (manifold_dim, n_eig) random features if not learned basis, else None
+        sigma: scalar bandwidth parameter
+        n_eig: number of eigenvectors
+        ortho_weight: weight for orthogonality regularization
+
+    Returns:
+        spectral_basis: (B, T, n_eig) spectral coefficients
+        spectral_freqs: (B, n_eig) frequency/eigenvalue estimates
+        ortho_loss: scalar orthogonality regularization loss
+    """
+    B, T, D = coords.shape
+
+    if use_learned_basis:
+        # Normalize for stable attention (avoid softmax gradient issues)
+        # Use L2 normalization instead of softmax for better gradient flow
+        spectral_basis = F.normalize(spectral_proj_output, p=2, dim=-1)
+        # Scale to have similar magnitude as softmax would
+        spectral_basis = spectral_basis * (1.0 / (n_eig ** 0.5))
+
+        # Learned frequencies
+        spectral_freqs = freq_embed.abs().unsqueeze(0).expand(B, -1)
+
+        # Compute orthogonality regularization loss: ||Φᵀ Φ - I||²
+        # Normalize basis vectors for Gram matrix computation
+        # (B, n_eig, T) @ (B, T, n_eig) -> (B, n_eig, n_eig)
+        basis_norm = F.normalize(spectral_basis, dim=1)  # Normalize along T dimension
+        gram = torch.bmm(basis_norm.transpose(1, 2), basis_norm)
+
+        # Target: identity matrix (orthonormal basis)
+        eye = torch.eye(n_eig, device=gram.device, dtype=gram.dtype)
+
+        # Frobenius norm: ||Gram - I||²
+        ortho_loss = (gram - eye).pow(2).mean() * ortho_weight
+    else:
+        # Random Fourier features
+        # cos(W @ x) approximates spectral structure
+        proj = coords @ random_features  # (B, T, n_eig)
+        spectral_basis = torch.cos(proj * sigma)
+        spectral_freqs = torch.arange(
+            n_eig, device=coords.device, dtype=coords.dtype
+        ).unsqueeze(0).expand(B, -1)
+        # No ortho loss for random features (they're not learned)
+        ortho_loss = torch.tensor(0.0, device=coords.device, dtype=coords.dtype)
+
+    return spectral_basis, spectral_freqs, ortho_loss
+
+
+# Compile with reduce-overhead mode for minimal Python overhead
+# Gracefully fall back to uncompiled version on Python 3.12+ (where Dynamo is not supported)
+try:
+    spectral_decomposition_forward = torch.compile(
+        _spectral_decomposition_forward,
+        mode="reduce-overhead"
+    )
+except RuntimeError as e:
+    if "Dynamo is not supported" in str(e):
+        # Fall back to uncompiled version on Python 3.12+
+        spectral_decomposition_forward = _spectral_decomposition_forward
+    else:
+        raise
+
+
 class SpectralDecomposition(nn.Module):
     """
     Efficient spectral decomposition using learned basis.
@@ -64,32 +146,6 @@ class SpectralDecomposition(nn.Module):
     def sigma(self) -> torch.Tensor:
         return self.log_sigma.exp()
 
-    def compute_ortho_loss(self, spectral_basis: torch.Tensor) -> torch.Tensor:
-        """
-        Compute orthogonality regularization loss: ||Φᵀ Φ - I||².
-
-        Encourages the learned spectral basis to behave like actual eigenvectors
-        by making columns approximately orthonormal.
-
-        Args:
-            spectral_basis: (B, T, n_eig) spectral coefficients
-
-        Returns:
-            ortho_loss: scalar loss encouraging orthogonality
-        """
-        # Normalize basis vectors for Gram matrix computation
-        # (B, n_eig, T) @ (B, T, n_eig) -> (B, n_eig, n_eig)
-        basis_norm = F.normalize(spectral_basis, dim=1)  # Normalize along T dimension
-        gram = torch.bmm(basis_norm.transpose(1, 2), basis_norm)
-
-        # Target: identity matrix (orthonormal basis)
-        eye = torch.eye(self.n_eig, device=gram.device, dtype=gram.dtype)
-
-        # Frobenius norm: ||Gram - I||²
-        ortho_loss = (gram - eye).pow(2).mean()
-
-        return ortho_loss * self.ortho_weight
-
     def forward(
         self,
         coords: torch.Tensor,
@@ -107,36 +163,30 @@ class SpectralDecomposition(nn.Module):
             spectral_freqs: (B, n_eig) frequency/eigenvalue estimates
             ortho_loss: scalar orthogonality regularization loss
         """
-        B, T, D = coords.shape
-
         # NO O(n²) affinity computation - this is the key optimization!
         # The learned basis captures spectral structure without explicit affinity.
 
         if self.use_learned_basis:
             # Learned spectral projection: O(n·k) instead of O(n²) or O(n³)
-            spectral_basis = self.spectral_proj(coords)  # (B, T, n_eig)
-
-            # Normalize for stable attention (avoid softmax gradient issues)
-            # Use L2 normalization instead of softmax for better gradient flow
-            spectral_basis = F.normalize(spectral_basis, p=2, dim=-1)
-            # Scale to have similar magnitude as softmax would
-            spectral_basis = spectral_basis * (1.0 / (self.n_eig ** 0.5))
-
-            # Learned frequencies
-            spectral_freqs = self.freq_embed.abs().unsqueeze(0).expand(B, -1)
-
-            # Compute orthogonality regularization loss
-            ortho_loss = self.compute_ortho_loss(spectral_basis)
+            spectral_proj_output = self.spectral_proj(coords)  # (B, T, n_eig)
+            freq_embed = self.freq_embed
+            random_features = None
         else:
-            # Random Fourier features
-            # cos(W @ x) approximates spectral structure
-            proj = coords @ self.random_features  # (B, T, n_eig)
-            spectral_basis = torch.cos(proj * self.sigma)
-            spectral_freqs = torch.arange(
-                self.n_eig, device=coords.device, dtype=coords.dtype
-            ).unsqueeze(0).expand(B, -1)
-            # No ortho loss for random features (they're not learned)
-            ortho_loss = torch.tensor(0.0, device=coords.device, dtype=coords.dtype)
+            spectral_proj_output = None
+            freq_embed = None
+            random_features = self.random_features
+
+        # Execute spectral decomposition using torch.compile-optimized kernel
+        spectral_basis, spectral_freqs, ortho_loss = spectral_decomposition_forward(
+            coords,
+            self.use_learned_basis,
+            spectral_proj_output,
+            freq_embed,
+            random_features,
+            self.sigma,
+            self.n_eig,
+            self.ortho_weight,
+        )
 
         return spectral_basis, spectral_freqs, ortho_loss
 

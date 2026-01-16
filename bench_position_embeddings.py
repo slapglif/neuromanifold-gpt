@@ -2,43 +2,50 @@
 Benchmark script for position embedding performance comparison.
 Compares learned, RoPE, and ALiBi position embeddings to measure overhead.
 """
-import os
+import sys
 from contextlib import nullcontext
+from dataclasses import dataclass
 import numpy as np
 import time
 import torch
 from model import GPTConfig, GPT
+from neuromanifold_gpt.config.loader import load_config
 
 # -----------------------------------------------------------------------------
-batch_size = 12
-block_size = 1024
-bias = False
-real_data = False  # Use synthetic data for consistent benchmarking
-seed = 1337
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-compile = True  # use PyTorch 2.0 to compile the model to be faster
-quick = False  # quick mode: fewer iterations
-exec(open('configurator.py').read())  # overrides from command line or config file
+@dataclass
+class BenchmarkConfig:
+    """Configuration for position embeddings benchmark."""
+    batch_size: int = 12
+    block_size: int = 1024
+    bias: bool = False
+    real_data: bool = False  # Use synthetic data for consistent benchmarking
+    seed: int = 1337
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+    compile: bool = True  # use PyTorch 2.0 to compile the model to be faster
+    quick: bool = False  # quick mode: fewer iterations
+
+# Load config with CLI overrides
+config = load_config(BenchmarkConfig, show_help=True)
 # -----------------------------------------------------------------------------
 
-torch.manual_seed(seed)
+torch.manual_seed(config.seed)
 if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed(config.seed)
     torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
     torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
 
-device_type = 'cuda' if 'cuda' in device else 'cpu'
-ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+device_type = 'cuda' if 'cuda' in config.device else 'cpu'
+ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[config.dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # data loading init - use synthetic data for consistent benchmarking
-x = torch.randint(50304, (batch_size, block_size), device=device)
-y = torch.randint(50304, (batch_size, block_size), device=device)
+x = torch.randint(50304, (config.batch_size, config.block_size), device=config.device)
+y = torch.randint(50304, (config.batch_size, config.block_size), device=config.device)
 get_batch = lambda split: (x, y)
 
 # Determine iteration counts based on quick mode
-if quick:
+if config.quick:
     burnin_steps = 5
     bench_steps = 10
     print("Quick mode: using fewer iterations")
@@ -50,8 +57,8 @@ else:
 pos_emb_types = ['learned', 'rotary', 'alibi']
 results = {}
 
-print(f"Benchmarking position embeddings on {device}")
-print(f"Batch size: {batch_size}, Block size: {block_size}")
+print(f"Benchmarking position embeddings on {config.device}")
+print(f"Batch size: {config.batch_size}, Block size: {config.block_size}")
 print(f"Model: 12 layers, 12 heads, 768 embed dim")
 print("-" * 70)
 
@@ -60,16 +67,16 @@ for pos_emb_type in pos_emb_types:
 
     # model init
     gptconf = GPTConfig(
-        block_size=block_size,
+        block_size=config.block_size,
         n_layer=12,
         n_head=12,
         n_embd=768,
         dropout=0,
-        bias=bias,
+        bias=config.bias,
         pos_emb_type=pos_emb_type,
     )
     model = GPT(gptconf)
-    model.to(device)
+    model.to(config.device)
 
     optimizer = model.configure_optimizers(
         weight_decay=1e-2,
@@ -78,7 +85,7 @@ for pos_emb_type in pos_emb_types:
         device_type=device_type
     )
 
-    if compile:
+    if config.compile:
         print(f"  Compiling model...")
         model = torch.compile(model)
 

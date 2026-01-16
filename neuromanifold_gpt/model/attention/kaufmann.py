@@ -114,16 +114,18 @@ class KaufmannAttention(nn.Module):
         # Mixing
         self.out_proj = nn.Linear(embed_dim, embed_dim)
         
-    def forward(self, x, spectral_basis, coords):
+    def forward(self, x, spectral_basis=None):
         """
         Args:
             x: (B, T, D) Input features
-            spectral_basis: Unused in V2 (We use Knot graph directly)
-            coords: (B, T, M) Manifold coordinates for Knot calculation
+            spectral_basis: Optional (can be coords if provided, otherwise create from x)
         """
         B, T, D = x.shape
         H = self.n_heads
-        
+
+        # Use spectral_basis as coords if provided, otherwise create proxy
+        coords = spectral_basis if spectral_basis is not None else None
+
         # 1. Compute Topology (Knot Attention)
         diffused_signal, knot_info = self.knot_gate(x, coords)
         
@@ -146,5 +148,8 @@ class KaufmannAttention(nn.Module):
             
         # 4. Output
         out = self.out_proj(u)
-        
+
+        # Update info dict with correct attention type
+        knot_info['attention_type'] = 'kaufmann'
+
         return out, knot_info

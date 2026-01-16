@@ -6,6 +6,7 @@ Tracks current, peak, and reserved memory with formatting utilities.
 """
 
 import torch
+from collections import deque
 from typing import Optional
 
 
@@ -23,15 +24,19 @@ class GPUMemoryMonitor:
         >>> print(monitor.format_memory_display())
     """
 
-    def __init__(self, device: int = 0):
+    def __init__(self, device: int = 0, history_size: int = 1000):
         """
         Initialize GPU memory monitor.
 
         Args:
             device: CUDA device index to monitor (default: 0)
+            history_size: Maximum number of memory samples to keep in history (default: 1000)
         """
         self.device = device
         self.cuda_available = torch.cuda.is_available()
+
+        # Memory history tracking
+        self.memory_history = deque(maxlen=history_size)
 
         if self.cuda_available:
             # Get total memory capacity
@@ -85,6 +90,17 @@ class GPUMemoryMonitor:
             "free_gb": round(free_gb, 2),
             "utilization": round(utilization, 3),
         }
+
+    def record_sample(self):
+        """
+        Record a memory snapshot to the history.
+
+        Captures current memory statistics and adds them to the memory history
+        for profiling and analysis. The history is limited by the history_size
+        parameter set during initialization.
+        """
+        stats = self.get_memory_stats()
+        self.memory_history.append(stats)
 
     def reset_peak(self):
         """
@@ -162,3 +178,110 @@ class GPUMemoryMonitor:
             return "CPU"
 
         return torch.cuda.get_device_name(self.device)
+
+    def get_history_stats(self) -> dict:
+        """
+        Calculate min/max/avg statistics from memory history.
+
+        Computes rolling statistics across all recorded memory samples.
+        Useful for profiling memory usage patterns over time.
+
+        Returns:
+            dict: Statistics with keys:
+                - min_allocated_gb: Minimum allocated memory in GB
+                - max_allocated_gb: Maximum allocated memory in GB
+                - avg_allocated_gb: Average allocated memory in GB
+                - min_reserved_gb: Minimum reserved memory in GB
+                - max_reserved_gb: Maximum reserved memory in GB
+                - avg_reserved_gb: Average reserved memory in GB
+                - min_utilization: Minimum memory utilization (0.0-1.0)
+                - max_utilization: Maximum memory utilization (0.0-1.0)
+                - avg_utilization: Average memory utilization (0.0-1.0)
+                - sample_count: Number of samples in history
+
+        Example:
+            >>> monitor = GPUMemoryMonitor()
+            >>> monitor.record_sample()
+            >>> monitor.record_sample()
+            >>> stats = monitor.get_history_stats()
+            >>> print(f"Avg Memory: {stats['avg_allocated_gb']:.2f}GB")
+        """
+        if not self.memory_history:
+            # Return zeros if no history available
+            return {
+                "min_allocated_gb": 0.0,
+                "max_allocated_gb": 0.0,
+                "avg_allocated_gb": 0.0,
+                "min_reserved_gb": 0.0,
+                "max_reserved_gb": 0.0,
+                "avg_reserved_gb": 0.0,
+                "min_utilization": 0.0,
+                "max_utilization": 0.0,
+                "avg_utilization": 0.0,
+                "sample_count": 0,
+            }
+
+        # Convert deque to list for processing
+        history_list = list(self.memory_history)
+        sample_count = len(history_list)
+
+        # Extract individual metric lists
+        allocated_values = [sample['allocated_gb'] for sample in history_list]
+        reserved_values = [sample['reserved_gb'] for sample in history_list]
+        utilization_values = [sample['utilization'] for sample in history_list]
+
+        # Calculate statistics for each metric
+        return {
+            "min_allocated_gb": round(min(allocated_values), 2),
+            "max_allocated_gb": round(max(allocated_values), 2),
+            "avg_allocated_gb": round(sum(allocated_values) / sample_count, 2),
+            "min_reserved_gb": round(min(reserved_values), 2),
+            "max_reserved_gb": round(max(reserved_values), 2),
+            "avg_reserved_gb": round(sum(reserved_values) / sample_count, 2),
+            "min_utilization": round(min(utilization_values), 3),
+            "max_utilization": round(max(utilization_values), 3),
+            "avg_utilization": round(sum(utilization_values) / sample_count, 3),
+            "sample_count": sample_count,
+        }
+
+    def clear_history(self):
+        """
+        Clear all recorded memory samples from history.
+
+        Useful for resetting memory profiling between training phases or
+        experiments without recreating the monitor instance.
+
+        Example:
+            >>> monitor = GPUMemoryMonitor()
+            >>> monitor.record_sample()
+            >>> monitor.clear_history()
+            >>> len(monitor.memory_history)
+            0
+        """
+        self.memory_history.clear()
+
+    def export_timeline(self) -> list:
+        """
+        Export memory history as a list for profiling reports.
+
+        Returns the complete memory history as a list of dictionaries,
+        where each dictionary contains a snapshot of memory statistics.
+        Useful for generating memory profiling reports and visualizations.
+
+        Returns:
+            list: List of memory sample dictionaries, each containing:
+                - allocated_gb: Memory allocated at sample time
+                - reserved_gb: Memory reserved at sample time
+                - peak_gb: Peak memory at sample time
+                - total_gb: Total GPU memory
+                - free_gb: Free memory at sample time
+                - utilization: Memory utilization (0.0-1.0)
+
+        Example:
+            >>> monitor = GPUMemoryMonitor()
+            >>> monitor.record_sample()
+            >>> monitor.record_sample()
+            >>> timeline = monitor.export_timeline()
+            >>> print(f"Recorded {len(timeline)} samples")
+        """
+        return list(self.memory_history)
