@@ -4,6 +4,8 @@
 Exports:
     SSMBase: Abstract base class for state space models
     SSMConfig: Configuration dataclass for SSM hyperparameters
+    HiPPO: Memory-optimal matrix initialization
+    DiagonalHiPPO: Efficient diagonal approximation
 
 State Space Models (SSMs) provide an alternative to attention mechanisms
 by modeling sequence relationships as continuous-time dynamical systems.
@@ -22,7 +24,7 @@ The SSM backbone implements Mamba-style selective state spaces:
 - Single-step mode for generation
 
 Usage:
-    from neuromanifold_gpt.model.ssm import SSMBase, SSMConfig
+    from neuromanifold_gpt.model.ssm import SSMBase, SSMConfig, HiPPO
 
     # SSMBase is abstract - use concrete implementations:
     # - MambaBlock (full Mamba layer with conv + SSM)
@@ -31,8 +33,11 @@ Usage:
 """
 
 from neuromanifold_gpt.model.ssm.base import SSMBase, SSMConfig
+from neuromanifold_gpt.model.ssm.hippo import HiPPO, DiagonalHiPPO
 
 __all__ = [
     "SSMBase",
     "SSMConfig",
+    "HiPPO",
+    "DiagonalHiPPO",
 ]
