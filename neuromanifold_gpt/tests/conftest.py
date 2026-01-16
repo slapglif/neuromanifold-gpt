@@ -10,6 +10,7 @@ import pytest
 import torch
 from neuromanifold_gpt.config import NeuroManifoldConfigNano
 from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 # -----------------------------------------------------------------------------
 # Config Loader Hacks (from PR #32)
@@ -58,6 +59,19 @@ def nano_config():
         NeuroManifoldConfigNano: Nano preset configuration for testing.
     """
     return NeuroManifoldConfigNano()
+
+
+@pytest.fixture
+def gpt_model(nano_config):
+    """Fixture providing NeuroManifoldGPT instance with nano_config.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        NeuroManifoldGPT: GPT model instance configured with nano preset.
+    """
+    return NeuroManifoldGPT(nano_config)
 
 
 @pytest.fixture
