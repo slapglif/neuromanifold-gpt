@@ -38,7 +38,7 @@ def default(v, d):
     return v if exists(v) else d
 
 
-def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05) -> torch.Tensor:
+def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = None) -> torch.Tensor:
     """Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.
 
     The Birkhoff polytope is the set of doubly stochastic matrices:
@@ -52,6 +52,9 @@ def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05) -
         logits: Raw logits matrix (n, n)
         num_iters: Number of alternating normalization iterations
         tau: Temperature for softmax (lower = sharper, closer to permutation)
+        convergence_tol: Optional convergence threshold for early stopping.
+            If provided, stops when ||u_new - u_old|| < convergence_tol.
+            Default None uses all num_iters iterations.
 
     Returns:
         Doubly stochastic matrix on Birkhoff polytope
@@ -64,8 +67,16 @@ def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05) -
     v = torch.zeros_like(u)
 
     for _ in range(num_iters):
+        u_prev = u.clone() if convergence_tol is not None else None
+
         u = log_marginal - torch.logsumexp(Z + v.unsqueeze(-2), dim=-1)
         v = log_marginal - torch.logsumexp(Z + u.unsqueeze(-1), dim=-2)
+
+        # Early stopping check
+        if convergence_tol is not None:
+            u_change = torch.norm(u - u_prev)
+            if u_change < convergence_tol:
+                break
 
     return torch.exp(Z + u.unsqueeze(-1) + v.unsqueeze(-2))
 
@@ -123,6 +134,7 @@ class HyperConnections(Module):
         dropout: float = 0.0,
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
+        sinkhorn_convergence_tol: Optional[float] = None,
     ):
         """
         Args:
@@ -133,6 +145,9 @@ class HyperConnections(Module):
             dropout: Dropout probability
             sinkhorn_iters: Number of Sinkhorn-Knopp iterations
             sinkhorn_tau: Temperature for Sinkhorn softmax
+            sinkhorn_convergence_tol: Optional convergence threshold for early stopping.
+                If provided, Sinkhorn-Knopp stops when ||u_new - u_old|| < threshold.
+                Default None uses all sinkhorn_iters iterations.
         """
         super().__init__()
 
@@ -140,6 +155,7 @@ class HyperConnections(Module):
         self.num_residual_streams = num_residual_streams
         self.sinkhorn_iters = sinkhorn_iters
         self.sinkhorn_tau = sinkhorn_tau
+        self.sinkhorn_convergence_tol = sinkhorn_convergence_tol
 
         # Choose initial residual stream index
         init_residual_index = (
@@ -186,7 +202,8 @@ class HyperConnections(Module):
         h_res = sinkhorn_log(
             self.H_res_logits,
             num_iters=self.sinkhorn_iters,
-            tau=self.sinkhorn_tau
+            tau=self.sinkhorn_tau,
+            convergence_tol=self.sinkhorn_convergence_tol
         )
 
         # Apply H_res to residuals: H_res @ residuals
@@ -316,6 +333,7 @@ def get_init_and_expand_reduce_stream_functions(
     disable: bool = False,
     sinkhorn_iters: int = 10,
     sinkhorn_tau: float = 0.05,
+    sinkhorn_convergence_tol: Optional[float] = None,
 ):
     """Get mHC initializer and stream expand/reduce functions.
 
@@ -325,6 +343,7 @@ def get_init_and_expand_reduce_stream_functions(
         disable: If True, use simple Residual instead of mHC
         sinkhorn_iters: Sinkhorn-Knopp iterations
         sinkhorn_tau: Sinkhorn temperature
+        sinkhorn_convergence_tol: Optional convergence threshold for early stopping
 
     Returns:
         (init_hc_fn, expand_fn, reduce_fn)
@@ -338,6 +357,7 @@ def get_init_and_expand_reduce_stream_functions(
         num_streams,
         sinkhorn_iters=sinkhorn_iters,
         sinkhorn_tau=sinkhorn_tau,
+        sinkhorn_convergence_tol=sinkhorn_convergence_tol,
     )
 
     expand_fn, reduce_fn = get_expand_reduce_stream_functions(
