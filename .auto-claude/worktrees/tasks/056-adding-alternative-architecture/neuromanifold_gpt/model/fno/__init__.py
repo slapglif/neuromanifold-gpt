@@ -70,13 +70,16 @@ from neuromanifold_gpt.model.fno.spectral_conv import (
     SpectralConvConfig,
 )
 
+# FNO blocks and encoder
+from neuromanifold_gpt.model.fno.fourier_operator import (
+    FNOBlock,
+    FNOEncoder,
+    FNOConfig,
+    FNOWithMLP,
+)
+
 # Note: Additional imports will be added as modules are implemented in subsequent subtasks.
 # Future imports:
-# from neuromanifold_gpt.model.fno.fourier_operator import (
-#     FNOBlock,
-#     FNOEncoder,
-#     FNOConfig,
-# )
 # from neuromanifold_gpt.model.fno.multimodal_encoder import (
 #     MultimodalFNOEncoder,
 #     MultimodalConfig,
@@ -89,4 +92,9 @@ __all__ = [
     "SpectralConv2d",
     "SpectralConvNd",
     "SpectralConvConfig",
+    # FNO blocks and encoder
+    "FNOBlock",
+    "FNOEncoder",
+    "FNOConfig",
+    "FNOWithMLP",
 ]
