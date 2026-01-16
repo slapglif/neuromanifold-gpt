@@ -102,6 +102,11 @@ class NeuroManifoldConfig:
     # Spectral regularization
     ortho_weight: float = 0.01
 
+    # Loss weights
+    ortho_loss_weight: float = 0.01
+    discrimination_loss_weight: float = 0.1
+    contrastive_loss_weight: float = 0.1
+
     # Speed optimization
     skip_manifold_spectral: bool = False  # Skip manifold/spectral for faster training
 
