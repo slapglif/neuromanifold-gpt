@@ -63,6 +63,13 @@ class ArchitectureConfig:
         # Regularization
         dropout: Dropout probability
 
+        # Memory and SDR configuration
+        use_sdr: Enable Sparse Distributed Representations
+        sdr_size: Size of the SDR representation
+        sdr_sparsity: Sparsity ratio for SDR (fraction of active bits)
+        engram_capacity: Maximum capacity of engram memory
+        engram_threshold: Threshold for engram activation
+
         # Metadata
         architecture_id: Unique identifier for this architecture (optional)
         search_iteration: Iteration number in search process (optional)
@@ -100,6 +107,13 @@ class ArchitectureConfig:
 
     # Regularization
     dropout: float = 0.0
+
+    # Memory and SDR configuration
+    use_sdr: bool = False
+    sdr_size: int = 2048
+    sdr_sparsity: float = 0.02
+    engram_capacity: int = 1000
+    engram_threshold: float = 0.3
 
     # Metadata (optional)
     architecture_id: Optional[str] = None
@@ -161,6 +175,19 @@ class ArchitectureConfig:
         if self.kan_num_centers < 1:
             return False, f"kan_num_centers must be >= 1, got {self.kan_num_centers}"
 
+        # Validate SDR parameters
+        if self.sdr_size < 1:
+            return False, f"sdr_size must be >= 1, got {self.sdr_size}"
+
+        if not (0.0 < self.sdr_sparsity <= 1.0):
+            return False, f"sdr_sparsity must be in (0, 1], got {self.sdr_sparsity}"
+
+        if self.engram_capacity < 1:
+            return False, f"engram_capacity must be >= 1, got {self.engram_capacity}"
+
+        if not (0.0 <= self.engram_threshold <= 1.0):
+            return False, f"engram_threshold must be in [0, 1], got {self.engram_threshold}"
+
         return True, None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -188,6 +215,13 @@ class ArchitectureConfig:
             "n_eigenvectors": self.n_eigenvectors,
             "use_multiscale_manifold": self.use_multiscale_manifold,
             "dropout": self.dropout,
+            # Memory/SDR configuration
+            "use_sdr": self.use_sdr,
+            "sdr_size": self.sdr_size,
+            "sdr_sparsity": self.sdr_sparsity,
+            "engram_capacity": self.engram_capacity,
+            "engram_threshold": self.engram_threshold,
+            # Metadata
             "architecture_id": self.architecture_id,
             "search_iteration": self.search_iteration,
             "parent_id": self.parent_id,
@@ -268,6 +302,13 @@ class ArchitectureConfig:
 
             # Regularization (from ArchitectureConfig)
             "dropout": self.dropout,
+
+            # Memory/SDR configuration (from ArchitectureConfig)
+            "use_sdr": self.use_sdr,
+            "sdr_size": self.sdr_size,
+            "sdr_sparsity": self.sdr_sparsity,
+            "engram_capacity": self.engram_capacity,
+            "engram_threshold": self.engram_threshold,
         }
 
         # Override with any additional kwargs
@@ -334,6 +375,13 @@ class SearchSpace:
         # Regularization
         self.dropout_range = (0.0, 0.2)  # Continuous range
 
+        # Memory/SDR configuration
+        self.use_sdr_choices = [True, False]
+        self.sdr_size_choices = [1024, 2048, 4096]
+        self.sdr_sparsity_choices = [0.01, 0.02, 0.03]  # 1-3% sparsity
+        self.engram_capacity_choices = [500, 1000, 2000, 5000]
+        self.engram_threshold_choices = [0.2, 0.3, 0.4]
+
     def sample(self) -> ArchitectureConfig:
         """Sample a random architecture from the search space.
 
@@ -396,6 +444,13 @@ class SearchSpace:
         # Sample regularization
         dropout = random.uniform(*self.dropout_range)
 
+        # Sample memory/SDR configuration
+        use_sdr = random.choice(self.use_sdr_choices)
+        sdr_size = random.choice(self.sdr_size_choices)
+        sdr_sparsity = random.choice(self.sdr_sparsity_choices)
+        engram_capacity = random.choice(self.engram_capacity_choices)
+        engram_threshold = random.choice(self.engram_threshold_choices)
+
         return ArchitectureConfig(
             n_layer=n_layer,
             n_embd=n_embd,
@@ -415,6 +470,11 @@ class SearchSpace:
             n_eigenvectors=n_eigenvectors,
             use_multiscale_manifold=use_multiscale_manifold,
             dropout=dropout,
+            use_sdr=use_sdr,
+            sdr_size=sdr_size,
+            sdr_sparsity=sdr_sparsity,
+            engram_capacity=engram_capacity,
+            engram_threshold=engram_threshold,
         )
 
     def get_default(self) -> ArchitectureConfig:
@@ -458,6 +518,11 @@ class SearchSpace:
         size *= len(self.manifold_dim_choices)
         size *= len(self.n_eigenvectors_choices)
         size *= len(self.use_multiscale_manifold_choices)
+        size *= len(self.use_sdr_choices)
+        size *= len(self.sdr_size_choices)
+        size *= len(self.sdr_sparsity_choices)
+        size *= len(self.engram_capacity_choices)
+        size *= len(self.engram_threshold_choices)
         return int(size)
 
     def get_parameter_space(self) -> Dict[str, Union[List, Tuple]]:
@@ -491,4 +556,10 @@ class SearchSpace:
             "n_eigenvectors": self.n_eigenvectors_choices,
             "use_multiscale_manifold": self.use_multiscale_manifold_choices,
             "dropout": self.dropout_range,
+            # Memory/SDR parameters
+            "use_sdr": self.use_sdr_choices,
+            "sdr_size": self.sdr_size_choices,
+            "sdr_sparsity": self.sdr_sparsity_choices,
+            "engram_capacity": self.engram_capacity_choices,
+            "engram_threshold": self.engram_threshold_choices,
         }

@@ -492,7 +492,8 @@ class EvolutionarySearch(Searcher):
             "kan_type", "kan_num_centers",
             "fhn_threshold", "fhn_tau", "use_fhn_parallel",
             "manifold_dim", "n_eigenvectors", "use_multiscale_manifold",
-            "dropout"
+            "dropout",
+            "use_sdr", "sdr_size", "sdr_sparsity", "engram_capacity", "engram_threshold"
         ]
 
         # Mutate a random parameter
@@ -538,6 +539,16 @@ class EvolutionarySearch(Searcher):
             mutated.use_multiscale_manifold = random.choice(self.search_space.use_multiscale_manifold_choices)
         elif param_to_mutate == "dropout":
             mutated.dropout = random.uniform(*self.search_space.dropout_range)
+        elif param_to_mutate == "use_sdr":
+            mutated.use_sdr = random.choice(self.search_space.use_sdr_choices)
+        elif param_to_mutate == "sdr_size":
+            mutated.sdr_size = random.choice(self.search_space.sdr_size_choices)
+        elif param_to_mutate == "sdr_sparsity":
+            mutated.sdr_sparsity = random.choice(self.search_space.sdr_sparsity_choices)
+        elif param_to_mutate == "engram_capacity":
+            mutated.engram_capacity = random.choice(self.search_space.engram_capacity_choices)
+        elif param_to_mutate == "engram_threshold":
+            mutated.engram_threshold = random.choice(self.search_space.engram_threshold_choices)
 
         return mutated
 
@@ -569,6 +580,11 @@ class EvolutionarySearch(Searcher):
             n_eigenvectors=architecture.n_eigenvectors,
             use_multiscale_manifold=architecture.use_multiscale_manifold,
             dropout=architecture.dropout,
+            use_sdr=architecture.use_sdr,
+            sdr_size=architecture.sdr_size,
+            sdr_sparsity=architecture.sdr_sparsity,
+            engram_capacity=architecture.engram_capacity,
+            engram_threshold=architecture.engram_threshold,
         )
 
     def _evaluate_offspring(
