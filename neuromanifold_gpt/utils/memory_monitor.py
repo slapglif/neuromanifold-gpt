@@ -91,6 +91,17 @@ class GPUMemoryMonitor:
             "utilization": round(utilization, 3),
         }
 
+    def record_sample(self):
+        """
+        Record a memory snapshot to the history.
+
+        Captures current memory statistics and adds them to the memory history
+        for profiling and analysis. The history is limited by the history_size
+        parameter set during initialization.
+        """
+        stats = self.get_memory_stats()
+        self.memory_history.append(stats)
+
     def reset_peak(self):
         """
         Reset peak memory statistics.
