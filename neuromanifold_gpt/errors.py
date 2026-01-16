@@ -149,3 +149,63 @@ class RuntimeError(NeuroManifoldError):
         )
     """
     pass
+
+
+class CheckpointError(NeuroManifoldError):
+    """Error raised for checkpoint loading failures.
+
+    This error is raised when there are problems loading or restoring model
+    checkpoints, such as:
+    - Missing checkpoint files
+    - Corrupted checkpoint data
+    - Version mismatches between saved and current model
+    - Missing required checkpoint keys
+
+    Example:
+        raise CheckpointError(
+            problem="Failed to load checkpoint from 'out/model.pt'",
+            cause="Checkpoint file does not exist or is corrupted",
+            recovery="Verify the checkpoint path and ensure the file is valid"
+        )
+    """
+    pass
+
+
+class DataError(NeuroManifoldError):
+    """Error raised for data loading and format issues.
+
+    This error is raised when there are problems with data operations such as:
+    - Loading training or validation data
+    - Invalid or corrupted data file formats
+    - Data encoding or decoding issues
+    - Unexpected data structures or schemas
+    - Missing required data files
+
+    Example:
+        raise DataError(
+            problem="Failed to load training data from 'data/train.bin'",
+            cause="Data file is corrupted or has invalid format",
+            recovery="Regenerate the data file using prepare.py or verify the data source"
+        )
+    """
+    pass
+
+
+class MemoryError(NeuroManifoldError):
+    """Error raised for GPU memory allocation and management issues.
+
+    This error is raised when there are problems with GPU memory operations such as:
+    - Out of memory (OOM) errors during model loading or training
+    - Insufficient GPU memory for batch size or model size
+    - Memory allocation failures
+    - Memory fragmentation issues
+    - CUDA memory errors
+
+    Example:
+        raise MemoryError(
+            problem="Insufficient GPU memory for batch size",
+            cause="Batch size of 64 requires 12GB but only 8GB available",
+            recovery="Reduce batch_size to 32 or use gradient accumulation"
+        )
+    """
+    pass

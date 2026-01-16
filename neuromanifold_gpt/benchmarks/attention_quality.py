@@ -23,7 +23,7 @@ import os
 import pickle
 import time
 from contextlib import nullcontext
-from typing import Any, Callable
+from typing import Any, Callable, ContextManager
 
 import numpy as np
 import torch
@@ -33,7 +33,7 @@ from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 
-def load_model(config_path: str, device: str = "cuda", dtype: str = "bfloat16") -> tuple[NeuroManifoldGPT, dict]:
+def load_model(config_path: str, device: str = "cuda", dtype: str = "bfloat16") -> tuple[NeuroManifoldGPT, dict[str, Any]]:
     """Load a model from configuration file.
 
     Args:
@@ -115,7 +115,7 @@ def estimate_loss(
     batch_size: int,
     block_size: int,
     device: str,
-    ctx: Any
+    ctx: ContextManager[None]
 ) -> dict[str, float]:
     """Estimate loss on train and val splits.
 
@@ -150,7 +150,7 @@ def estimate_loss(
     return out
 
 
-def setup_encoding(dataset: str) -> tuple[Callable, Callable]:
+def setup_encoding(dataset: str) -> tuple[Callable[[str], list[int]], Callable[[list[int]], str]]:
     """Setup encoding/decoding functions for a dataset.
 
     Pattern from sample.py - tries to load meta.pkl, falls back to GPT-2 encoding.
@@ -268,7 +268,7 @@ def benchmark_sample_quality(
         "bfloat16": torch.bfloat16,
         "float16": torch.float16
     }[dtype]
-    ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    ctx: ContextManager[None] = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)  # type: ignore[assignment]
 
     # Setup encoding
     encode, decode = setup_encoding(dataset)
@@ -425,7 +425,7 @@ def benchmark_quality(
         "bfloat16": torch.bfloat16,
         "float16": torch.float16
     }[dtype]
-    ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    ctx: ContextManager[None] = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)  # type: ignore[assignment]
 
     results = {}
 
