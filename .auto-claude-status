@@ -1,25 +1,25 @@
 {
-  "active": true,
-  "spec": "037-zero-shot-benchmark-evaluation-suite",
-  "state": "building",
+  "active": false,
+  "spec": null,
+  "state": "idle",
   "subtasks": {
-    "completed": 6,
-    "total": 9,
-    "in_progress": 1,
+    "completed": 0,
+    "total": 0,
+    "in_progress": 0,
     "failed": 0
   },
   "phase": {
-    "current": "Baseline Verification",
+    "current": null,
     "id": null,
-    "total": 2
+    "total": 0
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 8,
-    "started_at": "2026-01-16T01:08:31.153521"
+    "number": 0,
+    "started_at": null
   },
-  "last_update": "2026-01-16T01:29:26.068179"
+  "last_update": null
 }
