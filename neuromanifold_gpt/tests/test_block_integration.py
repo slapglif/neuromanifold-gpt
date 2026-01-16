@@ -2,40 +2,27 @@
 import torch
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.config.base import NeuroManifoldConfigNano
+from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 
 def test_full_block_integration():
     """Smoke test for NeuroManifoldBlock with WaveKAN."""
     print("Initializing NeuroManifoldBlock with WaveKAN...")
-    
-    # Configure for WaveKAN
-    config = NeuroManifoldConfigNano()
-    config.use_kan = True
-    config.kan_type = "wave"
-    config.kan_wavelet = "dog"
-    config.use_fast_wavekan = True
-    
-    # Initialize block
-    block = NeuroManifoldBlock(
-        sdr_size=config.sdr_size,
-        embed_dim=config.n_embd,
-        manifold_dim=config.manifold_dim,
-        n_eigenvectors=config.n_eigenvectors,
-        n_heads=config.n_heads,
-        dropout=config.dropout,
-        fhn_threshold=config.fhn_threshold,
-        fhn_tau=config.fhn_tau,
-        pulse_width_base=config.pulse_width_base,
-        n_fhn_steps=config.n_fhn_steps,
-        use_fhn_imex=config.use_fhn_imex,
-        use_kan=config.use_kan,
-        kan_type=config.kan_type,
-        kan_degree=config.kan_degree,
-        kan_wavelet=config.kan_wavelet,
-        use_fast_wavekan=config.use_fast_wavekan
-    )
+
+    # Create model config
+    model_config = NeuroManifoldConfigNano()
+    model_config.use_kan = True
+    model_config.kan_type = "wave"
+    model_config.kan_wavelet = "dog"
+    model_config.use_fast_wavekan = True
+
+    # Create block config from model config
+    block_config = NeuroManifoldBlockConfig.from_model_config(model_config, layer_idx=0)
+
+    # Initialize block with config object
+    block = NeuroManifoldBlock(config=block_config)
     
     # Create input SDR (Batch, Time, SDR_Size)
-    B, T, S = 2, 64, config.sdr_size
+    B, T, S = 2, 64, block_config.sdr_size
     sdr = torch.randn(B, T, S)
     
     print(f"Forward pass with input shape {sdr.shape}...")
