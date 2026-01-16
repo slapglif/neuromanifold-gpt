@@ -34,6 +34,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.utils.progress import progress_bar
 
 # -----------------------------------------------------------------------------
 # Default config values designed to train NeuroManifoldGPT
@@ -275,7 +276,12 @@ def estimate_loss() -> dict[str, float]:
     model.eval()
     for split in ["train", "val"]:
         losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
+        # Only show progress on master process to avoid duplicate output in DDP
+        iterator = range(eval_iters)
+        if master_process:
+            iterator = progress_bar(iterator, description=f"Evaluating {split}", total=eval_iters)
+
+        for k in iterator:
             X, Y = get_batch(split)
             with ctx:
                 logits, loss, info = model(X, Y)
