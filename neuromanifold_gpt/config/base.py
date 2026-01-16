@@ -87,6 +87,7 @@ class NeuroManifoldConfig:
 
     # Attention configuration
     n_heads: int = 8
+    attention_type: str = 'standard'  # Attention mechanism type ('standard', 'fhn', etc.)
 
     # FHN dynamics (Fitzhugh-Nagumo)
     fhn_threshold: float = 0.5  # Restored: stable excitability threshold
