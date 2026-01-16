@@ -6,5 +6,6 @@ novel component parameters.
 """
 
 from neuromanifold_gpt.hpo.search_space import SearchSpace
+from neuromanifold_gpt.hpo.optuna_search import OptunaHPO
 
-__all__ = ["SearchSpace"]
+__all__ = ["SearchSpace", "OptunaHPO"]
