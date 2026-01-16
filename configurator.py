@@ -17,6 +17,38 @@ comes up with a better simple Python solution I am all ears.
 import sys
 from ast import literal_eval
 
+# Handle --help
+if '--help' in sys.argv:
+    print("""
+Poor Man's Configurator - Simple config override system
+
+Usage:
+    python train.py [config_file.py] [--key=value ...]
+
+Examples:
+    python train.py config/my_config.py
+    python train.py --batch_size=32 --learning_rate=1e-4
+    python train.py config/my_config.py --batch_size=32
+
+Common Configuration Options:
+    --attention=<type>         Attention mechanism: standard, soliton, sdr, fast-spectral
+    --batch_size=<int>         Training batch size
+    --learning_rate=<float>    Learning rate
+    --n_layer=<int>            Number of transformer layers
+    --n_head=<int>             Number of attention heads
+    --n_embd=<int>             Embedding dimension
+    --block_size=<int>         Context window size
+    --max_iters=<int>          Maximum training iterations
+    --model_type=<str>         Model type: neuromanifold or gpt
+    --use_sdr=<bool>           Use SDR memory
+    --use_kan=<bool>           Use KAN networks
+    --compile_model=<bool>     Compile with torch.compile
+
+Note: Boolean values should be 'True' or 'False' (case-sensitive)
+      Run with a config file to see all available options for that configuration
+""")
+    sys.exit(0)
+
 for arg in sys.argv[1:]:
     if '=' not in arg:
         # assume it's the name of a config file
