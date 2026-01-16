@@ -264,6 +264,21 @@ class SearchSpace:
         # Regularization
         self.dropout_range = (0.0, 0.2)  # Continuous range
 
+    def sample(self) -> ArchitectureConfig:
+        """Sample a random architecture from the search space.
+
+        This is the main sampling method used by NAS algorithms.
+
+        Returns:
+            ArchitectureConfig with randomly sampled parameters
+
+        Note:
+            The sampled configuration is guaranteed to satisfy basic
+            constraints (e.g., n_embd divisible by n_heads) and passes
+            validation checks.
+        """
+        return self.sample_random()
+
     def sample_random(self) -> ArchitectureConfig:
         """Sample a random architecture from the search space.
 
