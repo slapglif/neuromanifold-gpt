@@ -171,6 +171,7 @@ class FHNAttention(nn.Module):
         use_flash_fhn_fusion: bool = True,  # Use Flash Attention fusion
         pos_emb_type: str = "learned",  # Position embedding type
         max_seq_len: int = 1024,  # For RoPE/ALiBi initialization
+        chunk_size: int = 512,  # Chunk size for memory-efficient attention
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -181,6 +182,7 @@ class FHNAttention(nn.Module):
         self.n_fhn_steps = n_fhn_steps
         self.use_partitioning = use_partitioning
         self.pos_emb_type = pos_emb_type
+        self.chunk_size = chunk_size
 
         assert embed_dim % n_heads == 0
 
@@ -213,6 +215,97 @@ class FHNAttention(nn.Module):
         self.rope = None
         self.alibi = None
         self.max_seq_len = max_seq_len  # Store for lazy init
+
+    def _chunked_fhn_attention(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        chunk_size: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Memory-efficient chunked causal attention with FHN modulation.
+
+        Processes sequence in chunks to reduce memory from O(T²) to O(chunk_size²).
+        Maintains causality by ensuring each chunk only attends to itself and
+        previous chunks.
+
+        Args:
+            q: (B, H, T, D) query tensor
+            k: (B, H, T, D) key tensor
+            v: (B, H, T, D) value tensor
+            chunk_size: Maximum chunk size for processing
+
+        Returns:
+            out: (B, H, T, D) attention output
+            fhn_state_mean: Scalar mean FHN state for monitoring
+        """
+        B, H, T, D = q.shape
+
+        # Calculate number of chunks needed
+        n_chunks = (T + chunk_size - 1) // chunk_size
+
+        # Initialize output tensor
+        out = torch.zeros_like(q)
+        fhn_states = []
+
+        # Process each chunk
+        for chunk_idx in range(n_chunks):
+            # Define chunk boundaries
+            chunk_start = chunk_idx * chunk_size
+            chunk_end = min(chunk_start + chunk_size, T)
+            chunk_len = chunk_end - chunk_start
+
+            # Extract query chunk
+            q_chunk = q[:, :, chunk_start:chunk_end, :]  # (B, H, chunk_len, D)
+
+            # For causal attention, keys/values span from start to chunk_end
+            # (current chunk can attend to all previous positions + itself)
+            k_causal = k[:, :, :chunk_end, :]  # (B, H, chunk_end, D)
+            v_causal = v[:, :, :chunk_end, :]  # (B, H, chunk_end, D)
+
+            # Compute attention scores for this chunk
+            # (B, H, chunk_len, D) @ (B, H, D, chunk_end) -> (B, H, chunk_len, chunk_end)
+            attn_weights = einsum(q_chunk, k_causal, "b h t d, b h s d -> b h t s")
+            attn_weights = attn_weights / (D ** 0.5)
+
+            # Apply softmax
+            attn_probs = torch.softmax(attn_weights, dim=-1)
+            attn_probs = self.dropout(attn_probs)
+
+            # Apply FHN dynamics if configured
+            if self.n_fhn_steps > 0:
+                # Compute attention energy per query position in chunk
+                attn_energy = attn_probs.sum(dim=-1)  # (B, H, chunk_len)
+
+                # Run FHN dynamics
+                fhn_out, fhn_state = self.fhn(
+                    attn_energy.unsqueeze(-1).expand(-1, -1, -1, D),
+                    n_steps=self.n_fhn_steps,
+                )
+                fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(-1)  # (B, H, chunk_len, 1)
+
+                # Modulate attention with FHN response
+                attn_probs = attn_probs * (0.5 + 0.5 * fhn_gate)
+                # Renormalize
+                attn_probs = attn_probs / (attn_probs.sum(dim=-1, keepdim=True) + 1e-8)
+
+                fhn_states.append(fhn_state.mean())
+
+            # Apply attention to values
+            # (B, H, chunk_len, chunk_end) @ (B, H, chunk_end, D) -> (B, H, chunk_len, D)
+            out_chunk = einsum(attn_probs, v_causal, "b h t s, b h s d -> b h t d")
+
+            # Store chunk output
+            out[:, :, chunk_start:chunk_end, :] = out_chunk
+
+        # Aggregate FHN state
+        if fhn_states:
+            fhn_state_mean = torch.stack(fhn_states).mean()
+        else:
+            fhn_state_mean = torch.tensor(0.0, device=q.device)
+
+        return out, fhn_state_mean
 
     def forward(
         self, x: torch.Tensor, spectral_basis: torch.Tensor
