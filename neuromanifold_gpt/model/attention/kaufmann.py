@@ -53,10 +53,18 @@ def _kaufmann_reaction_diffusion_step(
 
 
 # Compile with reduce-overhead mode for minimal Python overhead
-kaufmann_reaction_diffusion_step = torch.compile(
-    _kaufmann_reaction_diffusion_step,
-    mode="reduce-overhead"
-)
+# Gracefully fall back to uncompiled version on Python 3.12+ (where Dynamo is not supported)
+try:
+    kaufmann_reaction_diffusion_step = torch.compile(
+        _kaufmann_reaction_diffusion_step,
+        mode="reduce-overhead"
+    )
+except RuntimeError as e:
+    if "Dynamo is not supported" in str(e):
+        # Fall back to uncompiled version on Python 3.12+
+        kaufmann_reaction_diffusion_step = _kaufmann_reaction_diffusion_step
+    else:
+        raise
 
 
 class KaufmannAttention(nn.Module):
