@@ -17,6 +17,12 @@ import torch.nn as nn
 from einops import rearrange, einsum
 from .partitioning import SpectralPartitioner
 
+try:
+    from .memory_efficient import xformers_attention, XFORMERS_AVAILABLE
+except ImportError:
+    XFORMERS_AVAILABLE = False
+    xformers_attention = None
+
 
 @torch.jit.script
 def fhn_update_step(
@@ -214,6 +220,10 @@ class FHNAttention(nn.Module):
         self.alibi = None
         self.max_seq_len = max_seq_len  # Store for lazy init
 
+        # Check attention backend availability
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        self.xformers = XFORMERS_AVAILABLE
+
     def forward(
         self, x: torch.Tensor, spectral_basis: torch.Tensor
     ) -> tuple[torch.Tensor, dict]:
@@ -255,19 +265,48 @@ class FHNAttention(nn.Module):
         pulse_widths = self.pulse_width_net(q.mean(dim=2))  # (B, H, 1)
         pulse_widths = self.pulse_width_base + pulse_widths.squeeze(-1)  # (B, H)
 
-        # === Fast Path: Use Flash Attention when no FHN modulation and no ALiBi ===
+        # === Fast Path: Use optimized attention when no FHN modulation and no ALiBi ===
         # ALiBi requires manual attention to add bias
+        backend = None
         if self.n_fhn_steps == 0 and self.alibi is None:
-            # Use PyTorch's optimized scaled_dot_product_attention (Flash Attention)
-            # This is MUCH faster than manual einsum implementation
-            out = torch.nn.functional.scaled_dot_product_attention(
-                q, key, v,
-                attn_mask=None,  # Use is_causal=True instead
-                dropout_p=self.dropout.p if self.training else 0.0,
-                is_causal=True,
-            )
+            # Try backends in order: flash -> xformers -> manual
+            if self.flash:
+                # Use PyTorch's optimized scaled_dot_product_attention (Flash Attention)
+                out = torch.nn.functional.scaled_dot_product_attention(
+                    q, key, v,
+                    attn_mask=None,  # Use is_causal=True instead
+                    dropout_p=self.dropout.p if self.training else 0.0,
+                    is_causal=True,
+                )
+                backend = "flash"
+            elif self.xformers:
+                # Fallback to xformers memory-efficient attention
+                out = xformers_attention(
+                    q, key, v,
+                    dropout_p=self.dropout.p if self.training else 0.0,
+                    is_causal=True,
+                )
+                backend = "xformers"
+            else:
+                # Manual implementation with causal mask
+                attn_weights = einsum(q, key, "b h t d, b h s d -> b h t s")
+                attn_weights = attn_weights / (self.head_dim**0.5)
+
+                # Causal mask
+                causal_mask = torch.triu(
+                    torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1
+                )
+                attn_weights = attn_weights.masked_fill(
+                    causal_mask.unsqueeze(0).unsqueeze(0), float("-inf")
+                )
+
+                attn_probs = torch.softmax(attn_weights, dim=-1)
+                attn_probs = self.dropout(attn_probs)
+                out = einsum(attn_probs, v, "b h t s, b h s d -> b h t d")
+                backend = "manual"
+
             fhn_state_val = torch.tensor(0.0, device=x.device)
-            attn_probs = None  # Not computed in flash attention
+            attn_probs = None  # Not computed in flash/xformers attention
         else:
             # === Standard Causal Scaled Dot-Product Attention (for FHN modulation or ALiBi) ===
             # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
@@ -308,11 +347,13 @@ class FHNAttention(nn.Module):
 
             # Apply attention to values
             out = einsum(attn_probs, v, "b h t s, b h s d -> b h t d")
+            backend = "manual_fhn"  # FHN modulation always uses manual implementation
         out = rearrange(out, "b h t d -> b t (h d)")
         out = self.out_proj(out)
 
         info = {
             "attention_type": "fhn",
+            "backend": backend,
             "pulse_widths": pulse_widths,
             "fhn_state": fhn_state_val,
             "attn_probs": attn_probs,
