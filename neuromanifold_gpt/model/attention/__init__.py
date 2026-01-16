@@ -7,7 +7,6 @@ Exports:
     FHNDynamics: Core excitable neural medium dynamics
     KnotAttention: Topological knot-theory based attention
     KaufmannAttention: Combined FHN + Knot reaction-diffusion system
-    MultiHeadLatentAttention: DeepSeek-style KV cache compression attention
     RMSNorm: Root Mean Square Layer Normalization
 
 The attention mechanisms implement biologically-inspired neural dynamics
@@ -29,7 +28,7 @@ from neuromanifold_gpt.model.attention.standard import StandardAttention
 from neuromanifold_gpt.model.attention.fhn import FHNAttention, FHNDynamics
 from neuromanifold_gpt.model.attention.knot import KnotAttention
 from neuromanifold_gpt.model.attention.kaufmann import KaufmannAttention
-from neuromanifold_gpt.model.attention.mla import MultiHeadLatentAttention, RMSNorm
+from neuromanifold_gpt.model.attention.mla import RMSNorm
 
 __all__ = [
     "StandardAttention",
@@ -37,6 +36,5 @@ __all__ = [
     "FHNDynamics",
     "KnotAttention",
     "KaufmannAttention",
-    "MultiHeadLatentAttention",
     "RMSNorm",
 ]

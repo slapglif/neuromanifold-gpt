@@ -98,6 +98,7 @@ def test_gpt_memory_active_retrieval():
     config = NeuroManifoldConfigNano()
     config.memory_active_retrieval = True  # Enable active retrieval
     config.use_sdr = True  # SDR required for memory retrieval to work
+    config.engram_threshold = 0.0  # Lower threshold for random token testing
 
     model = NeuroManifoldGPT(config)
     model.train()
