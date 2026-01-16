@@ -29,7 +29,8 @@ from neuromanifold_gpt.model.attention.standard import StandardAttention
 from neuromanifold_gpt.model.attention.fhn import FHNAttention, FHNDynamics
 from neuromanifold_gpt.model.attention.knot import KnotAttention
 from neuromanifold_gpt.model.attention.kaufmann import KaufmannAttention
-from neuromanifold_gpt.model.attention.mla import MultiHeadLatentAttention, RMSNorm
+# NOTE: MultiHeadLatentAttention not yet implemented in mla.py
+from neuromanifold_gpt.model.attention.mla import RMSNorm
 
 __all__ = [
     "StandardAttention",
@@ -37,6 +38,6 @@ __all__ = [
     "FHNDynamics",
     "KnotAttention",
     "KaufmannAttention",
-    "MultiHeadLatentAttention",
+    # "MultiHeadLatentAttention",  # Not yet implemented
     "RMSNorm",
 ]
