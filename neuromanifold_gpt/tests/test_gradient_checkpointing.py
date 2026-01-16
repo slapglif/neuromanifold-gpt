@@ -7,19 +7,17 @@ from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from model import GPT, GPTConfig
 
 
-def test_neuromanifold_gpt_with_gradient_checkpointing():
+def test_neuromanifold_gpt_with_gradient_checkpointing(nano_config, tokens_2x20):
     """NeuroManifoldGPT should work with gradient_checkpointing=True."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
-    tokens = torch.randint(0, config.vocab_size, (2, 20))
-    targets = torch.randint(0, config.vocab_size, (2, 20))
+    targets = torch.randint(0, nano_config.vocab_size, (2, 20))
 
-    logits, loss, info = model(tokens, targets)
+    logits, loss, info = model(tokens_2x20, targets)
 
-    assert logits.shape == (2, 20, config.vocab_size)
+    assert logits.shape == (2, 20, nano_config.vocab_size)
     assert loss is not None
     assert loss.ndim == 0  # Scalar
 
@@ -47,15 +45,13 @@ def test_standard_gpt_with_gradient_checkpointing():
     assert loss.ndim == 0  # Scalar
 
 
-def test_gradient_checkpointing_output_consistency():
+def test_gradient_checkpointing_output_consistency(nano_config, tokens_2x20):
     """Output should be consistent with and without gradient checkpointing."""
-    torch.manual_seed(42)
-    config = NeuroManifoldConfigNano()
-    config.n_layer = 2
-    config.use_sdr = False  # Disable SDR for deterministic comparison
+    nano_config.n_layer = 2
+    nano_config.use_sdr = False  # Disable SDR for deterministic comparison
 
     # Model without checkpointing
-    model_no_ckpt = NeuroManifoldGPT(config)
+    model_no_ckpt = NeuroManifoldGPT(nano_config)
     model_no_ckpt.train()
 
     # Model with checkpointing
@@ -70,12 +66,9 @@ def test_gradient_checkpointing_output_consistency():
     model_with_ckpt.load_state_dict(model_no_ckpt.state_dict())
 
     # Test forward pass
-    torch.manual_seed(123)
-    tokens = torch.randint(0, config.vocab_size, (2, 20))
-
     with torch.no_grad():
-        logits_no_ckpt, _, _ = model_no_ckpt(tokens)
-        logits_with_ckpt, _, _ = model_with_ckpt(tokens)
+        logits_no_ckpt, _, _ = model_no_ckpt(tokens_2x20)
+        logits_with_ckpt, _, _ = model_with_ckpt(tokens_2x20)
 
     # Outputs should have same shape
     assert logits_no_ckpt.shape == logits_with_ckpt.shape
@@ -83,18 +76,16 @@ def test_gradient_checkpointing_output_consistency():
     assert torch.allclose(logits_no_ckpt, logits_with_ckpt, atol=1e-5)
 
 
-def test_gradient_checkpointing_backward_pass():
+def test_gradient_checkpointing_backward_pass(nano_config, tokens_2x20):
     """Gradients should be computed correctly with gradient checkpointing."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    config.n_layer = 2
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    nano_config.n_layer = 2
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
-    tokens = torch.randint(0, config.vocab_size, (2, 20))
-    targets = torch.randint(0, config.vocab_size, (2, 20))
+    targets = torch.randint(0, nano_config.vocab_size, (2, 20))
 
-    logits, loss, _ = model(tokens, targets)
+    logits, loss, _ = model(tokens_2x20, targets)
 
     # Backward pass should work without errors
     loss.backward()
@@ -110,76 +101,71 @@ def test_gradient_checkpointing_backward_pass():
     assert grad_count > 0
 
 
-def test_gradient_checkpointing_only_in_training_mode():
+def test_gradient_checkpointing_only_in_training_mode(nano_config, tokens_1x10):
     """Gradient checkpointing should only be used in training mode."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    model = NeuroManifoldGPT(config)
-
-    tokens = torch.randint(0, config.vocab_size, (1, 10))
+    nano_config.gradient_checkpointing = True
+    model = NeuroManifoldGPT(nano_config)
 
     # In eval mode, should work without checkpointing
     model.eval()
     with torch.no_grad():
-        logits_eval, _, _ = model(tokens)
-        assert logits_eval.shape == (1, 10, config.vocab_size)
+        logits_eval, _, _ = model(tokens_1x10)
+        assert logits_eval.shape == (1, 10, nano_config.vocab_size)
 
     # In train mode, should use checkpointing
     model.train()
-    logits_train, _, _ = model(tokens)
-    assert logits_train.shape == (1, 10, config.vocab_size)
+    logits_train, _, _ = model(tokens_1x10)
+    assert logits_train.shape == (1, 10, nano_config.vocab_size)
 
 
-def test_gradient_checkpointing_with_sdr_mode():
+def test_gradient_checkpointing_with_sdr_mode(nano_config):
     """Gradient checkpointing should work with SDR mode enabled."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    config.use_sdr = True
-    config.n_layer = 2
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    nano_config.use_sdr = True
+    nano_config.n_layer = 2
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
-    tokens = torch.randint(0, config.vocab_size, (2, 15))
-    targets = torch.randint(0, config.vocab_size, (2, 15))
+    tokens = torch.randint(0, nano_config.vocab_size, (2, 15))
+    targets = torch.randint(0, nano_config.vocab_size, (2, 15))
 
     logits, loss, info = model(tokens, targets)
 
-    assert logits.shape == (2, 15, config.vocab_size)
+    assert logits.shape == (2, 15, nano_config.vocab_size)
     assert loss is not None
     # Verify SDR info is present
     assert "sdr" in info
     assert "sdr_scores" in info
 
 
-def test_gradient_checkpointing_with_dense_mode():
+def test_gradient_checkpointing_with_dense_mode(nano_config):
     """Gradient checkpointing should work with dense (non-SDR) mode."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    config.use_sdr = False
-    config.n_layer = 2
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    nano_config.use_sdr = False
+    nano_config.n_layer = 2
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
-    tokens = torch.randint(0, config.vocab_size, (2, 15))
-    targets = torch.randint(0, config.vocab_size, (2, 15))
+    tokens = torch.randint(0, nano_config.vocab_size, (2, 15))
+    targets = torch.randint(0, nano_config.vocab_size, (2, 15))
 
     logits, loss, info = model(tokens, targets)
 
-    assert logits.shape == (2, 15, config.vocab_size)
+    assert logits.shape == (2, 15, nano_config.vocab_size)
     assert loss is not None
 
 
-def test_gradient_flow_with_checkpointing():
+def test_gradient_flow_with_checkpointing(nano_config, tokens_1x10):
     """Gradients should flow properly through checkpointed blocks."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    config.n_layer = 3
-    config.use_sdr = False
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    nano_config.n_layer = 3
+    nano_config.use_sdr = False
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
-    tokens = torch.randint(0, config.vocab_size, (2, 10))
-    targets = torch.randint(0, config.vocab_size, (2, 10))
+    # tokens_1x10 is (1, 10), but we need (2, 10)
+    tokens = torch.randint(0, nano_config.vocab_size, (2, 10))
+    targets = torch.randint(0, nano_config.vocab_size, (2, 10))
 
     # Forward and backward pass
     logits, loss, _ = model(tokens, targets)
@@ -199,7 +185,7 @@ def test_gradient_flow_with_checkpointing():
             blocks_with_gradients += 1
 
     # All blocks should have non-zero gradients
-    assert blocks_with_gradients == config.n_layer
+    assert blocks_with_gradients == nano_config.n_layer
 
 
 def test_standard_gpt_gradient_flow():
@@ -249,67 +235,60 @@ def test_gradient_checkpointing_disabled_by_default():
     assert config_gpt.gradient_checkpointing is False
 
 
-def test_neuromanifold_generate_with_checkpointing():
+def test_neuromanifold_generate_with_checkpointing(nano_config, tokens_1x10):
     """Generate should work correctly with gradient checkpointing enabled."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    model = NeuroManifoldGPT(nano_config)
     model.eval()
 
-    prompt = torch.randint(0, config.vocab_size, (1, 10))
-
     with torch.no_grad():
-        generated = model.generate(prompt, max_new_tokens=5)
+        generated = model.generate(tokens_1x10, max_new_tokens=5)
 
     assert generated.shape == (1, 15)
     # Verify prompt is unchanged
-    assert torch.equal(generated[:, :10], prompt)
+    assert torch.equal(generated[:, :10], tokens_1x10)
 
 
-def test_gradient_checkpointing_batch_sizes():
+def test_gradient_checkpointing_batch_sizes(nano_config, tokens_1x10):
     """Gradient checkpointing should work with different batch sizes."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    config.n_layer = 2
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    nano_config.n_layer = 2
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
     # Test batch size 1
-    tokens_1 = torch.randint(0, config.vocab_size, (1, 10))
-    logits_1, _, _ = model(tokens_1)
-    assert logits_1.shape == (1, 10, config.vocab_size)
+    logits_1, _, _ = model(tokens_1x10)
+    assert logits_1.shape == (1, 10, nano_config.vocab_size)
 
     # Test batch size 4
-    tokens_4 = torch.randint(0, config.vocab_size, (4, 10))
+    tokens_4 = torch.randint(0, nano_config.vocab_size, (4, 10))
     logits_4, _, _ = model(tokens_4)
-    assert logits_4.shape == (4, 10, config.vocab_size)
+    assert logits_4.shape == (4, 10, nano_config.vocab_size)
 
     # Test batch size 8
-    tokens_8 = torch.randint(0, config.vocab_size, (8, 10))
+    tokens_8 = torch.randint(0, nano_config.vocab_size, (8, 10))
     logits_8, _, _ = model(tokens_8)
-    assert logits_8.shape == (8, 10, config.vocab_size)
+    assert logits_8.shape == (8, 10, nano_config.vocab_size)
 
 
-def test_gradient_checkpointing_sequence_lengths():
+def test_gradient_checkpointing_sequence_lengths(nano_config, tokens_2x50):
     """Gradient checkpointing should work with different sequence lengths."""
-    config = NeuroManifoldConfigNano()
-    config.gradient_checkpointing = True
-    config.n_layer = 2
-    model = NeuroManifoldGPT(config)
+    nano_config.gradient_checkpointing = True
+    nano_config.n_layer = 2
+    model = NeuroManifoldGPT(nano_config)
     model.train()
 
     # Test short sequence
-    tokens_short = torch.randint(0, config.vocab_size, (2, 5))
+    tokens_short = torch.randint(0, nano_config.vocab_size, (2, 5))
     logits_short, _, _ = model(tokens_short)
-    assert logits_short.shape == (2, 5, config.vocab_size)
+    assert logits_short.shape == (2, 5, nano_config.vocab_size)
 
     # Test medium sequence
-    tokens_med = torch.randint(0, config.vocab_size, (2, 50))
-    logits_med, _, _ = model(tokens_med)
-    assert logits_med.shape == (2, 50, config.vocab_size)
+    logits_med, _, _ = model(tokens_2x50)
+    assert logits_med.shape == (2, 50, nano_config.vocab_size)
 
     # Test long sequence (up to block_size)
-    seq_len = min(100, config.block_size)
-    tokens_long = torch.randint(0, config.vocab_size, (2, seq_len))
+    seq_len = min(100, nano_config.block_size)
+    tokens_long = torch.randint(0, nano_config.vocab_size, (2, seq_len))
     logits_long, _, _ = model(tokens_long)
-    assert logits_long.shape == (2, seq_len, config.vocab_size)
+    assert logits_long.shape == (2, seq_len, nano_config.vocab_size)
