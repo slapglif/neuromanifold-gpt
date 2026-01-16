@@ -53,6 +53,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from neuromanifold_gpt.config.loader import _load_config_module
+
 # Optional loguru import - fall back to standard logging if not available
 try:
     from loguru import logger
@@ -320,14 +322,11 @@ def parse_args_with_config_override(
         if config_path.exists():
             logger.info(f"Loading config from {config_path}")
 
-            # Read and exec config file (like configurator.py)
-            config_globals = {}
-            with open(config_path) as f:
-                config_code = f.read()
-                exec(config_code, config_globals)
+            # Load config module safely (no exec)
+            config_values = _load_config_module(str(config_path))
 
             # Override parsed values with config values
-            for key, value in config_globals.items():
+            for key, value in config_values.items():
                 if hasattr(parsed, key) and not key.startswith('_'):
                     setattr(parsed, key, value)
                     logger.debug(f"Config override: {key} = {value}")
