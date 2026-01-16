@@ -1,0 +1,135 @@
+"""Ralph Loop iteration config registry.
+
+This module provides a centralized registry for Ralph Loop iteration configurations.
+Each iteration is defined using the RalphConfigBuilder pattern, specifying only
+the deltas from RalphBaseConfig.
+
+The registry allows access to any Ralph iteration config by iteration number:
+    >>> from neuromanifold_gpt.config.ralph_configs import get_ralph_config
+    >>> config = get_ralph_config(1)
+    >>> config.batch_size
+    32
+
+Design:
+- Each iteration is stored as a builder function that returns a configured RalphBaseConfig
+- Only deltas from base are specified (DRY principle)
+- Iteration metadata (comments, goals) are preserved in docstrings
+- Migration script (subtask-2-2) will populate this registry from old ralph_iter*.py files
+
+Registry structure:
+    _RALPH_ITERATIONS = {
+        1: ralph_iter1,
+        2: ralph_iter2,
+        ...
+    }
+
+Each function returns a RalphBaseConfig instance built with the builder pattern.
+"""
+
+from typing import Callable
+
+from neuromanifold_gpt.config.ralph_base import RalphBaseConfig
+from neuromanifold_gpt.config.ralph_builder import RalphConfigBuilder
+
+
+# Registry mapping iteration number to config builder function
+_RALPH_ITERATIONS: dict[int, Callable[[], RalphBaseConfig]] = {}
+
+
+def ralph_iter1() -> RalphBaseConfig:
+    """Ralph Loop Iteration 1 - Tiny config for 6GB GPU, sub-100s training.
+
+    GOALS: val_loss < 1.5, training_time < 100s
+
+    Key changes from base:
+    - Reduced model size (2 layers, 256 embd)
+    - Minimal batch/block size for memory
+    - Short training run (500 iters)
+    - mHC enabled for stability
+    """
+    return RalphConfigBuilder().with_overrides(
+        # Data
+        batch_size=32,
+        block_size=128,
+        num_workers=2,
+
+        # Model - TINY for speed and memory
+        n_layer=2,
+        n_head=4,
+        n_embd=256,
+        dropout=0.0,
+
+        # NeuroManifold features
+        use_sdr=False,
+        use_kan=False,
+        use_mhc=True,
+        use_full_mhc=False,
+        mhc_n_streams=2,
+
+        # FHN settings
+        n_fhn_steps=1,
+        use_fhn_partitioning=False,
+
+        # Training - aggressive for speed
+        max_iters=500,
+        gradient_accumulation_steps=2,
+        learning_rate=1e-3,
+        warmup_iters=100,
+        lr_decay_iters=500,
+
+        # Eval/logging
+        eval_interval=200,
+        eval_iters=20,
+        sample_interval=500,
+
+        # Output
+        out_dir="out-ralph-iter1",
+    ).build()
+
+
+# Register iteration 1 as an example
+# Additional iterations will be added by the migration script in subtask-2-2
+_RALPH_ITERATIONS[1] = ralph_iter1
+
+
+def get_ralph_config(iteration: int) -> RalphBaseConfig:
+    """Get configuration for a Ralph Loop iteration.
+
+    Args:
+        iteration: The iteration number (1-116).
+
+    Returns:
+        RalphBaseConfig instance configured for that iteration.
+
+    Raises:
+        ValueError: If the iteration number is not found in the registry.
+
+    Example:
+        >>> config = get_ralph_config(1)
+        >>> config.n_layer
+        2
+        >>> config.batch_size
+        32
+    """
+    if iteration not in _RALPH_ITERATIONS:
+        available = sorted(_RALPH_ITERATIONS.keys())
+        raise ValueError(
+            f"Ralph iteration {iteration} not found in registry. "
+            f"Available iterations: {available}"
+        )
+
+    return _RALPH_ITERATIONS[iteration]()
+
+
+def list_ralph_iterations() -> list[int]:
+    """List all available Ralph Loop iteration numbers.
+
+    Returns:
+        Sorted list of iteration numbers available in the registry.
+
+    Example:
+        >>> iterations = list_ralph_iterations()
+        >>> 1 in iterations
+        True
+    """
+    return sorted(_RALPH_ITERATIONS.keys())
