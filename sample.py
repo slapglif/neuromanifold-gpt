@@ -9,6 +9,7 @@ import tiktoken
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.utils.checkpoints import select_checkpoint
+from neuromanifold_gpt.utils.checkpoint_loader import load_model_only
 from neuromanifold_gpt.utils.progress import checkpoint_progress
 from neuromanifold_gpt.utils.logging import get_logger
 from model import GPT, GPTConfig
@@ -44,9 +45,9 @@ if init_from == 'resume':
     ckpt_path = select_checkpoint(out_dir)
     if ckpt_path is None:
         raise FileNotFoundError(f"No checkpoints found in {out_dir}")
-    # Weights only load issue in PyTorch 2.6+ with custom configs (trust local source)
+    # Use unified checkpoint loader (supports both unified and separated formats)
     with checkpoint_progress("Loading checkpoint from disk"):
-        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+        checkpoint = load_model_only(ckpt_path, device=device, weights_only=False)
     
     # Check if it's a NeuroManifold checkpoint (has 'config' object) or legacy nanoGPT
     if 'config' in checkpoint and isinstance(checkpoint['config'], (NeuroManifoldConfig, type(None))):

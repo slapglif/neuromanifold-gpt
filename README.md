@@ -246,6 +246,38 @@ And if thou steal, thou shalt not sell thyself.
 
 The model learns Shakespearean vocabulary, verse structure, and writing style. Validation loss drops from ~3.3 (pretrained baseline) to ~0.9-1.1 (finetuned).
 
+## checkpoint management
+
+nanoGPT supports separated checkpoints that split model weights and optimizer state into separate files. This reduces checkpoint sizes by 50%+ and makes it easy to share models without optimizer buffers.
+
+### Quick Example
+
+```sh
+# Save separated checkpoints (model + optimizer in separate files)
+python train.py --save_separate_optimizer=True
+
+# Save model-only checkpoints (inference-ready, 50%+ smaller)
+python train.py --save_model_only=True
+```
+
+**Benefits:**
+- **Smaller files** - Model-only checkpoints are 50-60% smaller (e.g., GPT-2 124M: 240MB unified → 100MB model-only)
+- **Easy sharing** - Share inference-ready models without optimizer state
+- **Flexible loading** - Load just the model or both model + optimizer as needed
+- **Backward compatible** - Automatically detects and loads both old unified and new separated checkpoint formats
+
+### Comprehensive Guide
+
+For detailed information including:
+- **Checkpoint formats** - Understanding unified, separated, and model-only checkpoints
+- **Training resumption** - How optimizer state is preserved and restored
+- **File structure** - Naming conventions and directory organization
+- **Best practices** - When to use each checkpoint format
+- **Migration guide** - Converting from unified to separated checkpoints
+- **Troubleshooting** - Solutions to common checkpoint issues
+
+**See the complete [Checkpoint Management Guide](docs/checkpoint-management.md)** for step-by-step instructions and best practices.
+
 ## sampling / inference
 
 Use the script `sample.py` to sample either from pre-trained GPT-2 models released by OpenAI, or from a model you trained yourself. For example, here is a way to sample from the largest available `gpt2-xl` model:
