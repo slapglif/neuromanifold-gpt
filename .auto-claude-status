@@ -3,13 +3,13 @@
   "spec": "014-add-attention-variant-benchmark-suite",
   "state": "building",
   "subtasks": {
-    "completed": 1,
+    "completed": 2,
     "total": 3,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Benchmark Script",
+    "current": "Validation",
     "id": null,
     "total": 1
   },
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 3,
-    "started_at": "2026-01-15T12:52:53.694529"
+    "number": 1,
+    "started_at": "2026-01-15T17:35:31.777902"
   },
-  "last_update": "2026-01-15T13:01:42.114492"
+  "last_update": "2026-01-15T17:35:31.837432"
 }
