@@ -275,6 +275,18 @@ class NeuroManifoldGPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             nn.init.normal_(module.weight, mean=0.0, std=init_std)
 
+    def _check_memory_has_content(self) -> bool:
+        """Check if memory contains any stored content.
+
+        Returns:
+            True if memory has content, False otherwise
+        """
+        if self.use_hierarchical_memory:
+            total_count = len(self.hierarchical_memory.l1) + len(self.hierarchical_memory.l2) + len(self.hierarchical_memory.l3)
+            return total_count > 0
+        else:
+            return self.memory.count.item() > 0
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -328,15 +340,7 @@ class NeuroManifoldGPT(nn.Module):
         pending_memory_retrieval = None  # Local variable (not instance var) for thread safety
 
         if self.memory_active_retrieval and self.use_sdr:
-            # Check if memory has content
-            memory_has_content = False
-            if self.use_hierarchical_memory:
-                total_count = len(self.hierarchical_memory.l1) + len(self.hierarchical_memory.l2) + len(self.hierarchical_memory.l3)
-                memory_has_content = total_count > 0
-            else:
-                memory_has_content = self.memory.count.item() > 0
-
-            if memory_has_content:
+            if self._check_memory_has_content():
                 # For SDR mode, we need to retrieve based on SDR patterns
                 # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
                 # Alternative: per-position queries (more expensive but more precise)
