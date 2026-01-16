@@ -135,7 +135,8 @@ class NeuroManifoldBlock(nn.Module):
                 n_fhn_steps=self.config.fhn.n_fhn_steps,
                 use_imex=self.config.fhn.use_fhn_imex,
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
-                use_fused=self.config.fhn.use_fhn_fused
+                use_fused=self.config.fhn.use_fhn_fused,
+                fhn_backend=self.config.fhn.fhn_backend
             )
 
         # Knot attention (optional)

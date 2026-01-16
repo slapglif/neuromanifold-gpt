@@ -1,15 +1,15 @@
 {
   "active": true,
-  "spec": "059-consolidate-config-file-proliferation-using-compos",
+  "spec": "082-flash-attention-alternatives-for-broader-compatibi",
   "state": "building",
   "subtasks": {
-    "completed": 10,
-    "total": 11,
+    "completed": 8,
+    "total": 17,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Documentation and Verification",
+    "current": "Custom Triton FHN Kernel",
     "id": null,
     "total": 3
   },
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 12,
-    "started_at": "2026-01-16T03:37:45.349565"
+    "number": 1,
+    "started_at": "2026-01-16T13:27:01.654802"
   },
-  "last_update": "2026-01-16T04:24:31.053127"
+  "last_update": "2026-01-16T13:27:01.742246"
 }

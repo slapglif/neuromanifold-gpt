@@ -23,6 +23,12 @@ except ImportError:
     XFORMERS_AVAILABLE = False
     xformers_attention = None
 
+try:
+    from .fhn_triton import fhn_triton_kernel, TRITON_AVAILABLE
+except ImportError:
+    TRITON_AVAILABLE = False
+    fhn_triton_kernel = None
+
 
 @torch.jit.script
 def fhn_update_step(
@@ -106,12 +112,22 @@ class FHNDynamics(nn.Module):
         threshold: float = 0.5,
         use_imex: bool = True,  # Use semi-implicit scheme for efficiency
         use_fused: bool = False,  # Deprecated/Ignored (JIT is standard now)
+        backend: str = "jit",  # Backend: "jit", "triton", or "explicit"
     ):
         super().__init__()
         self.dim = dim
         self.tau = tau
         self.threshold = threshold
         self.use_imex = use_imex
+        self.backend = backend
+
+        # Validate backend
+        if backend == "triton" and not TRITON_AVAILABLE:
+            warnings.warn(
+                "Triton backend requested but Triton is not available. "
+                "Falling back to JIT backend. Install Triton with: pip install triton"
+            )
+            self.backend = "jit"
 
         # Learnable parameters (standard FHN values)
         self.a = nn.Parameter(torch.tensor(0.7))
@@ -123,7 +139,7 @@ class FHNDynamics(nn.Module):
         self, stimulus: torch.Tensor, n_steps: int = 2
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Evolve soliton dynamics using JIT-compiled IMEX scheme.
+        Evolve soliton dynamics using configured backend (JIT, Triton, or Explicit).
         """
         # Normalize stimulus to prevent numerical explosion
         stim_scale = stimulus.abs().amax(dim=-1, keepdim=True).clamp(min=1e-6)
@@ -138,8 +154,12 @@ class FHNDynamics(nn.Module):
         v = torch.zeros_like(stimulus)
         w = torch.zeros_like(stimulus)
 
-        # Execute dynamics using JIT-compiled kernel
-        if self.use_imex:
+        # Execute dynamics using configured backend
+        if self.backend == "triton":
+            # Use Triton-accelerated kernel
+            v, w = fhn_triton_kernel(v, w, I, self.a, self.b, self.tau, self.dt, n_steps)
+        elif self.use_imex:
+            # Use JIT-compiled kernel (default)
             v, w = fhn_update_step(v, w, I, self.a, self.b, self.tau, self.dt, n_steps)
         else:
             # Fallback for ablation studies (Explicit Euler)
@@ -177,6 +197,7 @@ class FHNAttention(nn.Module):
         use_flash_fhn_fusion: bool = True,  # Use Flash Attention fusion
         pos_emb_type: str = "learned",  # Position embedding type
         max_seq_len: int = 1024,  # For RoPE/ALiBi initialization
+        fhn_backend: str = "jit",  # FHN backend: "jit", "triton", or "explicit"
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -195,7 +216,7 @@ class FHNAttention(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
         # FHN dynamics per head
-        self.fhn = FHNDynamics(self.head_dim, tau, threshold, use_imex)
+        self.fhn = FHNDynamics(self.head_dim, tau, threshold, use_imex, backend=fhn_backend)
 
         # Pulse width modulation (content-dependent)
         self.pulse_width_net = nn.Sequential(

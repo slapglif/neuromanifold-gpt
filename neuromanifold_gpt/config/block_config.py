@@ -34,6 +34,8 @@ class FHNConfig:
                        Disabled in favor of JIT compilation
         use_fhn_parallel: Use FFT-based Parallel Scan for linearized FHN (default True)
                           Enables maximum speed via parallel computation
+        fhn_backend: Backend for FHN dynamics computation (default "jit")
+                     Options: "jit" (TorchScript), "triton" (Triton kernel), "explicit" (Python loop)
     """
 
     fhn_threshold: float = 0.5
@@ -45,6 +47,7 @@ class FHNConfig:
     use_fhn_partitioning: bool = True
     use_fhn_fused: bool = False
     use_fhn_parallel: bool = True
+    fhn_backend: str = "jit"
 
 
 @dataclass
@@ -298,6 +301,7 @@ class NeuroManifoldBlockConfig:
             use_fhn_partitioning=config.use_fhn_partitioning,
             use_fhn_fused=config.use_fhn_fused,
             use_fhn_parallel=config.use_fhn_parallel,
+            fhn_backend=config.attention_backend,
         )
 
         # Create KAN sub-config from model config
