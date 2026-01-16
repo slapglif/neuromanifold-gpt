@@ -137,7 +137,17 @@ class Block(nn.Module):
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
-        self.mlp = MLP(config)
+
+        # Select FFN based on config.ffn_type
+        if config.ffn_type == 'swiglu':
+            # SwiGLU FFN (LLaMA-style, 2/3 hidden dim to match param count)
+            # Standard FFN: 2 * dim * hidden = 2 * d * 4d = 8d²
+            # SwiGLU: 3 * dim * hidden = 3 * d * (8/3)d = 8d² (same params)
+            mlp_hidden = int(config.n_embd * 4.0 * 2 / 3)
+            self.mlp = SwiGLU(config.n_embd, mlp_hidden, dropout=config.dropout, bias=config.bias)
+        else:
+            # Default GELU FFN
+            self.mlp = MLP(config)
 
     def forward(self, x):
         x = x + self.attn(self.ln_1(x))
