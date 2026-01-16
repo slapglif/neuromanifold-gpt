@@ -28,7 +28,6 @@ class TestChebyKANLinear:
     @pytest.fixture
     def input_tensor(self):
         """Standard input tensor (B=2, T=8, D=64)."""
-        torch.manual_seed(42)
         return torch.randn(2, 8, 64)
 
     def test_initialization(self, layer):
@@ -141,7 +140,6 @@ class TestChebyKANFFN:
     @pytest.fixture
     def input_tensor(self):
         """Standard input tensor."""
-        torch.manual_seed(42)
         return torch.randn(2, 8, 128)
 
     def test_forward_shape(self, ffn, input_tensor):

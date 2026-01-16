@@ -48,7 +48,6 @@ class TestEmaFFT:
 
     def test_ema_fft_correctness(self):
         """Verify FFT implementation matches naive sequential EMA."""
-        torch.manual_seed(42)
         x = torch.randn(2, 10, 8)
         alpha = 0.9
 
@@ -89,7 +88,6 @@ class TestEmaFFT:
 
     def test_ema_fft_per_channel_alpha(self):
         """Verify per-channel alpha support."""
-        torch.manual_seed(42)
         x = torch.randn(2, 10, 4)
 
         # Different alpha per channel
@@ -120,7 +118,6 @@ class TestEmaFFT:
 
     def test_ema_fft_causality(self):
         """Verify causal property: h[t] only depends on x[0:t+1]."""
-        torch.manual_seed(42)
         x = torch.randn(1, 10, 4)
         alpha = 0.9
 
@@ -373,7 +370,6 @@ class TestCEMA:
 
     def test_cema_causality(self):
         """Verify CEMA is causal: h[t] only depends on x[0:t+1]."""
-        torch.manual_seed(42)
         cema = CEMA(dim=8, alpha=0.9)
         x = torch.randn(1, 10, 8)
 

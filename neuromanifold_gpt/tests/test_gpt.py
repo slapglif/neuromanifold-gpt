@@ -114,7 +114,6 @@ def test_gpt_generate_repetition_penalty(gpt_model, nano_config):
     gpt_model.eval()
 
     # Test 1: Basic functionality - repeated tokens should be penalized
-    torch.manual_seed(42)
     prompt = torch.tensor([[1, 2, 3, 4, 5]], dtype=torch.long)
 
     # Generate without penalty
@@ -131,7 +130,6 @@ def test_gpt_generate_repetition_penalty(gpt_model, nano_config):
     assert generated_with_penalty.shape == (1, 15)
 
     # Test 2: Batch processing (batch_size > 1)
-    torch.manual_seed(42)
     batch_prompt = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=torch.long)
 
     with torch.no_grad():
@@ -140,7 +138,6 @@ def test_gpt_generate_repetition_penalty(gpt_model, nano_config):
     assert batch_generated.shape == (2, 8)
 
     # Test 3: Edge case - penalty=1.0 should be no-op (just verify it runs)
-    torch.manual_seed(42)
     prompt_edge = torch.randint(0, nano_config.vocab_size, (1, 10))
 
     with torch.no_grad():
@@ -150,14 +147,12 @@ def test_gpt_generate_repetition_penalty(gpt_model, nano_config):
     assert gen_no_penalty.shape == (1, 15)
 
     # Test 4: Very high penalty should work without errors
-    torch.manual_seed(42)
     with torch.no_grad():
         high_penalty_gen = gpt_model.generate(prompt, max_new_tokens=5, repetition_penalty=5.0, temperature=1.0)
 
     assert high_penalty_gen.shape == (1, 10)
 
     # Test 5: Long sequence handling
-    torch.manual_seed(42)
     # Use a sequence that's close to block_size to test scaling
     long_prompt = torch.randint(0, nano_config.vocab_size, (1, min(100, nano_config.block_size - 10)))
 
