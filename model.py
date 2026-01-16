@@ -181,12 +181,19 @@ class GPT(nn.Module):
         assert config.block_size is not None
         self.config = config
 
+        # Select final normalization based on config.norm_type
+        if config.norm_type == 'rmsnorm':
+            ln_f = RMSNorm(config.n_embd)
+        else:
+            # Default to LayerNorm
+            ln_f = LayerNorm(config.n_embd, bias=config.bias)
+
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+            ln_f = ln_f,
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
