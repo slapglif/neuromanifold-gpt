@@ -6,6 +6,7 @@ Exports:
     SSMConfig: Configuration dataclass for SSM hyperparameters
     HiPPO: Memory-optimal matrix initialization
     DiagonalHiPPO: Efficient diagonal approximation
+    SelectiveScan: Mamba-style selective scan mechanism
 
 State Space Models (SSMs) provide an alternative to attention mechanisms
 by modeling sequence relationships as continuous-time dynamical systems.
@@ -24,7 +25,7 @@ The SSM backbone implements Mamba-style selective state spaces:
 - Single-step mode for generation
 
 Usage:
-    from neuromanifold_gpt.model.ssm import SSMBase, SSMConfig, HiPPO
+    from neuromanifold_gpt.model.ssm import SSMBase, SSMConfig, HiPPO, SelectiveScan
 
     # SSMBase is abstract - use concrete implementations:
     # - MambaBlock (full Mamba layer with conv + SSM)
@@ -34,10 +35,13 @@ Usage:
 
 from neuromanifold_gpt.model.ssm.base import SSMBase, SSMConfig
 from neuromanifold_gpt.model.ssm.hippo import HiPPO, DiagonalHiPPO
+from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan, ParallelSelectiveScan
 
 __all__ = [
     "SSMBase",
     "SSMConfig",
     "HiPPO",
     "DiagonalHiPPO",
+    "SelectiveScan",
+    "ParallelSelectiveScan",
 ]
