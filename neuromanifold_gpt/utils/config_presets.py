@@ -270,3 +270,23 @@ def get_preset_info(preset_name: str, directory: str = "neuromanifold_gpt/config
         'model_size': _estimate_model_size(settings['n_layer'], settings['n_embd']),
         'training_time': _estimate_training_time(settings['max_iters'])
     }
+
+
+if __name__ == "__main__":
+    """CLI entry point for interactive preset listing."""
+    import sys
+
+    # Default directory
+    directory = "neuromanifold_gpt/config/presets"
+
+    # Allow overriding directory from command line
+    if len(sys.argv) > 1:
+        directory = sys.argv[1]
+
+    # Display all available presets
+    preset_names = list_presets(directory, show_table=True)
+
+    if preset_names:
+        console.print(f"\n[green]Found {len(preset_names)} preset(s)[/green]")
+    else:
+        sys.exit(1)
