@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from neuromanifold_gpt.errors import ModelError
+
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -205,10 +207,21 @@ class GPT(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
-        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
+        if model_type not in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}:
+            raise ModelError(
+                problem=f"Cannot load pretrained model '{model_type}'",
+                cause="Model type must be one of: gpt2, gpt2-medium, gpt2-large, gpt2-xl",
+                recovery="Specify a valid model type or use --init_from=scratch"
+            )
         override_args = override_args or {} # default to empty dict
         # only dropout can be overridden see more notes below
-        assert all(k == 'dropout' for k in override_args)
+        if not all(k == 'dropout' for k in override_args):
+            invalid_keys = [k for k in override_args.keys() if k != 'dropout']
+            raise ModelError(
+                problem="Invalid override arguments for pretrained model",
+                cause=f"Only 'dropout' can be overridden, but got: {', '.join(invalid_keys)}",
+                recovery="Remove invalid override arguments and only specify 'dropout' if needed"
+            )
         from transformers import GPT2LMHeadModel
         print("loading weights from pretrained gpt: %s" % model_type)
 
@@ -245,16 +258,31 @@ class GPT(nn.Module):
         transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
         # basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla Linear
         # this means that we have to transpose these weights when we import them
-        assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
+        if len(sd_keys_hf) != len(sd_keys):
+            raise ModelError(
+                problem="Pretrained model architecture mismatch",
+                cause=f"HuggingFace model has {len(sd_keys_hf)} parameters but local model has {len(sd_keys)} parameters",
+                recovery="Ensure model configuration matches the pretrained checkpoint"
+            )
         for k in sd_keys_hf:
             if any(k.endswith(w) for w in transposed):
                 # special treatment for the Conv1D weights we need to transpose
-                assert sd_hf[k].shape[::-1] == sd[k].shape
+                if sd_hf[k].shape[::-1] != sd[k].shape:
+                    raise ModelError(
+                        problem=f"Shape mismatch for transposed weight '{k}'",
+                        cause=f"HuggingFace shape {sd_hf[k].shape} (transposed: {sd_hf[k].shape[::-1]}) != local shape {sd[k].shape}",
+                        recovery="Verify model architecture configuration matches pretrained checkpoint"
+                    )
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k].t())
             else:
                 # vanilla copy over the other parameters
-                assert sd_hf[k].shape == sd[k].shape
+                if sd_hf[k].shape != sd[k].shape:
+                    raise ModelError(
+                        problem=f"Shape mismatch for parameter '{k}'",
+                        cause=f"HuggingFace shape {sd_hf[k].shape} != local shape {sd[k].shape}",
+                        recovery="Verify model architecture configuration matches pretrained checkpoint"
+                    )
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k])
 

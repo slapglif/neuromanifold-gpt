@@ -1,17 +1,14 @@
-"""
-Hybrid Reasoning Module stub.
-
-This module is not yet implemented. This stub exists to prevent import errors.
-"""
-import torch
+# neuromanifold_gpt/model/hybrid_reasoning.py
+"""Placeholder for HybridReasoningModule - not yet implemented."""
 import torch.nn as nn
 
 
 class HybridReasoningModule(nn.Module):
-    """Stub for HybridReasoningModule - not yet implemented."""
+    """Placeholder module for hybrid reasoning functionality."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
-        raise NotImplementedError(
-            "HybridReasoningModule is not yet implemented."
-        )
+
+    def forward(self, x, **kwargs):
+        """Pass through - returns input unchanged."""
+        return x, {}

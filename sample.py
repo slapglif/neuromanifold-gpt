@@ -2,26 +2,77 @@
 Sample from a trained model
 """
 import os
+import sys
+from neuromanifold_gpt.cli.help_formatter import (
+    create_parser_from_defaults,
+    parse_args_with_config_override,
+)
+
+# -----------------------------------------------------------------------------
+# Default Configuration
+# -----------------------------------------------------------------------------
+defaults = {
+    # Model
+    'init_from': 'resume',  # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
+    'out_dir': 'out',  # ignored if init_from is not 'resume'
+
+    # Sampling
+    'start': "\n",  # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
+    'num_samples': 10,  # number of samples to draw
+    'max_new_tokens': 500,  # number of tokens generated in each sample
+    'temperature': 0.8,  # 1.0 = no change, < 1.0 = less random, > 1.0 = more random
+    'top_k': 200,  # retain only the top_k most likely tokens, clamp others to have 0 probability
+    'seed': 1337,
+
+    # Hardware
+    'device': 'cuda',  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
+    'dtype': 'bfloat16',  # 'float32' or 'bfloat16' or 'float16'
+    'compile': False,  # use PyTorch 2.0 to compile the model to be faster
+}
+
+# Create argument parser with rich formatting
+parser = create_parser_from_defaults(
+    defaults=defaults,
+    description="Sample from a trained NeuroManifoldGPT or GPT model",
+    groups={
+        'Model': ['init_from', 'out_dir'],
+        'Sampling': ['start', 'num_samples', 'max_new_tokens', 'temperature', 'top_k', 'seed'],
+        'Hardware': ['device', 'dtype', 'compile'],
+    },
+    examples=[
+        "python sample.py",
+        "python sample.py --num_samples=5 --temperature=1.0",
+        "python sample.py config/sample_config.py --max_new_tokens=1000",
+        "python sample.py --start='Once upon a time'",
+    ],
+)
+
+# Parse arguments with config file override support
+args = parse_args_with_config_override(parser)
+
+# Extract configuration values
+init_from = args.init_from
+out_dir = args.out_dir
+start = args.start
+num_samples = args.num_samples
+max_new_tokens = args.max_new_tokens
+temperature = args.temperature
+top_k = args.top_k
+seed = args.seed
+device = args.device
+dtype = args.dtype
+compile = args.compile
+
+# -----------------------------------------------------------------------------
+# Import heavy dependencies after argparse (so --help works without them)
+# -----------------------------------------------------------------------------
 import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
-
-# -----------------------------------------------------------------------------
-init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
-out_dir = 'out' # ignored if init_from is not 'resume'
-start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
-num_samples = 10 # number of samples to draw
-max_new_tokens = 500 # number of tokens generated in each sample
-temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability
-seed = 1337
-device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
-compile = False # use PyTorch 2.0 to compile the model to be faster
-exec(open('configurator.py').read()) # overrides from command line or config file
+from model import GPTConfig, GPT
 # -----------------------------------------------------------------------------
 
 torch.manual_seed(seed)

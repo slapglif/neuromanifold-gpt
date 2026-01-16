@@ -10,6 +10,7 @@ including settings for:
 """
 
 from dataclasses import dataclass, field
+from neuromanifold_gpt.errors import ConfigurationError
 
 
 @dataclass
@@ -263,9 +264,17 @@ class NeuroManifoldConfig:
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
 
         # Validate n_embd is divisible by n_heads
-        assert self.n_embd % self.n_heads == 0, (
-            f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
-        )
+        if self.n_embd % self.n_heads != 0:
+            # Calculate valid n_embd values close to the current one
+            remainder = self.n_embd % self.n_heads
+            valid_lower = self.n_embd - remainder
+            valid_upper = self.n_embd + (self.n_heads - remainder)
+
+            raise ConfigurationError(
+                problem=f"n_embd must be divisible by n_heads",
+                cause=f"n_embd={self.n_embd} is not divisible by n_heads={self.n_heads}",
+                recovery=f"Set n_embd to a multiple of {self.n_heads} (e.g., n_embd={valid_lower} or n_embd={valid_upper})"
+            )
 
         # Memory active retrieval requires SDR mode
         if self.memory_active_retrieval and not self.use_sdr:

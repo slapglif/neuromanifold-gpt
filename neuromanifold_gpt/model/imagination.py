@@ -1,17 +1,14 @@
-"""
-Consistency Imagination Module stub.
-
-This module is not yet implemented. This stub exists to prevent import errors.
-"""
-import torch
+# neuromanifold_gpt/model/imagination.py
+"""Placeholder for ConsistencyImaginationModule - not yet implemented."""
 import torch.nn as nn
 
 
 class ConsistencyImaginationModule(nn.Module):
-    """Stub for ConsistencyImaginationModule - not yet implemented."""
+    """Placeholder module for consistency imagination functionality."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
-        raise NotImplementedError(
-            "ConsistencyImaginationModule is not yet implemented."
-        )
+
+    def forward(self, x, **kwargs):
+        """Pass through - returns input unchanged."""
+        return x, {}

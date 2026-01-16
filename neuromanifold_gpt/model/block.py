@@ -16,6 +16,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from neuromanifold_gpt.errors import ConfigurationError
+
 from .manifold import ManifoldProjection
 from .spectral import SpectralDecomposition
 from .attention.fhn import FHNAttention
@@ -177,7 +179,11 @@ class NeuroManifoldBlock(nn.Module):
                     use_fast_wavekan=use_fast_wavekan
                 )
             else:
-                raise ValueError(f"Unknown KAN type: {kan_type}")
+                raise ConfigurationError(
+                    problem=f"Unknown KAN type: {kan_type}",
+                    cause=f"kan_type must be one of: 'faster', 'cheby', or 'wave'",
+                    recovery=f"Set kan_type to 'faster' (recommended), 'cheby', or 'wave' in your config"
+                )
         else:
             # SwiGLU FFN (LLaMA-style, 2/3 hidden dim to match param count)
             # Standard FFN: 2 * dim * hidden = 2 * d * 4d = 8d²

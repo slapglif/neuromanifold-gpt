@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 import torch
 import torch.nn as nn
 
+from neuromanifold_gpt.errors import ConfigurationError
+
 if TYPE_CHECKING:
     from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
@@ -54,7 +56,11 @@ class ContextEncoder(nn.Module):
         super().__init__()
         
         if embed_dim % n_heads != 0:
-            raise ValueError(f"embed_dim ({embed_dim}) must be divisible by n_heads ({n_heads})")
+            raise ConfigurationError(
+                problem="embed_dim must be divisible by n_heads",
+                cause=f"embed_dim={embed_dim} is not divisible by n_heads={n_heads}",
+                recovery=f"Set embed_dim to a multiple of {n_heads} (e.g., embed_dim={n_heads * (embed_dim // n_heads + 1)})"
+            )
         
         self.context_size = context_size
         self.embed_dim = embed_dim

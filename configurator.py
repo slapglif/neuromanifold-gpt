@@ -16,11 +16,17 @@ comes up with a better simple Python solution I am all ears.
 
 import sys
 from ast import literal_eval
+from neuromanifold_gpt.errors import ValidationError
 
 for arg in sys.argv[1:]:
     if '=' not in arg:
         # assume it's the name of a config file
-        assert not arg.startswith('--')
+        if arg.startswith('--'):
+            raise ValidationError(
+                problem="Invalid config file argument format",
+                cause=f"Config file argument '{arg}' cannot start with '--'",
+                recovery="Use either: python script.py config_file.py OR python script.py --key=value"
+            )
         config_file = arg
         print(f"Overriding config with {config_file}:")
         with open(config_file) as f:
@@ -28,7 +34,12 @@ for arg in sys.argv[1:]:
         exec(open(config_file).read())
     else:
         # assume it's a --key=value argument
-        assert arg.startswith('--')
+        if not arg.startswith('--'):
+            raise ValidationError(
+                problem="Invalid override argument format",
+                cause=f"Override argument '{arg}' must start with '--'",
+                recovery="Use format: --key=value (e.g., --batch_size=32)"
+            )
         key, val = arg.split('=')
         key = key[2:]
         if key in globals():
@@ -39,7 +50,12 @@ for arg in sys.argv[1:]:
                 # if that goes wrong, just use the string
                 attempt = val
             # ensure the types match ok
-            assert type(attempt) == type(globals()[key])
+            if type(attempt) != type(globals()[key]):
+                raise ValidationError(
+                    problem="Configuration type mismatch",
+                    cause=f"Cannot override '{key}': expected {type(globals()[key]).__name__}, got {type(attempt).__name__}",
+                    recovery=f"Provide a value of type {type(globals()[key]).__name__} (current value: {globals()[key]})"
+                )
             # cross fingers
             print(f"Overriding: {key} = {attempt}")
             globals()[key] = attempt

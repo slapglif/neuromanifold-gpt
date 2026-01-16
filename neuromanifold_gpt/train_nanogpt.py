@@ -10,99 +10,169 @@ Supports:
 - Checkpointing and resume
 
 Single GPU:
-    $ python neuromanifold_gpt/train_nanogpt.py --batch_size=32 --compile=False
+    $ python neuromanifold_gpt/train_nanogpt.py --batch_size=32 --compile_model=False
 
 DDP on 4 GPUs:
     $ torchrun --standalone --nproc_per_node=4 neuromanifold_gpt/train_nanogpt.py
 
 DDP across 2 nodes (4 GPUs each):
     # Master node:
-    $ torchrun --nproc_per_node=4 --nnodes=2 --node_rank=0 --master_addr=<IP> --master_port=1234 train_nanogpt.py
+    $ torchrun --nproc_per_node=4 --nnodes=2 --node_rank=0 --master_addr=<IP> --master_port=1234 neuromanifold_gpt/train_nanogpt.py
     # Worker node:
-    $ torchrun --nproc_per_node=4 --nnodes=2 --node_rank=1 --master_addr=<IP> --master_port=1234 train_nanogpt.py
+    $ torchrun --nproc_per_node=4 --nnodes=2 --node_rank=1 --master_addr=<IP> --master_port=1234 neuromanifold_gpt/train_nanogpt.py
 """
 import math
 import os
-import pickle
 import time
-from contextlib import nullcontext
 
-import numpy as np
-import torch
-from torch.distributed import destroy_process_group, init_process_group
-from torch.nn.parallel import DistributedDataParallel as DDP
+from neuromanifold_gpt.cli.help_formatter import (
+    create_parser_from_defaults,
+    parse_args_with_config_override,
+)
 
-from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+# Lazy imports for heavy dependencies (allows --help to work without them)
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
 
 # -----------------------------------------------------------------------------
 # Default config values designed to train NeuroManifoldGPT
-# I/O
-out_dir = "out-neuromanifold"
-eval_interval = 2000
-log_interval = 1
-eval_iters = 200
-eval_only = False
-always_save_checkpoint = True
-init_from = "scratch"  # 'scratch' or 'resume'
+defaults = {
+    # I/O
+    "out_dir": "out-neuromanifold",
+    "eval_interval": 2000,
+    "log_interval": 1,
+    "eval_iters": 200,
+    "eval_only": False,
+    "always_save_checkpoint": True,
+    "init_from": "scratch",  # 'scratch' or 'resume'
 
-# wandb logging
-wandb_log = False
-wandb_project = "neuromanifold-gpt"
-wandb_run_name = "run" + str(int(time.time()))
+    # Logging
+    "wandb_log": False,
+    "wandb_project": "neuromanifold-gpt",
+    "wandb_run_name": f"run{int(time.time())}",
 
-# data
-dataset = "openwebtext"
-gradient_accumulation_steps = 5 * 8  # simulate larger batches
-batch_size = 12  # micro-batch size
-block_size = 1024
+    # Data
+    "dataset": "openwebtext",
+    "gradient_accumulation_steps": 40,  # 5 * 8 - simulate larger batches
+    "batch_size": 12,  # micro-batch size
+    "block_size": 1024,
 
-# model - NeuroManifold specific
-use_nano_config = False  # Use NeuroManifoldConfigNano for fast experimentation
-n_layer = 6
-n_head = 8
-n_embd = 384
-sdr_size = 2048
-sdr_sparsity = 0.02
-manifold_dim = 64
-n_eigenvectors = 32
-dropout = 0.0
-bias = False
+    # Model - NeuroManifold specific
+    "use_nano_config": False,  # Use NeuroManifoldConfigNano for fast experimentation
+    "n_layer": 6,
+    "n_head": 8,
+    "n_embd": 384,
+    "sdr_size": 2048,
+    "sdr_sparsity": 0.02,
+    "manifold_dim": 64,
+    "n_eigenvectors": 32,
+    "dropout": 0.0,
+    "bias": False,
 
-# adamw optimizer
-learning_rate = 6e-4
-max_iters = 600000
-weight_decay = 1e-1
-beta1 = 0.9
-beta2 = 0.95
-grad_clip = 1.0
-early_stopping_patience = 0 # 0 to disable, >0 for patience steps
+    # Optimizer
+    "learning_rate": 6e-4,
+    "max_iters": 600000,
+    "weight_decay": 1e-1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "grad_clip": 1.0,
+    "early_stopping_patience": 0,  # 0 to disable, >0 for patience steps
 
-# learning rate decay settings
-decay_lr = True
-warmup_iters = 2000
-lr_decay_iters = 600000
-min_lr = 6e-5  # ~= learning_rate/10 per Chinchilla
+    # Learning Rate Schedule
+    "decay_lr": True,
+    "warmup_iters": 2000,
+    "lr_decay_iters": 600000,
+    "min_lr": 6e-5,  # ~= learning_rate/10 per Chinchilla
 
-# DDP settings
-backend = "nccl"
+    # DDP
+    "backend": "nccl",
 
-# system
-device = "cuda" if torch.cuda.is_available() else "cpu"
-dtype = "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
-compile_model = False  # Disabled: Python 3.13 doesn't support torch.compile
+    # System
+    "device": "cuda" if TORCH_AVAILABLE and torch.cuda.is_available() else "cpu",
+    "dtype": "bfloat16" if TORCH_AVAILABLE and torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16",
+    "compile_model": False,  # Disabled: Python 3.13 doesn't support torch.compile
+}
+
+# Define argument groups for organized help output
+argument_groups = {
+    "I/O": [
+        "out_dir", "eval_interval", "log_interval", "eval_iters",
+        "eval_only", "always_save_checkpoint", "init_from"
+    ],
+    "Logging": ["wandb_log", "wandb_project", "wandb_run_name"],
+    "Data": ["dataset", "gradient_accumulation_steps", "batch_size", "block_size"],
+    "Model": [
+        "use_nano_config", "n_layer", "n_head", "n_embd",
+        "sdr_size", "sdr_sparsity", "manifold_dim", "n_eigenvectors",
+        "dropout", "bias"
+    ],
+    "Optimizer": [
+        "learning_rate", "max_iters", "weight_decay",
+        "beta1", "beta2", "grad_clip", "early_stopping_patience"
+    ],
+    "Learning Rate Schedule": ["decay_lr", "warmup_iters", "lr_decay_iters", "min_lr"],
+    "DDP": ["backend"],
+    "System": ["device", "dtype", "compile_model"],
+}
+
+# Usage examples
+examples = [
+    "python neuromanifold_gpt/train_nanogpt.py --batch_size=32",
+    "python neuromanifold_gpt/train_nanogpt.py config/my_config.py --learning_rate=1e-4",
+    "torchrun --standalone --nproc_per_node=4 neuromanifold_gpt/train_nanogpt.py",
+]
 
 # -----------------------------------------------------------------------------
 # Parse config from command line or config file
-config_keys = [
-    k for k, v in globals().items()
-    if not k.startswith("_") and isinstance(v, (int, float, bool, str))
-]
-# Look for configurator.py in same directory
-configurator_path = os.path.join(os.path.dirname(__file__), "configurator.py")
-if os.path.exists(configurator_path):
-    exec(open(configurator_path).read())
-config = {k: globals()[k] for k in config_keys}
+if __name__ == "__main__":
+    # Create parser with rich formatting
+    parser = create_parser_from_defaults(
+        defaults=defaults,
+        description="Train NeuroManifoldGPT following nanoGPT methodology",
+        groups=argument_groups,
+        examples=examples,
+    )
+
+    # Parse arguments with config file override support
+    args = parse_args_with_config_override(parser)
+
+    # Convert to config dict for backward compatibility
+    config = vars(args)
+    # Remove 'config' key (the config file path) from the dict
+    config.pop('config', None)
+
+    # Update module-level variables for use in the script
+    for key, value in config.items():
+        globals()[key] = value
+
+    # Import heavy dependencies after argparse (so --help works without them)
+    import pickle
+    from contextlib import nullcontext
+    import numpy as np
+    import torch
+    from torch.distributed import destroy_process_group, init_process_group
+    from torch.nn.parallel import DistributedDataParallel as DDP
+    from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
+    from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+else:
+    # When imported as a module, use defaults
+    for key, value in defaults.items():
+        globals()[key] = value
+    config = defaults.copy()
+
+    # Import heavy dependencies
+    import pickle
+    from contextlib import nullcontext
+    import numpy as np
+    import torch
+    from torch.distributed import destroy_process_group, init_process_group
+    from torch.nn.parallel import DistributedDataParallel as DDP
+    from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
+    from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 # -----------------------------------------------------------------------------
 # DDP setup

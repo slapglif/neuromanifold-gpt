@@ -18,8 +18,9 @@ class TestNeuroManifoldConfig:
     def test_config_n_embd_divisible_by_heads(self):
         """Test that n_embd must be divisible by n_heads."""
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
+        from neuromanifold_gpt.errors import ConfigurationError
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ConfigurationError):
             NeuroManifoldConfig(n_embd=100, n_heads=8)  # 100 % 8 != 0
 
     def test_config_valid_n_embd_and_heads(self):

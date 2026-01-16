@@ -10,6 +10,7 @@ __pycache__/
 input.txt
 env/
 venv/
+.test_venv/
 # Additional ignore patterns
 *.log
 *.egg-info/
