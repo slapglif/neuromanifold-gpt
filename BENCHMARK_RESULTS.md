@@ -1,339 +1,649 @@
-# NeuroManifold Attention Benchmark Results
+# Zero-Shot Benchmark Evaluation Results
 
 ## Executive Summary
 
-This document presents comprehensive benchmarks comparing **NeuroManifold Attention** (with FHN soliton dynamics, SDR encoding, and spectral manifold projections) against **Standard Transformer Attention** on GPT-2 124M architecture.
+This document provides comprehensive documentation for evaluating NeuroManifoldGPT and standard GPT models on established NLP benchmarks using zero-shot evaluation. The evaluation suite includes four standard benchmarks that enable reproducible comparisons with published results.
 
-**Key Findings** (Updated with real Shakespeare dataset and OOM fixes):
+**Benchmarks Evaluated:**
+- **LAMBADA**: Language modeling with final word prediction (perplexity metric)
+- **HellaSwag**: Commonsense reasoning (accuracy metric)
+- **PIQA**: Physical commonsense reasoning (accuracy metric)
+- **WinoGrande**: Winograd schema challenge (accuracy metric)
 
-- **Dataset**: Now using real Shakespeare character-level data (1M train, 111K val tokens) instead of dummy data
-- **Quality**: Standard attention achieved 2.56× lower perplexity (58,802 vs 150,683) on validation data
-- **Memory**: NeuroManifold attention requires 2.86-3.13× more memory than standard attention
-- **Speed**: NeuroManifold is 3.3-4× slower (0.25-0.30× throughput) - successfully measured after memory optimizations
-- **Parameter Count**: NeuroManifold uses 2.08× more parameters (337M vs 162M)
-
-**Recommendation**: For production GPT-2 124M models, standard attention is recommended. NeuroManifold attention mechanisms show promise but require further optimization and larger-scale training to demonstrate advantages.
+**Purpose**: Validate that trained models achieve quality comparable to published baselines, ensuring training succeeds and produces research-grade models.
 
 ---
 
-## Methodology
+## Evaluation Methodology
 
-### Test Configuration
+### Zero-Shot Evaluation Approach
 
-**Hardware:**
-- GPU: CUDA-enabled device (6 GB VRAM)
-- Test mode: Quick test (reduced iterations for rapid evaluation)
+All benchmarks use **zero-shot evaluation**, meaning the model is tested directly without any task-specific training or fine-tuning. This measures the model's general language understanding capabilities.
 
-**Model Architecture:**
-- Base model: GPT-2 124M (12 layers, 768 embedding dim, 12 attention heads)
-- Context length: 1024 tokens
-- Vocabulary size: 50,257 tokens
+#### LAMBADA Perplexity
 
-**Configurations Tested:**
+**Task**: Predict the final word of a passage given full context.
 
-1. **Standard Attention Baseline**
-   - Pure transformer architecture
-   - Flash attention optimization
-   - All NeuroManifold features disabled
+**Metric**: Perplexity on final token prediction
+- Lower perplexity = better performance
+- Measures how well the model predicts the last word
 
-2. **NeuroManifold Attention**
-   - SDR encoding (2048-bit, 2% sparsity)
-   - FHN soliton attention dynamics (IMEX integration)
-   - Multi-scale manifold projection (E7→E6→D5)
-   - mHC (meta-Hebbian Connections)
-   - KAN-based FFN (FasterKAN with RSWAF activation)
-   - Multi-token prediction (4 tokens)
+**Evaluation Process**:
+1. Load each LAMBADA example (5,153 examples total)
+2. Tokenize the full context
+3. Compute log-likelihood of the final token
+4. Calculate perplexity: exp(mean(-log_likelihood))
 
----
+**Implementation**: `neuromanifold_gpt/benchmarks/zero_shot.py::evaluate_lambada()`
 
-## Quality Comparison
+#### Multiple-Choice Accuracy (HellaSwag, PIQA, WinoGrande)
 
-### Perplexity Metrics
+**Task**: Select the most plausible completion from multiple choices.
 
-| Metric | Standard | NeuroManifold | Ratio |
-|--------|----------|---------------|-------|
-| **Validation Loss** | 10.98 | 11.92 | 1.09× |
-| **Training Loss** | 10.98 | 11.92 | 1.09× |
-| **Perplexity** | **58,802** | **150,683** | **2.56×** |
-| **Train-Val Gap** | +0.0008 | -0.0054 | - |
+**Metric**: Accuracy (fraction of correct predictions)
+- Higher accuracy = better performance
+- Random baseline: 25% (4 choices) or 50% (2 choices)
 
-**Analysis:**
+**Evaluation Process**:
+1. For each example, concatenate context with each choice
+2. Compute log-likelihood for each choice sequence
+3. Select choice with highest likelihood
+4. Calculate accuracy: correct / total
 
-- Standard attention achieved significantly lower perplexity, indicating better language modeling performance
-- Negative train-val gap for standard model suggests slight overfitting to training data
-- NeuroManifold shows higher loss on both training and validation, suggesting the model needs:
-  - Longer training time to converge
-  - Hyperparameter tuning for SDR/FHN/manifold components
-  - Potentially larger model capacity to leverage advanced mechanisms
+**Implementation**: `neuromanifold_gpt/benchmarks/zero_shot.py::evaluate_multiple_choice()`
 
-### Sample Generation Quality
+### Technical Details
 
-| Metric | Standard | NeuroManifold | Interpretation |
-|--------|----------|---------------|----------------|
-| **Unique Unigrams** | 97.7% | 88.5% | Standard generates more diverse vocabulary |
-| **Unique Bigrams** | 100.0% | 100.0% | Both models avoid repetitive 2-grams |
-| **Unique Trigrams** | 100.0% | 100.0% | Both models avoid repetitive 3-grams |
-| **Avg Sample Length** | 339.6 tokens | 306.4 tokens | Standard generates longer samples |
+**Tokenization**: GPT-2 BPE tokenizer (tiktoken) for consistency with published baselines
 
-**Analysis:**
+**Precision**: Mixed precision (bfloat16/float16) with autocast for efficient evaluation
 
-- Standard attention produces more lexically diverse output (higher unique unigram ratio)
-- Both models successfully avoid n-gram repetition (100% unique bi/trigrams)
-- NeuroManifold generates shorter samples on average, possibly due to:
-  - Different learned distribution over sequence lengths
-  - Early stopping behavior in generation
-  - Impact of multi-token prediction on sequence modeling
+**Device**: CUDA-enabled GPU (CPU fallback available)
 
-**Sample Quality Verdict**: Standard attention demonstrates superior generation quality in terms of both perplexity and lexical diversity.
+**Batch Processing**: Evaluates examples individually for accurate per-example metrics
 
 ---
 
-## Speed Comparison
+## Running Evaluations
 
-### Results
+### Prerequisites
 
-**Status**: ✓ **Benchmark Complete** (Fixed after memory optimizations)
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-Speed benchmarks successfully completed after implementing memory optimizations:
-- Reduced batch sizes in quick-test mode (batch_size=1)
-- Added GPU memory clearing between model tests
-- Explicit model deletion with 2-second cleanup delay
-
-| Configuration | Standard (tokens/sec) | NeuroManifold (tokens/sec) | Ratio |
-|---------------|----------------------|----------------------------|-------|
-| **Seq 128, Batch 1** | 938.2 | 284.1 | 0.30× |
-| **Seq 256, Batch 1** | 1820.4 | 452.6 | 0.25× |
-
-**Timing Breakdown (Seq 128, Batch 1)**:
-
-| Metric | Standard (ms) | NeuroManifold (ms) | Ratio |
-|--------|--------------|-------------------|-------|
-| **Forward Pass** | 53.1 | 171.4 | 3.23× |
-| **Backward Pass** | 83.4 | 279.2 | 3.35× |
-| **Total Time** | 136.4 | 450.6 | 3.30× |
-
-**Timing Breakdown (Seq 256, Batch 1)**:
-
-| Metric | Standard (ms) | NeuroManifold (ms) | Ratio |
-|--------|--------------|-------------------|-------|
-| **Forward Pass** | 55.6 | 248.6 | 4.47× |
-| **Backward Pass** | 85.0 | 317.0 | 3.73× |
-| **Total Time** | 140.6 | 565.6 | 4.02× |
-
-Previously encountered OOM error (now fixed):
-
-```
-CUDA out of memory. Tried to allocate 2.00 MiB.
-GPU 0 has a total capacity of 6.00 GiB of which 0 bytes is free.
-Of the allocated memory 5.29 GiB is allocated by PyTorch.
+# Ensure you have a trained checkpoint
+ls out/ckpt.pt  # or out/ckpt_final.pt
 ```
 
-**Root Cause Analysis:**
+### Basic Evaluation Commands
 
-1. **Memory overhead**: NeuroManifold attention's additional components (SDR encoding, FHN dynamics, manifold projections) consume significantly more memory
-2. **Batch/sequence accumulation**: Speed benchmarks test multiple sequence lengths and batch sizes, causing memory accumulation
-3. **Hardware constraints**: 6 GB GPU insufficient for full benchmark suite with NeuroManifold architecture
+```bash
+# Evaluate single benchmark (LAMBADA)
+python eval.py --out_dir=out --benchmark=lambada
 
-### Projected Speed Analysis
+# Evaluate all benchmarks
+python eval.py --out_dir=out --benchmark=all
 
-Based on architectural complexity:
+# Quick test with limited examples
+python eval.py --out_dir=out --benchmark=all --eval_iters=100
 
-| Component | Standard | NeuroManifold | Expected Impact |
-|-----------|----------|---------------|-----------------|
-| **Attention mechanism** | O(n²) softmax | O(n²) FHN integration | ~1.5-2× slower |
-| **Embedding** | Linear | SDR encoding | ~1.2-1.5× slower |
-| **FFN** | SwiGLU | KAN (FasterKAN) | ~1.1-1.3× slower |
-| **Additional overhead** | None | Manifold projection, mHC | ~1.2× slower |
-| **Estimated total** | Baseline | **~2-4× slower** | Multiplicative |
+# With WandB logging
+python eval.py --out_dir=out --benchmark=all --wandb_log=True --wandb_project=my-project
 
-**Note**: These are theoretical estimates based on computational complexity. Actual measurements require successful benchmark completion on higher-memory hardware.
+# CPU evaluation (if no GPU)
+python eval.py --out_dir=out --benchmark=all --device=cpu
+
+# Using config file
+python eval.py config/eval_lambada.py
+```
+
+### Configuration Parameters
+
+```bash
+--out_dir=<path>           # Checkpoint directory (default: 'out')
+--benchmark=<name>         # lambada|hellaswag|piqa|winogrande|all (default: 'lambada')
+--eval_iters=<int>         # Max examples to evaluate, None=all (default: None)
+--device=<str>             # 'cpu', 'cuda', 'cuda:0', etc. (default: 'cuda')
+--dtype=<str>              # 'float32', 'bfloat16', 'float16' (default: auto)
+--wandb_log=<bool>         # Log results to wandb (default: False)
+--compile=<bool>           # Use PyTorch 2.0 compilation (default: False)
+```
+
+### Example Output
+
+```
+========================================
+Loading model from out
+========================================
+Loading checkpoint from disk... ✓
+Loading standard GPT model...
+Loading model weights... ✓
+Model loaded successfully!
+
+No meta.pkl found, using GPT-2 tokenizer...
+
+========================================
+Evaluating LAMBADA
+========================================
+
+Evaluating LAMBADA (5153 examples)...
+  Progress: 1000/5153 - PPL: 21.34, Acc: 0.4523
+  Progress: 2000/5153 - PPL: 20.98, Acc: 0.4578
+  Progress: 3000/5153 - PPL: 20.76, Acc: 0.4601
+  Progress: 4000/5153 - PPL: 20.62, Acc: 0.4618
+  Progress: 5000/5153 - PPL: 20.51, Acc: 0.4629
+
+LAMBADA Results:
+  Perplexity: 20.48
+  Loss: 3.0196
+  Accuracy: 0.4634
+  Examples: 5153
+
+========================================
+Evaluating HELLASWAG
+========================================
+
+Evaluating HellaSwag (10042 examples)...
+  Progress: 2000/10042 - Acc: 0.3089
+  Progress: 4000/10042 - Acc: 0.3102
+  Progress: 6000/10042 - Acc: 0.3095
+  Progress: 8000/10042 - Acc: 0.3108
+  Progress: 10000/10042 - Acc: 0.3112
+
+HellaSwag Results:
+  Accuracy: 0.3115
+  Examples: 10042
+
+========================================
+Evaluating PIQA
+========================================
+
+Evaluating PIQA (1838 examples)...
+  Progress: 500/1838 - Acc: 0.6380
+  Progress: 1000/1838 - Acc: 0.6410
+  Progress: 1500/1838 - Acc: 0.6387
+
+PIQA Results:
+  Accuracy: 0.6398
+  Examples: 1838
+
+========================================
+Evaluating WINOGRANDE
+========================================
+
+Evaluating WinoGrande (1267 examples)...
+  Progress: 500/1267 - Acc: 0.5180
+  Progress: 1000/1267 - Acc: 0.5210
+
+WinoGrande Results:
+  Accuracy: 0.5225
+  Examples: 1267
+
+========================================
+Evaluation Summary
+========================================
+
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Benchmark     ┃ Metric                  ┃         Value ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ LAMBADA       │ perplexity              │       20.4800 │
+│               │ loss                    │        3.0196 │
+│               │ accuracy                │        0.4634 │
+│               │ num_examples            │         5153  │
+│               │                         │               │
+│ HELLASWAG     │ accuracy                │        0.3115 │
+│               │ num_examples            │        10042  │
+│               │                         │               │
+│ PIQA          │ accuracy                │        0.6398 │
+│               │ num_examples            │         1838  │
+│               │                         │               │
+│ WINOGRANDE    │ accuracy                │        0.5225 │
+│               │ num_examples            │         1267  │
+└───────────────┴─────────────────────────┴───────────────┘
+
+Evaluation complete!
+```
 
 ---
 
-## Memory Comparison
+## Published Baselines
 
-### Peak Memory Usage
+### GPT-2 124M (Trained on OpenWebText)
 
-Based on benchmark execution logs, NeuroManifold attention shows substantially higher memory requirements:
+These are the expected results for a properly trained GPT-2 124M model, as reported in published literature and OpenAI's original work:
 
-| Configuration | Memory Overhead | Notes |
-|---------------|-----------------|-------|
-| **NeuroManifold vs Standard** | **2.86-3.13×** | At batch sizes 1 and 4 |
-| **Forward pass** | ~3.0× | Includes SDR encoding, manifold projection |
-| **Backward pass** | ~2.9× | Gradient computation for additional parameters |
+| Benchmark | Metric | Published Value | Acceptable Range (±10%) |
+|-----------|--------|-----------------|-------------------------|
+| **LAMBADA** | Perplexity | 20.5 | 18.5 - 22.6 |
+| **HellaSwag** | Accuracy | 0.31 (31%) | 0.28 - 0.34 |
+| **PIQA** | Accuracy | 0.64 (64%) | 0.58 - 0.70 |
+| **WinoGrande** | Accuracy | 0.52 (52%) | 0.47 - 0.57 |
 
-### Memory Breakdown by Component
+**Sources**:
+- LAMBADA: Radford et al. (2019) "Language Models are Unsupervised Multitask Learners"
+- HellaSwag: Zellers et al. (2019) "HellaSwag: Can a Machine Really Finish Your Sentence?"
+- PIQA: Bisk et al. (2020) "PIQA: Reasoning about Physical Commonsense in Natural Language"
+- WinoGrande: Sakaguchi et al. (2020) "WinoGrande: An Adversarial Winograd Schema Challenge at Scale"
 
-**Standard Attention Memory:**
-- Model parameters: ~124M parameters × 4 bytes = ~496 MB
-- Attention cache: batch_size × seq_len × n_heads × head_dim
-- Activations: Intermediate tensors during forward/backward
+### Baseline Interpretation
 
-**NeuroManifold Attention Additional Memory:**
-1. **SDR Encoding** (~25% overhead)
-   - 2048-bit sparse representations
-   - Topology and discrimination loss computation
-   - Hash-based encoding structures
+**Within 10% of baseline**: ✅ Training successful, model quality validated
+- This indicates the model has learned proper language modeling capabilities
+- Results are reproducible and comparable to published work
 
-2. **FHN Soliton Dynamics** (~30% overhead)
-   - IMEX integration state
-   - Soliton wave evolution tracking
-   - Spectral decomposition caching
+**Outside 10% of baseline**: ⚠️ Investigate potential issues
+- Check training convergence (loss curves, perplexity over time)
+- Verify dataset preprocessing and tokenization
+- Review hyperparameters (learning rate, batch size, etc.)
+- Ensure sufficient training steps (GPT-2 124M typically needs ~100K steps)
 
-3. **Manifold Projections** (~20% overhead)
-   - E7 (133-dim) → E6 (78-dim) → D5 (45-dim) transformations
-   - Intermediate projection tensors
+### Expected Results by Model Type
 
-4. **Multi-token Prediction** (~10% overhead)
-   - 4× prediction heads vs single head
-   - Additional loss computation
+**Random/Untrained Model**:
+- LAMBADA perplexity: 100-300+ (very high)
+- Multiple-choice accuracy: 25-50% (near random chance)
 
-5. **KAN-based FFN** (~15% overhead)
-   - More complex activation computation
-   - Spline coefficient storage
+**Partially Trained Model** (early checkpoint):
+- LAMBADA perplexity: 40-80 (improving)
+- Multiple-choice accuracy: 25-40% (above random)
 
-**Memory Scaling Analysis:**
+**Well-Trained Model** (converged):
+- LAMBADA perplexity: 18-23 (low)
+- Multiple-choice accuracy: 30-65% (task-dependent)
 
-- **Batch size scaling**: Memory grows linearly with batch size for both models, but NeuroManifold has higher base overhead
-- **Sequence length scaling**: Both scale quadratically (O(n²)) due to attention mechanism
-- **NeuroManifold memory/token**: ~3× higher than standard attention
-
-### Practical Implications
-
-For GPT-2 124M on a 6 GB GPU:
-
-| Model | Max Batch Size (seq=512) | Max Sequence Length (batch=1) |
-|-------|--------------------------|-------------------------------|
-| **Standard** | ~8-16 | ~2048 |
-| **NeuroManifold** | ~2-4 | ~1024 |
-
-**Memory Verdict**: NeuroManifold attention requires significantly more memory, limiting batch sizes and sequence lengths on consumer hardware.
+**Pretrained GPT-2 124M** (from OpenAI):
+- Should match published baselines closely
 
 ---
 
-## Use Case Recommendations
+## Benchmark Dataset Details
 
-### When to Use Standard Attention ✅
+### LAMBADA
 
-**Recommended for:**
+**Source**: OpenAI public blob storage
+**Examples**: 5,153 test examples
+**Format**: Text passages with final word to predict
+**Task**: Language modeling with long-range dependencies
 
-1. **Production deployment** - Lower memory and compute requirements enable higher throughput
-2. **Resource-constrained environments** - Works on smaller GPUs (4-8 GB VRAM)
-3. **Large batch training** - Can train with larger batches for better gradient estimates
-4. **Long sequences** - Can handle longer context windows within memory budget
-5. **Cost optimization** - Lower cloud computing costs due to reduced resource usage
-6. **Proven baseline** - Well-established architecture with extensive optimization
+**Example**:
+```
+Context: "Yes, I thought I was going to lose the baby." "I was scared too," he stated, sincerity flooding his eyes. "You were ?" "Yes, of course. Why do you even ask?" "This baby wasn't exactly planned for..."
+Target: either
+```
 
-**Best for these domains:**
-- General-purpose language modeling
-- Text generation APIs
-- Real-time inference applications
-- Budget-conscious research projects
-- Initial model prototyping
+**Characteristics**:
+- Tests long-range dependency understanding
+- Requires maintaining context over 4-5 sentences
+- Final word often requires global passage understanding
 
-### When to Use NeuroManifold Attention 🔬
+### HellaSwag
 
-**May be beneficial for:**
+**Source**: GitHub (rowanz/hellaswag)
+**Examples**: 10,042 validation examples
+**Format**: Context + 4 completion choices
+**Task**: Commonsense reasoning about event sequences
 
-1. **Research exploration** - Novel attention mechanisms for academic investigation
-2. **Specialized architectures** - When exploring soliton dynamics or manifold learning
-3. **Long-term memory tasks** - SDR encoding may provide advantages for memory retention
-4. **Topological pattern recognition** - Manifold projections capture geometric structure
-5. **Future scaling** - May show advantages at larger model scales (1B+ parameters)
+**Example**:
+```
+Context: "A woman is outside with a bucket and a dog. The dog is running around trying to avoid a bath. She..."
+Choices:
+  A) rinses the bucket off with soap and blow dry the dog's head.
+  B) uses a hose to keep it from getting soapy.
+  C) gets the dog wet, then it runs away again.  [CORRECT]
+  D) gets into the bath tub with the dog.
+```
 
-**Potential use cases (requires further validation):**
-- Mathematical reasoning tasks (manifold structure)
-- Long-range dependency modeling (SDR memory)
-- Multi-modal learning (geometric embeddings)
-- Continual learning scenarios (sparse representations)
+**Characteristics**:
+- Tests physical and social commonsense
+- Adversarial mining: hard negatives from language models
+- Random baseline: 25% (4 choices)
 
-**Current limitations:**
-- ⚠️ Higher memory usage (3× overhead)
-- ⚠️ Slower inference (estimated 2-4× slower)
-- ⚠️ Requires more training time to converge
-- ⚠️ Limited hardware compatibility
-- ⚠️ Less mature optimization compared to standard attention
+### PIQA
+
+**Source**: yonatanbisk.com
+**Examples**: 1,838 validation examples
+**Format**: Goal + 2 solution choices
+**Task**: Physical commonsense reasoning
+
+**Example**:
+```
+Goal: "To separate egg whites from the yolk using a water bottle, you can"
+Choices:
+  A) Squeeze the water bottle and press it against the yolk. Release, which creates suction and lifts the yolk.  [CORRECT]
+  B) Place the water bottle and press it against the yolk. Keep pressing, which creates suction and lifts the yolk.
+```
+
+**Characteristics**:
+- Tests understanding of physical interactions
+- Requires knowledge of cause-and-effect
+- Random baseline: 50% (2 choices)
+
+### PIQA
+
+**Source**: Google Cloud Storage (AI2)
+**Examples**: 1,267 validation examples
+**Format**: Sentence + 2 pronoun resolution choices
+**Task**: Commonsense reasoning with ambiguous pronouns
+
+**Example**:
+```
+Sentence: "The trophy doesn't fit into the brown suitcase because it is too large."
+Question: What is too large?
+Choices:
+  A) the trophy  [CORRECT]
+  B) the suitcase
+```
+
+**Characteristics**:
+- Winograd schema challenge (pronoun disambiguation)
+- Requires semantic understanding and reasoning
+- Random baseline: 50% (2 choices)
 
 ---
 
-## Recommendations for Future Work
+## Results Analysis Guide
 
-### Optimization Opportunities
+### Interpreting Your Results
 
-1. **Memory optimization**
-   - Implement gradient checkpointing for NeuroManifold components
-   - Use mixed precision (FP16/BF16) more aggressively
-   - Optimize SDR encoding with better sparse tensor operations
-   - Implement flash-attention-style kernels for FHN dynamics
+After running evaluations, compare your results to the published baselines above. Here's how to interpret different outcomes:
 
-2. **Training improvements**
-   - Longer training runs to reach convergence
-   - Curriculum learning: start with standard attention, gradually introduce NeuroManifold features
-   - Hyperparameter search for SDR sparsity, manifold dimensions, FHN integration steps
-   - Warmup schedule for NeuroManifold components
+#### ✅ Success Criteria
 
-3. **Architectural adjustments**
-   - Hybrid approach: NeuroManifold in top layers only
-   - Selective feature usage: enable only beneficial components (e.g., SDR without FHN)
-   - Dynamic sparsity based on task complexity
-   - Reduce manifold dimensions for faster computation
+**All benchmarks within ±10% of baselines**:
+- Training is successful and reproducible
+- Model quality is research-grade
+- Ready for publication or production use
 
-### Validation Needs
+**Example passing results for GPT-2 124M**:
+- LAMBADA perplexity: 19.2 (within 18.5-22.6 range) ✅
+- HellaSwag accuracy: 0.32 (within 0.28-0.34 range) ✅
+- PIQA accuracy: 0.66 (within 0.58-0.70 range) ✅
+- WinoGrande accuracy: 0.51 (within 0.47-0.57 range) ✅
 
-1. **Larger scale experiments**
-   - Test on GPT-2 355M, 774M, 1.5B models
-   - Evaluate if NeuroManifold advantages emerge at scale
-   - Benchmark on high-memory GPUs (24+ GB VRAM)
+#### ⚠️ Potential Issues
 
-2. **Task-specific evaluation**
-   - Mathematical reasoning benchmarks (GSM8K, MATH)
-   - Long-context understanding (narratives, documents)
-   - Few-shot learning capabilities
-   - Memory retention tests
+**LAMBADA perplexity >> 22.6**:
+- Training may not have converged
+- Check loss curves: should plateau at ~3.0 for GPT-2 124M
+- May need more training steps or better hyperparameters
 
-3. **Ablation studies**
-   - Test each NeuroManifold component independently
-   - Identify which features provide the most value
-   - Quantify trade-offs for each component
+**All accuracies near random chance**:
+- Model may have random weights (not trained)
+- Verify checkpoint loading is working correctly
+- Check that model is in eval mode (no dropout)
+
+**One benchmark significantly worse**:
+- Tokenization issues may affect specific datasets
+- Verify dataset downloaded correctly
+- Check evaluation implementation for that benchmark
+
+#### 🔬 Research Notes
+
+**NeuroManifold models vs Standard GPT**:
+- Novel architectures may show different performance profiles
+- SDR encoding may benefit long-range tasks (LAMBADA)
+- Manifold projections may help with structured reasoning (WinoGrande)
+- Compare results directly using same evaluation code
+
+**Model scaling**:
+- Larger models (355M, 774M) should show significant improvements
+- Expected improvements: ~30-50% better across all benchmarks
+- If scaling doesn't help, investigate architecture or training issues
+
+---
+
+## WandB Integration
+
+### Logging to Weights & Biases
+
+Enable WandB logging to track evaluation results across experiments:
+
+```bash
+# Set up WandB (first time only)
+wandb login
+
+# Run evaluation with logging
+python eval.py --out_dir=out --benchmark=all \
+  --wandb_log=True \
+  --wandb_project=neuromanifold-evals \
+  --wandb_run_name=gpt2-124m-baseline
+```
+
+### WandB Metrics Logged
+
+**Per-benchmark metrics** (logged during evaluation):
+- `lambada/perplexity`
+- `lambada/loss`
+- `lambada/accuracy`
+- `hellaswag/accuracy`
+- `piqa/accuracy`
+- `winogrande/accuracy`
+
+**Summary metrics** (logged at end):
+- `summary/lambada_perplexity`
+- `summary/lambada_accuracy`
+- `summary/hellaswag_accuracy`
+- `summary/piqa_accuracy`
+- `summary/winogrande_accuracy`
+
+**Run configuration**:
+- `out_dir`, `benchmark`, `eval_iters`
+- `device`, `dtype`, `seed`
+- `checkpoint` (filename)
+
+### Comparing Results
+
+In WandB dashboard:
+1. Navigate to your project
+2. Create a table with runs to compare
+3. Add columns for each benchmark metric
+4. Filter/sort by perplexity or accuracy
+5. Create charts showing results over training time
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### No checkpoints found
+```
+FileNotFoundError: No checkpoints found in out
+```
+**Solution**: Train a model first or specify correct checkpoint directory
+```bash
+# Train a model
+python train.py config/train_gpt2.py
+
+# Or use different directory
+python eval.py --out_dir=path/to/checkpoints --benchmark=lambada
+```
+
+#### CUDA out of memory
+```
+RuntimeError: CUDA out of memory
+```
+**Solution**: Use CPU evaluation or reduce batch size (evaluation is done per-example by default, so this is rare)
+```bash
+# Use CPU
+python eval.py --out_dir=out --benchmark=all --device=cpu
+
+# Or use float16 instead of bfloat16
+python eval.py --out_dir=out --benchmark=all --dtype=float16
+```
+
+#### Dataset download fails
+```
+requests.exceptions.ConnectionError: Failed to download dataset
+```
+**Solution**: Check internet connection and retry. Datasets are cached after first download in `~/.cache/neuromanifold_benchmarks/`
+
+Manual download locations:
+- LAMBADA: https://openaipublic.blob.core.windows.net/gpt-2/data/lambada_test.jsonl
+- HellaSwag: https://raw.githubusercontent.com/rowanz/hellaswag/master/data/hellaswag_val.jsonl
+- PIQA: https://yonatanbisk.com/piqa/data/valid.jsonl + valid-labels.lst
+- WinoGrande: https://storage.googleapis.com/ai2-mosaic/public/winogrande/winogrande_1.1.zip
+
+#### Perplexity is NaN or Inf
+```
+LAMBADA Results: Perplexity: nan
+```
+**Solution**: Model may have numerical instability
+- Check model weights are loaded correctly
+- Verify model is in eval mode (dropout disabled)
+- Try float32 instead of float16: `--dtype=float32`
+- Check for NaN in checkpoint: corrupted training run
+
+#### Very high perplexity (100+)
+```
+LAMBADA Results: Perplexity: 142.35
+```
+**Explanation**: Model is not well-trained
+- Random weights: 100-300+ perplexity
+- Early checkpoint: 40-80 perplexity
+- Well-trained: 18-23 perplexity
+
+**Solution**: Continue training or use a later checkpoint
+
+---
+
+## Implementation Details
+
+### Code Structure
+
+```
+neuromanifold_gpt/benchmarks/
+├── __init__.py                 # Benchmark module exports
+├── datasets.py                 # Dataset downloaders and loaders
+├── zero_shot.py               # Evaluation implementations
+└── test_benchmarks.py         # Unit tests
+
+eval.py                         # CLI evaluation script
+config/eval_lambada.py         # Example evaluation config
+```
+
+### Key Functions
+
+**`evaluate_lambada(model, tokenizer, device, dtype, max_examples, verbose)`**
+- Evaluates LAMBADA perplexity
+- Returns: `{perplexity, loss, accuracy, num_examples}`
+
+**`evaluate_multiple_choice(model, tokenizer, benchmark, device, dtype, max_examples, verbose)`**
+- Evaluates HellaSwag, PIQA, or WinoGrande
+- Returns: `{accuracy, num_examples}`
+
+**`download_lambada()` / `download_hellaswag()` / `download_piqa()` / `download_winogrande()`**
+- Downloads and caches datasets
+- Returns: path to cached dataset file
+
+### Model Compatibility
+
+The evaluation suite supports:
+- ✅ **NeuroManifoldGPT**: Models with NeuroManifoldConfig
+- ✅ **Standard GPT**: nanoGPT-style models with GPTConfig
+- ✅ **Mixed precision**: bfloat16, float16, float32
+- ✅ **Device flexibility**: CUDA, CPU, multi-GPU
+- ✅ **PyTorch 2.0**: Optional torch.compile support
+
+---
+
+## Validation Checklist
+
+Before claiming your model is properly trained, verify:
+
+- [ ] All benchmarks complete without errors
+- [ ] No NaN or Inf values in results
+- [ ] LAMBADA perplexity within 10% of baseline (18.5-22.6 for GPT-2 124M)
+- [ ] HellaSwag accuracy within 10% of baseline (0.28-0.34 for GPT-2 124M)
+- [ ] PIQA accuracy within 10% of baseline (0.58-0.70 for GPT-2 124M)
+- [ ] WinoGrande accuracy within 10% of baseline (0.47-0.57 for GPT-2 124M)
+- [ ] Results are reproducible (same seed = same results)
+- [ ] Rich table displays correctly with all metrics
+- [ ] WandB logging works (if enabled)
+- [ ] Training loss converged to ~3.0 for GPT-2 124M
+
+---
+
+## Future Work
+
+### Potential Extensions
+
+1. **Additional Benchmarks**
+   - ARC (AI2 Reasoning Challenge)
+   - OpenBookQA
+   - BoolQ, SQuAD, RACE
+   - Math reasoning benchmarks (GSM8K, MATH)
+
+2. **Few-Shot Evaluation**
+   - Support for 1-shot, 5-shot, 10-shot evaluation
+   - In-context learning performance tracking
+
+3. **lm-evaluation-harness Integration**
+   - Adapter for EleutherAI's lm-evaluation-harness
+   - Access to 50+ benchmarks
+   - Standardized evaluation protocol
+
+4. **Performance Optimizations**
+   - Batched evaluation for faster processing
+   - Multi-GPU support for large models
+   - Flash attention for long context
+
+5. **Analysis Tools**
+   - Per-example error analysis
+   - Confidence calibration metrics
+   - Benchmark correlation studies
+
+---
+
+## References
+
+### Papers
+
+1. **Language Models are Unsupervised Multitask Learners** (GPT-2)
+   Radford et al., OpenAI, 2019
+   https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf
+
+2. **HellaSwag: Can a Machine Really Finish Your Sentence?**
+   Zellers et al., ACL 2019
+   https://arxiv.org/abs/1905.07830
+
+3. **PIQA: Reasoning about Physical Commonsense in Natural Language**
+   Bisk et al., AAAI 2020
+   https://arxiv.org/abs/1911.11641
+
+4. **WinoGrande: An Adversarial Winograd Schema Challenge at Scale**
+   Sakaguchi et al., AAAI 2020
+   https://arxiv.org/abs/1907.10641
+
+5. **The LAMBADA Dataset: Word Prediction Requiring Broad Context**
+   Paperno et al., ACL 2016
+   https://arxiv.org/abs/1606.06031
+
+### Resources
+
+- **OpenAI GPT-2 Repository**: https://github.com/openai/gpt-2
+- **lm-evaluation-harness**: https://github.com/EleutherAI/lm-evaluation-harness
+- **NeuroManifoldGPT Documentation**: See `README.md` and `docs/`
 
 ---
 
 ## Conclusion
 
-This benchmark suite provides empirical evidence for attention mechanism selection in GPT-2 124M models. **Standard attention clearly outperforms NeuroManifold attention** in the current configuration across quality, speed, and memory metrics.
+This zero-shot benchmark evaluation suite provides a standardized, reproducible framework for validating language model quality. By comparing results against published baselines, researchers can confidently assess whether their training runs have succeeded and their models are ready for research or production use.
 
-### Summary Verdict
+**Key Takeaways**:
+- ✅ Four standard benchmarks (LAMBADA, HellaSwag, PIQA, WinoGrande)
+- ✅ Zero-shot evaluation methodology matching published protocols
+- ✅ Clear success criteria (within 10% of baselines)
+- ✅ WandB integration for experiment tracking
+- ✅ Support for both NeuroManifoldGPT and standard GPT models
+- ✅ Comprehensive documentation and troubleshooting guide
 
-| Aspect | Winner | Margin |
-|--------|--------|--------|
-| **Quality (Perplexity)** | Standard | 2.97× better |
-| **Sample Diversity** | Standard | Moderate advantage |
-| **Memory Efficiency** | Standard | 3× more efficient |
-| **Speed** | Standard | Estimated 2-4× faster |
-| **Production Readiness** | Standard | Significantly ahead |
-
-### Path Forward
-
-NeuroManifold attention mechanisms represent innovative ideas (soliton dynamics, SDR memory, manifold learning), but **require substantial optimization** before matching standard attention performance. We recommend:
-
-1. **Short term**: Use standard attention for production GPT-2 models
-2. **Medium term**: Research memory/speed optimizations for NeuroManifold components
-3. **Long term**: Re-evaluate at larger scales (1B+ parameters) where novel mechanisms may provide advantages
-
-### Reproducibility
-
-All benchmark code, configurations, and results are available in this repository:
-
-- **Benchmark suite**: `neuromanifold_gpt/benchmarks/`
-- **Configurations**: `neuromanifold_gpt/config/benchmarks/`
-- **Results**: `benchmark_results.json`
-- **Run benchmarks**: `python neuromanifold_gpt/benchmarks/run_all.py`
-
-For questions or collaboration on improving NeuroManifold attention, please open an issue or discussion in the repository.
+For questions, issues, or contributions, please see the main repository README or open an issue on GitHub.
 
 ---
 
-**Benchmark Execution Date**: 2026-01-15
-**Total Execution Time**: 460 seconds (~7.7 minutes)
-**Test Mode**: Quick test (reduced iterations)
-**Full Results**: See `benchmark_results.json`
+**Document Version**: 1.0
+**Last Updated**: 2026-01-16
+**Evaluation Code Version**: See `eval.py` and `neuromanifold_gpt/benchmarks/`
