@@ -97,6 +97,16 @@ class NeuroManifoldBlock(nn.Module):
         kan_num_centers: int = 8,  # For FasterKAN RSWAF centers
         # Speed optimization
         skip_manifold_spectral: bool = False,  # Skip manifold/spectral for faster training
+        # Additional parameters for future features
+        mhc_sinkhorn_iters: int = 5,
+        use_mla: bool = False,
+        mla_latent_dim: int = 64,
+        mla_rope_dim: int = 32,
+        use_moe: bool = False,
+        moe_n_experts: int = 8,
+        moe_n_active: int = 2,
+        use_shared_expert: bool = True,
+        use_e7_routing: bool = False,
     ):
         super().__init__()
 

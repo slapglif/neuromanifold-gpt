@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "029-better-weight-initialization-strategies",
+  "spec": "030-rotary-and-alibi-position-embeddings",
   "state": "building",
   "subtasks": {
-    "completed": 10,
+    "completed": 8,
     "total": 11,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Validation",
+    "current": "Model Integration",
     "id": null,
-    "total": 2
+    "total": 3
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 12,
-    "started_at": "2026-01-15T18:47:07.983786"
+    "number": 10,
+    "started_at": "2026-01-15T18:47:01.041593"
   },
-  "last_update": "2026-01-15T19:35:57.371920"
+  "last_update": "2026-01-15T19:16:26.512754"
 }

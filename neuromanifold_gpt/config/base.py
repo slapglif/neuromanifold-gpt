@@ -38,6 +38,7 @@ class NeuroManifoldConfig:
         n_eigenvectors: Number of eigenvectors for spectral attention
         spectral_sigma: Bandwidth for spectral kernel
         n_heads: Number of attention heads
+        pos_emb_type: Position embedding type ("learned", "rotary", or "alibi")
         soliton_threshold: Firing threshold for soliton activation
         soliton_tau: Time constant for soliton dynamics
         soliton_velocity: Propagation velocity of soliton waves
@@ -90,6 +91,7 @@ class NeuroManifoldConfig:
 
     # Attention configuration
     n_heads: int = 8
+    pos_emb_type: str = "learned"  # Position embedding type: "learned", "rotary", or "alibi"
 
     # FHN dynamics (Fitzhugh-Nagumo)
     fhn_threshold: float = 0.5  # Restored: stable excitability threshold

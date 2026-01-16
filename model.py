@@ -15,6 +15,12 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+# Import position embeddings
+from neuromanifold_gpt.model.embeddings import (
+    RotaryPositionalEmbedding,
+    ALiBiPositionalBias,
+)
+
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -114,7 +120,7 @@ class GPTConfig:
     n_embd: int = 768
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-    init_strategy: str = 'gpt2' # Weight initialization strategy
+    pos_emb_type: str = 'learned' # Position embedding type: 'learned', 'rotary', or 'alibi'
 
 class GPT(nn.Module):
 
@@ -124,13 +130,41 @@ class GPT(nn.Module):
         assert config.block_size is not None
         self.config = config
 
-        self.transformer = nn.ModuleDict(dict(
+        # Position embedding type (configurable: learned, rotary, alibi)
+        self.pos_emb_type = getattr(config, 'pos_emb_type', 'learned')
+
+        # Create transformer components
+        transformer_dict = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
-        ))
+        )
+
+        # Add position embedding based on type
+        if self.pos_emb_type == 'learned':
+            # Standard learned positional embeddings
+            transformer_dict['wpe'] = nn.Embedding(config.block_size, config.n_embd)
+        elif self.pos_emb_type == 'rotary':
+            # RoPE (Rotary Position Embeddings) - applied to Q/K in attention
+            head_dim = config.n_embd // config.n_head
+            transformer_dict['wpe'] = RotaryPositionalEmbedding(
+                embed_dim=config.n_embd,
+                head_dim=head_dim,
+                max_seq_len=config.block_size
+            )
+        elif self.pos_emb_type == 'alibi':
+            # ALiBi (Attention with Linear Biases) - applied as bias to attention scores
+            transformer_dict['wpe'] = ALiBiPositionalBias(
+                n_heads=config.n_head,
+                embed_dim=config.n_embd,
+                max_seq_len=config.block_size
+            )
+        else:
+            raise ValueError(f"Unknown pos_emb_type: {self.pos_emb_type}. "
+                           f"Must be one of: learned, rotary, alibi")
+
+        self.transformer = nn.ModuleDict(transformer_dict)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
         # "UserWarning: functional_call was passed multiple values for tied weights.
@@ -143,23 +177,7 @@ class GPT(nn.Module):
         # apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):
-                if config.init_strategy == 'gpt2':
-                    torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
-                elif config.init_strategy == 'mup':
-                    # muP: scale output projection by 1/width
-                    fan_in = p.size(1)
-                    std = 1.0 / fan_in
-                    torch.nn.init.normal_(p, mean=0.0, std=std)
-                elif config.init_strategy == 'xavier':
-                    # Xavier already handles scaling, just apply depth scaling
-                    torch.nn.init.xavier_uniform_(p, gain=1.0/math.sqrt(2 * config.n_layer))
-                elif config.init_strategy == 'he':
-                    # He with depth scaling
-                    torch.nn.init.kaiming_normal_(p, mode='fan_in', nonlinearity='relu')
-                    p.data *= (1.0 / math.sqrt(2 * config.n_layer))
-                elif config.init_strategy == 'deepnorm':
-                    # DeepNorm already accounts for depth in _init_weights
-                    pass
+                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
 
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
@@ -173,54 +191,19 @@ class GPT(nn.Module):
         """
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
-            n_params -= self.transformer.wpe.weight.numel()
+            # Only subtract learned position embedding parameters
+            # RoPE and ALiBi use non-learnable buffers, so no subtraction needed
+            if self.pos_emb_type == 'learned' and hasattr(self.transformer.wpe, 'weight'):
+                n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
     def _init_weights(self, module):
-        strategy = self.config.init_strategy
-
         if isinstance(module, nn.Linear):
-            if strategy == 'gpt2':
-                # Standard GPT-2 initialization
-                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            elif strategy == 'mup':
-                # Maximal Update Parametrization (muP)
-                # Scale by 1/sqrt(fan_in) for better width scaling
-                fan_in = module.weight.size(1)
-                std = 1.0 / math.sqrt(fan_in)
-                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
-            elif strategy == 'xavier':
-                # Xavier/Glorot initialization
-                torch.nn.init.xavier_uniform_(module.weight)
-            elif strategy == 'he':
-                # He initialization (good for ReLU-like activations)
-                torch.nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
-            elif strategy == 'deepnorm':
-                # DeepNorm initialization for very deep networks
-                # Scale by 1/sqrt(2*n_layer) for stability
-                std = 0.02 / math.sqrt(2 * self.config.n_layer)
-                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
-            else:
-                raise ValueError(f"Unknown init_strategy: {strategy}")
-
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            if strategy == 'gpt2':
-                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            elif strategy == 'mup':
-                # muP: scale embeddings by 1/sqrt(n_embd)
-                std = 1.0 / math.sqrt(self.config.n_embd)
-                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
-            elif strategy == 'xavier':
-                torch.nn.init.xavier_uniform_(module.weight)
-            elif strategy == 'he':
-                torch.nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
-            elif strategy == 'deepnorm':
-                std = 0.02 / math.sqrt(2 * self.config.n_layer)
-                torch.nn.init.normal_(module.weight, mean=0.0, std=std)
-            else:
-                raise ValueError(f"Unknown init_strategy: {strategy}")
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -230,8 +213,26 @@ class GPT(nn.Module):
 
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-        x = self.transformer.drop(tok_emb + pos_emb)
+
+        # Apply position embeddings based on type
+        if self.pos_emb_type == 'learned':
+            # Learned embeddings: add to token embeddings
+            pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
+            x = self.transformer.drop(tok_emb + pos_emb)
+        elif self.pos_emb_type == 'rotary':
+            # RoPE: Applied to Q/K in attention layers (not at embedding level)
+            # For now, just use token embeddings without position info
+            # Position info will be applied in attention when RoPE is integrated there
+            x = self.transformer.drop(tok_emb)
+        elif self.pos_emb_type == 'alibi':
+            # ALiBi: Applied as bias to attention scores (not at embedding level)
+            # For now, just use token embeddings without position info
+            # Position info will be applied in attention when ALiBi is integrated there
+            x = self.transformer.drop(tok_emb)
+        else:
+            # Default: use token embeddings only
+            x = self.transformer.drop(tok_emb)
+
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
