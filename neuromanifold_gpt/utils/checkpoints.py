@@ -73,6 +73,13 @@ def _extract_val_loss(filename: str) -> Optional[float]:
 def _scan_checkpoints(directory: str) -> List[Tuple[str, Optional[float], float, int]]:
     """Scan directory for checkpoint files.
 
+    Supports both unified and separated checkpoint formats:
+    - Unified: Single .pt/.ckpt/.pth file
+    - Separated: Pairs of -model.pt and -optimizer.pt files
+
+    For separated checkpoints, the -model.pt file is returned and size includes
+    both model and optimizer files (if present).
+
     Returns:
         List of tuples: (filename, val_loss, age_timestamp, size_bytes)
     """
@@ -82,15 +89,63 @@ def _scan_checkpoints(directory: str) -> List[Tuple[str, Optional[float], float,
     if not dir_path.exists():
         return checkpoints
 
+    seen_separated = set()  # Track separated checkpoints we've already added
+
     # Find all checkpoint files
     patterns = ['*.pt', '*.ckpt', '*.pth']
     for pattern in patterns:
         for ckpt_file in dir_path.glob(pattern):
-            if ckpt_file.is_file():
-                stat = ckpt_file.stat()
-                val_loss = _extract_val_loss(ckpt_file.name)
+            if not ckpt_file.is_file():
+                continue
+
+            filename = ckpt_file.name
+
+            # Skip optimizer files - they'll be handled with their model files
+            if filename.endswith('-optimizer.pt'):
+                continue
+
+            # Handle separated checkpoint format
+            if filename.endswith('-model.pt'):
+                # Get the base name (without -model.pt)
+                base_name = filename[:-9]  # Remove '-model.pt'
+
+                # Skip if already processed
+                if base_name in seen_separated:
+                    continue
+                seen_separated.add(base_name)
+
+                # Get model file stats
+                model_stat = ckpt_file.stat()
+                total_size = model_stat.st_size
+                mtime = model_stat.st_mtime
+
+                # Check for corresponding optimizer file and add its size
+                optimizer_file = dir_path / f"{base_name}-optimizer.pt"
+                if optimizer_file.exists():
+                    optimizer_stat = optimizer_file.stat()
+                    total_size += optimizer_stat.st_size
+
+                val_loss = _extract_val_loss(filename)
                 checkpoints.append((
-                    ckpt_file.name,
+                    filename,  # Return the model filename
+                    val_loss,
+                    mtime,
+                    total_size
+                ))
+
+            # Handle unified checkpoint format
+            else:
+                # Skip if this looks like it's part of a separated checkpoint
+                base_name = filename.rsplit('.', 1)[0]
+                model_file = dir_path / f"{base_name}-model.pt"
+                if model_file.exists():
+                    # This is a base file that has separated versions, skip it
+                    continue
+
+                stat = ckpt_file.stat()
+                val_loss = _extract_val_loss(filename)
+                checkpoints.append((
+                    filename,
                     val_loss,
                     stat.st_mtime,
                     stat.st_size
