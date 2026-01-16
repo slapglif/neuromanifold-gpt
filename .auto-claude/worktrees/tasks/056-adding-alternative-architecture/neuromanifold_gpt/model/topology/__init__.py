@@ -66,8 +66,11 @@ from neuromanifold_gpt.model.topology.jones_polynomial import (
     KauffmanBracketNetwork,
 )
 
-# Placeholder imports - will be populated as submodules are implemented
-# from neuromanifold_gpt.model.topology.topological_head import TopologicalHead
+# Topological head for loss computation
+from neuromanifold_gpt.model.topology.topological_head import (
+    TopologicalHead,
+    TopologicalHeadConfig,
+)
 
 __all__ = [
     "BraidGroup",
@@ -80,5 +83,6 @@ __all__ = [
     "JonesEvaluator",
     "JonesLoss",
     "KauffmanBracketNetwork",
-    # "TopologicalHead",
+    "TopologicalHead",
+    "TopologicalHeadConfig",
 ]
