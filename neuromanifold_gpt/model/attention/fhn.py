@@ -113,6 +113,11 @@ class FHNDynamics(nn.Module):
         # Use dt=1.0 by default (matches original IMEX design)
         self.dt = nn.Parameter(torch.tensor(1.0))
 
+        # Pre-allocate state buffers (persistent=False as they can be resized)
+        # Initialize with minimal shape (1, 1, 1, dim) to be resized on first forward
+        self.register_buffer("v_buffer", torch.zeros(1, 1, 1, dim), persistent=False)
+        self.register_buffer("w_buffer", torch.zeros(1, 1, 1, dim), persistent=False)
+
     def forward(
         self, stimulus: torch.Tensor, n_steps: int = 2
     ) -> tuple[torch.Tensor, torch.Tensor]:
