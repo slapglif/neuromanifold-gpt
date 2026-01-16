@@ -51,6 +51,17 @@ except Exception as e:
 # Shared Fixtures (from Master)
 # -----------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def reset_random_seed():
+    """Autouse fixture to reset random seed before each test.
+
+    This fixture runs automatically before every test to ensure reproducibility
+    by setting torch random seed to 42. Tests no longer need inline
+    torch.manual_seed() calls.
+    """
+    torch.manual_seed(42)
+
+
 @pytest.fixture
 def nano_config():
     """Fixture providing NeuroManifoldConfigNano instance.
