@@ -38,7 +38,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 
-from neuromanifold_gpt.model.fno.multimodal_encoder import MultimodalFNOEncoder
+from neuromanifold_gpt.model.fno.encoder import MultimodalFNOEncoder
 
 
 class MultimodalFusionEncoder(nn.Module):
