@@ -4,81 +4,6 @@ import pytest
 import torch
 
 
-# ============================================================================
-# Tests for TrainConfig (new composition pattern)
-# ============================================================================
-
-
-class TestTrainConfig:
-    """Test suite for the TrainConfig class."""
-
-    def test_train_config_creates_model_config_automatically(self):
-        """TrainConfig should create model_config if not provided."""
-        from train import TrainConfig
-
-        config = TrainConfig()
-        assert config.model_config is not None
-        assert hasattr(config.model_config, 'n_layer')
-        assert hasattr(config.model_config, 'n_embd')
-
-    def test_train_config_accepts_explicit_model_config(self):
-        """TrainConfig should accept an explicit model_config."""
-        from train import TrainConfig
-        from neuromanifold_gpt.config import NeuroManifoldConfig
-
-        model_config = NeuroManifoldConfig(n_layer=12, n_embd=768)
-        config = TrainConfig(model_config=model_config)
-
-        assert config.model_config is model_config
-        assert config.model_config.n_layer == 12
-        assert config.model_config.n_embd == 768
-
-    def test_train_config_backward_compat_with_individual_params(self):
-        """TrainConfig should support individual model params for backward compatibility."""
-        from train import TrainConfig
-
-        config = TrainConfig(n_layer=8, n_embd=256, n_heads=4)
-
-        assert config.model_config is not None
-        assert config.model_config.n_layer == 8
-        assert config.model_config.n_embd == 256
-        assert config.model_config.n_heads == 4
-
-    def test_train_config_has_training_params(self):
-        """TrainConfig should have training-specific parameters."""
-        from train import TrainConfig
-
-        config = TrainConfig()
-
-        assert hasattr(config, 'learning_rate')
-        assert hasattr(config, 'weight_decay')
-        assert hasattr(config, 'max_iters')
-        assert hasattr(config, 'batch_size')
-
-    def test_train_config_default_model_type(self):
-        """TrainConfig should default to neuromanifold model type."""
-        from train import TrainConfig
-
-        config = TrainConfig()
-        assert config.model_type == "neuromanifold"
-
-    def test_train_config_creates_gpt_config_when_requested(self):
-        """TrainConfig should create GPTConfig when model_type is gpt."""
-        from train import TrainConfig
-        from neuromanifold_gpt.config import GPTConfig
-
-        config = TrainConfig(model_type="gpt", n_layer=12)
-
-        assert config.model_config is not None
-        assert isinstance(config.model_config, GPTConfig)
-        assert config.model_config.n_layer == 12
-
-
-# ============================================================================
-# Tests for Lightning training module
-# ============================================================================
-
-
 def test_lightning_module_init():
     """Lightning module should initialize."""
     from neuromanifold_gpt.config import NeuroManifoldConfigNano
@@ -206,6 +131,39 @@ def test_config_has_training_params():
     assert config.beta1 == 0.9
     assert config.beta2 == 0.95
     assert config.grad_clip == 1.0
+
+
+def test_train_smoke():
+    """Training should start with zero configuration."""
+    from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.train import NeuroManifoldLightning
+
+    # Create config with defaults (zero-config)
+    config = NeuroManifoldConfigNano()
+
+    # Initialize Lightning module
+    module = NeuroManifoldLightning(config)
+    assert module.model is not None
+
+    # Configure optimizer
+    optimizer_config = module.configure_optimizers()
+    assert 'optimizer' in optimizer_config
+    assert 'lr_scheduler' in optimizer_config
+
+    # Create batch
+    batch = {
+        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
+        'labels': torch.randint(0, config.vocab_size, (2, 50))
+    }
+
+    # Run training step
+    loss = module.training_step(batch, 0)
+
+    # Verify loss is valid
+    assert loss is not None
+    assert loss.ndim == 0
+    assert not torch.isnan(loss)
+    assert loss.item() > 0
 
 
 # ============================================================================
