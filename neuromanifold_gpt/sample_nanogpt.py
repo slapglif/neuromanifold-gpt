@@ -9,53 +9,57 @@ Usage:
     python neuromanifold_gpt/sample_nanogpt.py --num_samples=5 --max_new_tokens=500
 """
 import os
+import sys
 import pickle
 from contextlib import nullcontext
+from dataclasses import dataclass
 
 import tiktoken
 import torch
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
+from neuromanifold_gpt.config.loader import load_config
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.utils.checkpoints import select_checkpoint
 from neuromanifold_gpt.utils.progress import checkpoint_progress
 
 # -----------------------------------------------------------------------------
-# Default sampling parameters
-out_dir = "out-neuromanifold"
-prompt = "\n"  # Start token or custom prompt
-num_samples = 1
-max_new_tokens = 500
-temperature = 0.8
-top_k = 200
-seed = 1337
-device = "cuda" if torch.cuda.is_available() else "cpu"
-dtype = "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
-compile_model = False
+@dataclass
+class SamplingConfig:
+    """Configuration for sampling from trained NeuroManifoldGPT model."""
+    out_dir: str = "out-neuromanifold"
+    prompt: str = "\n"  # Start token or custom prompt
+    num_samples: int = 1
+    max_new_tokens: int = 500
+    temperature: float = 0.8
+    top_k: int = 200
+    seed: int = 1337
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype: str = "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
+    compile_model: bool = False
 
-# -----------------------------------------------------------------------------
-# Parse command line
-exec(open(os.path.join(os.path.dirname(__file__), "configurator.py")).read())
+# Load config with CLI overrides
+config = load_config(SamplingConfig, show_help=True)
 
 # -----------------------------------------------------------------------------
 # Setup
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
+torch.manual_seed(config.seed)
+torch.cuda.manual_seed(config.seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-device_type = "cuda" if "cuda" in device else "cpu"
-ptdtype = {"float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}[dtype]
+device_type = "cuda" if "cuda" in config.device else "cpu"
+ptdtype = {"float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}[config.dtype]
 ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # -----------------------------------------------------------------------------
 # Load model
-ckpt_path = select_checkpoint(out_dir)
+ckpt_path = select_checkpoint(config.out_dir)
 if ckpt_path is None:
-    print(f"Error: No checkpoint found in {out_dir}")
+    print(f"Error: No checkpoint found in {config.out_dir}")
     exit(1)
 
 with checkpoint_progress("Loading checkpoint from disk"):
-    checkpoint = torch.load(ckpt_path, map_location=device)
+    checkpoint = torch.load(ckpt_path, map_location=config.device)
 
 # Recreate config
 checkpoint_config = checkpoint["model_config"]
@@ -74,9 +78,9 @@ with checkpoint_progress("Loading model weights"):
     model.load_state_dict(state_dict)
 
 model.eval()
-model.to(device)
+model.to(config.device)
 
-if compile_model:
+if config.compile_model:
     model = torch.compile(model)
 
 print(f"Loaded model from {ckpt_path}")
@@ -104,19 +108,19 @@ else:
 
 # -----------------------------------------------------------------------------
 # Encode prompt
-start_ids = encode(prompt)
-x = torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...]
+start_ids = encode(config.prompt)
+x = torch.tensor(start_ids, dtype=torch.long, device=config.device)[None, ...]
 
 # -----------------------------------------------------------------------------
 # Generate
-print(f"\nGenerating {num_samples} sample(s) with {max_new_tokens} tokens each...")
-print(f"Temperature: {temperature}, Top-k: {top_k}")
+print(f"\nGenerating {config.num_samples} sample(s) with {config.max_new_tokens} tokens each...")
+print(f"Temperature: {config.temperature}, Top-k: {config.top_k}")
 print("-" * 50)
 
 with torch.no_grad():
     with ctx:
-        for k in range(num_samples):
-            y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+        for k in range(config.num_samples):
+            y = model.generate(x, config.max_new_tokens, temperature=config.temperature, top_k=config.top_k)
             print(f"\n--- Sample {k + 1} ---")
             print(decode(y[0].tolist()))
             print("-" * 50)
