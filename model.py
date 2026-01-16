@@ -26,6 +26,25 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
+class RMSNorm(nn.Module):
+    """ Root Mean Square Layer Normalization (RMSNorm).
+
+    Simpler than LayerNorm: no mean centering, no bias.
+    Used in LLaMA, Mistral, and other modern LLMs for better efficiency.
+    """
+
+    def __init__(self, ndim, eps=1e-5):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(ndim))
+
+    def forward(self, input):
+        # Compute RMS: sqrt(mean(x^2))
+        # input shape: (B, T, ndim) or any shape with last dim = ndim
+        variance = input.pow(2).mean(dim=-1, keepdim=True)
+        input = input * torch.rsqrt(variance + self.eps)
+        return self.weight * input
+
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
