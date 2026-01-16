@@ -362,45 +362,54 @@ class FHNAttention(nn.Module):
             fhn_state_val = torch.tensor(0.0, device=x.device)
             attn_probs = None  # Not computed in flash attention
         else:
-            # === Standard Causal Scaled Dot-Product Attention (for FHN modulation or ALiBi) ===
-            # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
-            attn_weights = einsum(q, key, "b h t d, b h s d -> b h t s")
-            attn_weights = attn_weights / (self.head_dim**0.5)
+            # === Memory-Efficient Chunked Path for Long Sequences ===
+            # Use chunking when sequence length exceeds chunk_size to reduce memory
+            # from O(T²) to O(chunk_size²)
+            if T > self.chunk_size:
+                out, fhn_state_val = self._chunked_fhn_attention(
+                    q, key, v, chunk_size=self.chunk_size
+                )
+                attn_probs = None  # Not stored in chunked mode (memory efficiency)
+            else:
+                # === Standard Causal Scaled Dot-Product Attention (for FHN modulation or ALiBi) ===
+                # (B, H, T, D) @ (B, H, D, T) -> (B, H, T, T)
+                attn_weights = einsum(q, key, "b h t d, b h s d -> b h t s")
+                attn_weights = attn_weights / (self.head_dim**0.5)
 
-            # Add ALiBi bias if enabled (before causal mask)
-            if self.alibi is not None:
-                alibi_bias = self.alibi(T)  # Shape: (1, n_heads, T, T)
-                # Expand to batch size and add to attention scores
-                attn_weights = attn_weights + alibi_bias.squeeze(0)  # Now shape: (B, nh, T, T)
+                # Add ALiBi bias if enabled (before causal mask)
+                if self.alibi is not None:
+                    alibi_bias = self.alibi(T)  # Shape: (1, n_heads, T, T)
+                    # Expand to batch size and add to attention scores
+                    attn_weights = attn_weights + alibi_bias.squeeze(0)  # Now shape: (B, nh, T, T)
 
-            # Causal mask: prevent attending to future positions
-            causal_mask = torch.triu(
-                torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1
-            )
-            attn_weights = attn_weights.masked_fill(
-                causal_mask.unsqueeze(0).unsqueeze(0), float("-inf")
-            )
+                # Causal mask: prevent attending to future positions
+                causal_mask = torch.triu(
+                    torch.ones(T, T, device=x.device, dtype=torch.bool), diagonal=1
+                )
+                attn_weights = attn_weights.masked_fill(
+                    causal_mask.unsqueeze(0).unsqueeze(0), float("-inf")
+                )
 
-            # Apply softmax
-            attn_probs = torch.softmax(attn_weights, dim=-1)
-            attn_probs = self.dropout(attn_probs)
+                # Apply softmax
+                attn_probs = torch.softmax(attn_weights, dim=-1)
+                attn_probs = self.dropout(attn_probs)
 
-            # Apply FHN dynamics to modulate attention patterns along query dimension
-            attn_energy = attn_probs.sum(dim=-1)  # (B, H, T) - attention "energy" per query
-            fhn_out, fhn_state = self.fhn(
-                attn_energy.unsqueeze(-1).expand(-1, -1, -1, self.head_dim),
-                n_steps=self.n_fhn_steps,
-            )
-            fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(-1)  # (B, H, T, 1)
+                # Apply FHN dynamics to modulate attention patterns along query dimension
+                attn_energy = attn_probs.sum(dim=-1)  # (B, H, T) - attention "energy" per query
+                fhn_out, fhn_state = self.fhn(
+                    attn_energy.unsqueeze(-1).expand(-1, -1, -1, self.head_dim),
+                    n_steps=self.n_fhn_steps,
+                )
+                fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(-1)  # (B, H, T, 1)
 
-            # Modulate attention with FHN response (0.5 baseline + 0.5 * gate for stability)
-            attn_probs = attn_probs * (0.5 + 0.5 * fhn_gate)
-            # Renormalize (preserve causal structure)
-            attn_probs = attn_probs / (attn_probs.sum(dim=-1, keepdim=True) + 1e-8)
-            fhn_state_val = fhn_state.mean()
+                # Modulate attention with FHN response (0.5 baseline + 0.5 * gate for stability)
+                attn_probs = attn_probs * (0.5 + 0.5 * fhn_gate)
+                # Renormalize (preserve causal structure)
+                attn_probs = attn_probs / (attn_probs.sum(dim=-1, keepdim=True) + 1e-8)
+                fhn_state_val = fhn_state.mean()
 
-            # Apply attention to values
-            out = einsum(attn_probs, v, "b h t s, b h s d -> b h t d")
+                # Apply attention to values
+                out = einsum(attn_probs, v, "b h t s, b h s d -> b h t d")
         out = rearrange(out, "b h t d -> b t (h d)")
         out = self.out_proj(out)
 
