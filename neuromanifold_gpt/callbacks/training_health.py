@@ -1,5 +1,18 @@
 """Training health callback for comprehensive observability.
 
+.. deprecated::
+    TrainingHealthCallback is deprecated and will be removed in a future version.
+    Use the focused single-purpose callbacks instead:
+
+    - GradientMonitorCallback: Track gradient norms and detect explosions
+    - MemoryMonitorCallback: Track GPU memory usage
+    - ThroughputMonitorCallback: Track training speed and ETA
+    - LossMonitorCallback: Track loss history and detect spikes
+    - AnomalyDetectorCallback: Detect NaN/Inf in gradients and loss
+    - TrainingDashboardCallback: Rich console display
+
+    See docs/CALLBACK_MIGRATION_GUIDE.md for migration instructions.
+
 This callback tracks and logs key training health metrics including:
 - Gradient norms (total and per-layer)
 - Gradient clipping events
@@ -13,7 +26,7 @@ This callback tracks and logs key training health metrics including:
 Warnings are displayed prominently in the dashboard with red styling when
 anomalies are detected.
 
-Usage:
+Usage (deprecated):
     from neuromanifold_gpt.callbacks.training_health import TrainingHealthCallback
 
     callback = TrainingHealthCallback(log_interval=100)
@@ -21,6 +34,7 @@ Usage:
 """
 import sys
 import time
+import warnings
 from collections import deque
 from typing import Any, Dict, Deque, List, Optional, Union
 
@@ -38,6 +52,13 @@ from rich.layout import Layout
 class TrainingHealthCallback(Callback):
     """Track comprehensive training health metrics.
 
+    .. deprecated::
+        TrainingHealthCallback is deprecated. Use the focused single-purpose
+        callbacks instead: GradientMonitorCallback, MemoryMonitorCallback,
+        ThroughputMonitorCallback, LossMonitorCallback, AnomalyDetectorCallback,
+        and TrainingDashboardCallback.
+        See docs/CALLBACK_MIGRATION_GUIDE.md for migration instructions.
+
     Monitors gradient norms, memory usage, clipping events, and throughput
     to provide detailed observability during training.
 
@@ -52,6 +73,15 @@ class TrainingHealthCallback(Callback):
         gradient_norm_history_size: int = 100,
         enable_dashboard: bool = True,
     ):
+        warnings.warn(
+            "TrainingHealthCallback is deprecated and will be removed in a future version. "
+            "Use the focused single-purpose callbacks instead: "
+            "GradientMonitorCallback, MemoryMonitorCallback, ThroughputMonitorCallback, "
+            "LossMonitorCallback, AnomalyDetectorCallback, and TrainingDashboardCallback. "
+            "See docs/CALLBACK_MIGRATION_GUIDE.md for migration instructions.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self.log_interval = log_interval
         self.gradient_norm_history_size = gradient_norm_history_size
 
