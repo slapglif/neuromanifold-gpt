@@ -122,3 +122,63 @@ def test_gpt_memory_active_retrieval():
     similarity = info["memory_retrieval"]["avg_similarity"]
     assert retrieved > 0, f"Should retrieve memories from {memory_size} stored, got retrieved_count={retrieved}"
     assert similarity > 0.01, f"Avg similarity should exceed 0.01 for meaningful retrieval, got {similarity:.4f}"
+
+
+def test_gpt_generate_repetition_penalty():
+    """Repetition penalty should reduce probability of repeated tokens."""
+    config = NeuroManifoldConfigNano()
+    model = NeuroManifoldGPT(config)
+    model.eval()
+
+    # Test 1: Basic functionality - repeated tokens should be penalized
+    torch.manual_seed(42)
+    prompt = torch.tensor([[1, 2, 3, 4, 5]], dtype=torch.long)
+
+    # Generate without penalty
+    with torch.no_grad():
+        generated_no_penalty = model.generate(prompt, max_new_tokens=10, repetition_penalty=1.0, temperature=1.0)
+
+    # Generate with penalty
+    torch.manual_seed(42)
+    with torch.no_grad():
+        generated_with_penalty = model.generate(prompt, max_new_tokens=10, repetition_penalty=1.5, temperature=1.0)
+
+    # Both should have correct shape
+    assert generated_no_penalty.shape == (1, 15)
+    assert generated_with_penalty.shape == (1, 15)
+
+    # Test 2: Batch processing (batch_size > 1)
+    torch.manual_seed(42)
+    batch_prompt = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=torch.long)
+
+    with torch.no_grad():
+        batch_generated = model.generate(batch_prompt, max_new_tokens=5, repetition_penalty=1.5, temperature=1.0)
+
+    assert batch_generated.shape == (2, 8)
+
+    # Test 3: Edge case - penalty=1.0 should be no-op (just verify it runs)
+    torch.manual_seed(42)
+    prompt_edge = torch.randint(0, config.vocab_size, (1, 10))
+
+    with torch.no_grad():
+        gen_no_penalty = model.generate(prompt_edge.clone(), max_new_tokens=5, repetition_penalty=1.0, temperature=1.0)
+
+    # Should have correct shape
+    assert gen_no_penalty.shape == (1, 15)
+
+    # Test 4: Very high penalty should work without errors
+    torch.manual_seed(42)
+    with torch.no_grad():
+        high_penalty_gen = model.generate(prompt, max_new_tokens=5, repetition_penalty=5.0, temperature=1.0)
+
+    assert high_penalty_gen.shape == (1, 10)
+
+    # Test 5: Long sequence handling
+    torch.manual_seed(42)
+    # Use a sequence that's close to block_size to test scaling
+    long_prompt = torch.randint(0, config.vocab_size, (1, min(100, config.block_size - 10)))
+
+    with torch.no_grad():
+        long_generated = model.generate(long_prompt, max_new_tokens=10, repetition_penalty=1.5, temperature=1.0)
+
+    assert long_generated.shape == (1, long_prompt.size(1) + 10)

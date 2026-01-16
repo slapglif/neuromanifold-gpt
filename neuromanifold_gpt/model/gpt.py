@@ -650,12 +650,26 @@ class NeuroManifoldGPT(nn.Module):
 
             # Apply repetition penalty to tokens already in sequence
             if repetition_penalty != 1.0:
-                for b in range(idx.size(0)):
-                    for prev_token in idx[b].tolist():
-                        if logits[b, prev_token] > 0:
-                            logits[b, prev_token] /= repetition_penalty
-                        else:
-                            logits[b, prev_token] *= repetition_penalty
+                # Vectorized repetition penalty using scatter (replaces O(B*T) Python loops)
+                # idx shape: (B, T), logits shape: (B, vocab_size)
+                batch_size, vocab_size = logits.shape
+
+                # Create a mask for tokens that appear in the sequence (B, vocab_size)
+                # scatter_ sets True for any token that appears in idx
+                token_mask = torch.zeros(batch_size, vocab_size, device=idx.device, dtype=torch.bool)
+                token_mask.scatter_(1, idx, True)
+
+                # Apply penalty: divide if logit > 0 (decrease probability),
+                # multiply if logit < 0 (make even more negative)
+                # This penalizes repeated tokens
+                penalty_factor = torch.where(
+                    logits > 0,
+                    torch.full_like(logits, 1.0 / repetition_penalty),
+                    torch.full_like(logits, repetition_penalty)
+                )
+
+                # Apply penalty only to tokens that appeared in sequence
+                logits = torch.where(token_mask, logits * penalty_factor, logits)
 
             # Temperature
             logits = logits / temperature
