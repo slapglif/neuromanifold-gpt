@@ -95,6 +95,7 @@ def test_gpt_no_memory_during_eval():
 
 def test_gpt_memory_active_retrieval():
     """Memory should retrieve when memory_active_retrieval=True and memory has content."""
+    torch.manual_seed(42)  # Set seed for reproducible test
     config = NeuroManifoldConfigNano()
     config.memory_active_retrieval = True  # Enable active retrieval
     config.use_sdr = True  # SDR required for memory retrieval to work
