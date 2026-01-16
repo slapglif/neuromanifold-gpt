@@ -2,12 +2,14 @@
 import torch
 import torch.nn as nn
 import math
+from functools import lru_cache
 
 def gcd(a, b):
     while b:
         a, b = b, a % b
     return a
 
+@lru_cache(maxsize=None)
 def ramanujan_sum(q, n):
     """
     Compute Ramanujan sum c_q(n).
