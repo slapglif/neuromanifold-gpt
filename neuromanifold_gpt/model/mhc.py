@@ -695,7 +695,7 @@ def get_init_and_expand_reduce_stream_functions(
     disable: bool = False,
     sinkhorn_iters: int = 10,
     sinkhorn_tau: float = 0.05,
-    sinkhorn_convergence_tol: Optional[float] = None,
+    sinkhorn_convergence_tol: Optional[float] = 1e-6,
 ):
     """Get mHC initializer and stream expand/reduce functions.
 
