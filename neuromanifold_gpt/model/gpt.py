@@ -193,6 +193,44 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         elif isinstance(module, nn.Embedding):
             nn.init.normal_(module.weight, mean=0.0, std=init_std)
 
+    def _check_memory_has_content(self) -> bool:
+        """Check if memory contains any stored content.
+
+        Returns:
+            True if memory has content, False otherwise
+        """
+        if self.use_hierarchical_memory:
+            total_count = len(self.hierarchical_memory.l1) + len(self.hierarchical_memory.l2) + len(self.hierarchical_memory.l3)
+            return total_count > 0
+        else:
+            return self.memory.count.item() > 0
+
+    def _aggregate_retrieved_content(
+        self,
+        contents: torch.Tensor,
+        sims: torch.Tensor,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Aggregate retrieved memory contents weighted by similarity.
+
+        Args:
+            contents: Retrieved content tensors (n_results, content_dim)
+            sims: Similarity scores (n_results,)
+            device: Device to create tensors on
+
+        Returns:
+            Aggregated content tensor (content_dim,)
+        """
+        if len(contents) > 0:
+            # Normalize similarities to sum to 1
+            weights = F.softmax(sims, dim=0)  # (n_results,)
+            # Weighted sum of contents: (n_results, content_dim) -> (content_dim,)
+            aggregated = (weights.unsqueeze(1) * contents).sum(dim=0)  # (content_dim,)
+            return aggregated
+        else:
+            # No match found - use zeros
+            return torch.zeros(self.config.n_embd, device=device)
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -245,15 +283,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         pending_memory_retrieval = None  # Local variable (not instance var) for thread safety
 
         if self.memory_active_retrieval and self.use_sdr:
-            # Check if memory has content
-            memory_has_content = False
-            if self.use_hierarchical_memory:
-                total_count = len(self.hierarchical_memory.l1) + len(self.hierarchical_memory.l2) + len(self.hierarchical_memory.l3)
-                memory_has_content = total_count > 0
-            else:
-                memory_has_content = self.memory.count.item() > 0
-
-            if memory_has_content:
+            if self._check_memory_has_content():
                 # For SDR mode, we need to retrieve based on SDR patterns
                 # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
                 # Alternative: per-position queries (more expensive but more precise)
@@ -279,20 +309,14 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                     else:
                         contents, sims = retrieval_result
 
+                    # Aggregate retrieved content weighted by similarity
+                    aggregated = self._aggregate_retrieved_content(contents, sims, device)
+                    retrieved_contents_list.append(aggregated)
+
+                    # Track statistics
                     if len(contents) > 0:
-                        # Aggregate retrieved content weighted by similarity
-                        # Normalize similarities to sum to 1
-                        weights = F.softmax(sims, dim=0)  # (n_results,)
-                        # Weighted sum of contents: (n_results, content_dim) -> (content_dim,)
-                        aggregated = (weights.unsqueeze(1) * contents).sum(dim=0)  # (content_dim,)
-                        retrieved_contents_list.append(aggregated)
                         total_similarity += sims.mean().item()
                         total_retrieved += len(contents)
-                    else:
-                        # No match found - use zeros
-                        retrieved_contents_list.append(
-                            torch.zeros(self.config.n_embd, device=device)
-                        )
 
                 # Stack retrieved contents: (B, n_embd)
                 retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
