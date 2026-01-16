@@ -183,16 +183,98 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
     def _init_weights(self, module: nn.Module) -> None:
         """Initialize linear and embedding weights.
 
-        Uses DeepSeek-V3 style std=0.006 by default (configurable via init_std).
-        Smaller initialization leads to faster early convergence.
+        Supports multiple initialization strategies:
+        - 'deepseek': std=0.006 (DeepSeek-V3 style, fast early convergence)
+        - 'gpt2': std=0.02 (standard GPT-2 initialization)
+        - 'gpt2_scaled': std=0.02 with 1/sqrt(2*n_layer) scaling for residual projections
+        - 'mup': Maximal Update Parametrization (width-invariant hyperparameters)
         """
-        init_std = getattr(self.config, 'init_std', 0.006)
+        import math
+
+        # Get initialization strategy from config
+        init_strategy = getattr(self.config, 'init_strategy', 'deepseek')
+
+        # muP-specific implementation
+        if init_strategy == 'mup':
+            # Get base width for muP scaling
+            base_width = getattr(self.config, 'mup_base_width', 128)
+            d_model = self.config.n_embd
+
+            if isinstance(module, nn.Linear):
+                # Find module name to determine layer type
+                module_name = None
+                for name, mod in self.named_modules():
+                    if mod is module:
+                        module_name = name
+                        break
+
+                # Output head (lm_head): std = 1 / sqrt(d_model)
+                # No width scaling for output to maintain feature learning
+                if module_name and 'lm_head' in module_name:
+                    std = 1.0 / math.sqrt(d_model)
+
+                # Residual projections: std = (1 / d_model) * sqrt(base_width / d_model)
+                # These include attention output and MLP output projections
+                elif module_name and any(
+                    module_name.endswith(suffix)
+                    for suffix in ['out_proj', 'c_proj', 'w_down', 'proj_out']
+                ):
+                    std = (1.0 / d_model) * math.sqrt(base_width / d_model)
+
+                # Hidden layers: std = 1 / d_model
+                # Width-independent scaling for consistent feature learning
+                else:
+                    std = 1.0 / d_model
+
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+            elif isinstance(module, nn.Embedding):
+                # Embeddings: std = 1 / sqrt(d_model)
+                # Standard scaling to maintain variance
+                std = 1.0 / math.sqrt(d_model)
+                nn.init.normal_(module.weight, mean=0.0, std=std)
+
+            return
+
+        # Non-muP strategies
+        # Determine base std based on strategy
+        if init_strategy == 'deepseek':
+            base_std = getattr(self.config, 'init_std', 0.006)
+        elif init_strategy in ['gpt2', 'gpt2_scaled']:
+            base_std = 0.02
+        else:
+            # Fallback to deepseek for unknown strategies
+            base_std = getattr(self.config, 'init_std', 0.006)
+
+        # Apply initialization
         if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=init_std)
+            # Check if this is a residual projection layer for gpt2_scaled
+            std = base_std
+            if init_strategy == 'gpt2_scaled':
+                # Identify residual projections by name pattern
+                # These are the output projections that add back to the residual stream
+                module_name = None
+                for name, mod in self.named_modules():
+                    if mod is module:
+                        module_name = name
+                        break
+
+                # Residual projections: attention output, MLP output
+                # Pattern: ends with 'out_proj', 'c_proj', 'w_down', or 'proj_out'
+                if module_name and any(
+                    module_name.endswith(suffix)
+                    for suffix in ['out_proj', 'c_proj', 'w_down', 'proj_out']
+                ):
+                    # Scale down by 1/sqrt(2*n_layer) for gradient stability
+                    std = base_std / math.sqrt(2 * self.config.n_layer)
+
+            nn.init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=init_std)
+            nn.init.normal_(module.weight, mean=0.0, std=base_std)
 
     def _check_memory_has_content(self) -> bool:
         """Check if memory contains any stored content.
@@ -231,63 +313,6 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         else:
             # No match found - use zeros
             return torch.zeros(self.config.n_embd, device=device)
-
-    def _retrieve_batch_memories(
-        self,
-        query_sdr: torch.Tensor,
-        B: int,
-        T: int,
-        device: torch.device,
-    ) -> torch.Tensor:
-        """Retrieve memories for each batch element and return projected expansion.
-
-        Args:
-            query_sdr: Query SDR patterns (B, sdr_size)
-            B: Batch size
-            T: Sequence length
-            device: Device to create tensors on
-
-        Returns:
-            Retrieved and projected memory content expanded to (B, T, n_embd)
-        """
-        retrieved_contents_list = []
-        total_similarity = 0.0
-        total_retrieved = 0
-
-        for b in range(B):
-            # Memory retrieval - via mixin helper
-            retrieval_result = self._get_memory_for_retrieval(
-                query_sdr[b],
-                top_k=self.memory_retrieval_top_k,
-                threshold=self.config.engram_threshold,
-            )
-            # Unpack results (hierarchical returns 3 values, basic returns 2)
-            if self.use_hierarchical_memory:
-                contents, sims, tier = retrieval_result
-            else:
-                contents, sims = retrieval_result
-
-            # Aggregate retrieved content weighted by similarity
-            aggregated = self._aggregate_retrieved_content(contents, sims, device)
-            retrieved_contents_list.append(aggregated)
-
-            # Track statistics
-            if len(contents) > 0:
-                total_similarity += sims.mean().item()
-                total_retrieved += len(contents)
-
-        # Stack retrieved contents: (B, n_embd)
-        retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
-
-        # Project and expand to sequence length: (B, n_embd) -> (B, T, n_embd)
-        retrieved_proj = self.memory_retrieval_proj(retrieved_contents)  # (B, n_embd)
-        retrieved_expanded = retrieved_proj.unsqueeze(1).expand(-1, T, -1)  # (B, T, n_embd)
-
-        # Update memory retrieval info (will be accessed by caller)
-        self._memory_retrieval_count = total_retrieved
-        self._memory_retrieval_similarity = total_similarity / B if B > 0 else 0.0
-
-        return retrieved_expanded
 
     def forward(
         self,
@@ -340,22 +365,59 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         memory_retrieval_info = {"retrieved_count": 0, "avg_similarity": 0.0}
         pending_memory_retrieval = None  # Local variable (not instance var) for thread safety
 
-        # Apply memory retrieval only if all conditions are met
-        # Guard clauses prevent deep nesting (max 1 level)
-        if self.memory_active_retrieval and self.use_sdr and self._check_memory_has_content():
-            # Memory retrieval is enabled, we're in SDR mode, and memory has content
-            # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
-            query_sdr = sdr.mean(dim=1)  # (B, sdr_size)
+        if self.memory_active_retrieval and self.use_sdr:
+            if self._check_memory_has_content():
+                # For SDR mode, we need to retrieve based on SDR patterns
+                # Strategy: Use mean-pooled SDR as query (captures sequence semantics)
+                # Alternative: per-position queries (more expensive but more precise)
 
-            # Retrieve for each batch element using helper method
-            pending_memory_retrieval = self._retrieve_batch_memories(
-                query_sdr, B, T, device
-            )
+                # Mean pool SDR across sequence for query (B, sdr_size)
+                query_sdr = sdr.mean(dim=1)  # (B, sdr_size)
 
-            # Update info from helper method's stored values
-            memory_retrieval_info["retrieved_count"] = self._memory_retrieval_count
-            memory_retrieval_info["avg_similarity"] = self._memory_retrieval_similarity
+                # Retrieve for each batch element
+                retrieved_contents_list = []
+                total_similarity = 0.0
+                total_retrieved = 0
 
+                for b in range(B):
+                    # Memory retrieval - via mixin helper
+                    retrieval_result = self._get_memory_for_retrieval(
+                        query_sdr[b],
+                        top_k=self.memory_retrieval_top_k,
+                        threshold=self.config.engram_threshold,
+                    )
+                    # Unpack results (hierarchical returns 3 values, basic returns 2)
+                    if self.use_hierarchical_memory:
+                        contents, sims, tier = retrieval_result
+                    else:
+                        contents, sims = retrieval_result
+
+                    # Aggregate retrieved content weighted by similarity
+                    aggregated = self._aggregate_retrieved_content(contents, sims, device)
+                    retrieved_contents_list.append(aggregated)
+
+                    # Track statistics
+                    if len(contents) > 0:
+                        total_similarity += sims.mean().item()
+                        total_retrieved += len(contents)
+
+                # Stack retrieved contents: (B, n_embd)
+                retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
+
+                # Project and expand to sequence length: (B, n_embd) -> (B, T, n_embd)
+                retrieved_proj = self.memory_retrieval_proj(retrieved_contents)  # (B, n_embd)
+                retrieved_expanded = retrieved_proj.unsqueeze(1).expand(-1, T, -1)  # (B, T, n_embd)
+
+                # Mix with input representations
+                # For SDR mode, we'll add to the first block's output later
+                # Store in local variable for application after first block produces x
+                pending_memory_retrieval = retrieved_expanded
+
+                # Update info
+                memory_retrieval_info["retrieved_count"] = total_retrieved
+                memory_retrieval_info["avg_similarity"] = (
+                    total_similarity / B if B > 0 else 0.0
+                )
         # NOTE: Memory retrieval requires SDR mode (use_sdr=True).
         # SDR engram memory stores sparse distributed representations for similarity matching.
         # In non-SDR mode, we use standard dense embeddings without sparse patterns, so there

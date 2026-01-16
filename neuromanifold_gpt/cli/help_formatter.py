@@ -43,7 +43,8 @@ Usage:
 
 import sys
 import argparse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TextIO
 from ast import literal_eval
 from pathlib import Path
 from dataclasses import fields, is_dataclass, MISSING
@@ -52,8 +53,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-
-from neuromanifold_gpt.config.loader import _load_config_module
 
 # Optional loguru import - fall back to standard logging if not available
 try:
@@ -76,7 +75,7 @@ class RichHelpFormatter(argparse.RawDescriptionHelpFormatter):
     Users should use create_parser_from_defaults() instead.
     """
 
-    def __init__(self, prog: str, **kwargs):
+    def __init__(self, prog: str, **kwargs: Any) -> None:
         super().__init__(prog, max_help_position=40, width=100, **kwargs)
 
 
@@ -129,7 +128,7 @@ class RichArgumentParser(argparse.ArgumentParser):
 
         return help_text
 
-    def print_help(self, file=None):
+    def print_help(self, file: Optional[TextIO] = None) -> None:
         """Print help with rich formatting to terminal.
 
         Args:
@@ -254,9 +253,9 @@ def create_parser_from_defaults(
 
 
 def _add_argument_from_default(
-    parser_or_group,
+    parser_or_group: Union[argparse.ArgumentParser, argparse._ArgumentGroup],
     param_name: str,
-    default_value: Any,
+    default_value: Union[str, int, float, bool],
 ) -> None:
     """Add an argument to parser/group inferred from default value.
 
@@ -322,11 +321,14 @@ def parse_args_with_config_override(
         if config_path.exists():
             logger.info(f"Loading config from {config_path}")
 
-            # Load config module safely (no exec)
-            config_values = _load_config_module(str(config_path))
+            # Read and exec config file (like configurator.py)
+            config_globals = {}
+            with open(config_path) as f:
+                config_code = f.read()
+                exec(config_code, config_globals)
 
             # Override parsed values with config values
-            for key, value in config_values.items():
+            for key, value in config_globals.items():
                 if hasattr(parsed, key) and not key.startswith('_'):
                     setattr(parsed, key, value)
                     logger.debug(f"Config override: {key} = {value}")
@@ -343,8 +345,8 @@ def create_parser_from_globals(
 ) -> RichArgumentParser:
     """Create parser from a globals() dict (for backward compatibility).
 
-    This is a convenience wrapper for scripts that currently use the old
-    configurator.py exec pattern.
+    This is a convenience wrapper for scripts that currently use:
+        exec(open('configurator.py').read())
 
     It extracts simple typed values (str, int, float, bool) from globals
     and creates a parser from them.
