@@ -23,10 +23,11 @@ import os
 import pickle
 import time
 from contextlib import nullcontext
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import torch
+import tiktoken
 
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
@@ -147,6 +148,227 @@ def estimate_loss(
 
     model.train()
     return out
+
+
+def setup_encoding(dataset: str) -> tuple[Callable, Callable]:
+    """Setup encoding/decoding functions for a dataset.
+
+    Pattern from sample.py - tries to load meta.pkl, falls back to GPT-2 encoding.
+
+    Args:
+        dataset: Dataset name (directory under data/)
+
+    Returns:
+        Tuple of (encode_fn, decode_fn)
+    """
+    meta_path = os.path.join("data", dataset, "meta.pkl")
+    load_meta = os.path.exists(meta_path)
+
+    if load_meta:
+        with open(meta_path, "rb") as f:
+            meta = pickle.load(f)
+        stoi, itos = meta["stoi"], meta["itos"]
+        encode = lambda s: [stoi[c] for c in s]
+        decode = lambda l: "".join([itos[i] for i in l])
+    else:
+        enc = tiktoken.get_encoding("gpt2")
+        encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
+        decode = lambda l: enc.decode(l)
+
+    return encode, decode
+
+
+def measure_sample_diversity(samples: list[str]) -> dict[str, float]:
+    """Measure diversity metrics for generated samples.
+
+    Args:
+        samples: List of generated text samples
+
+    Returns:
+        Dict with diversity metrics:
+        - unique_unigrams: Ratio of unique words to total words
+        - unique_bigrams: Ratio of unique bigrams to total bigrams
+        - unique_trigrams: Ratio of unique trigrams to total trigrams
+        - avg_length: Average sample length in characters
+    """
+    all_words = []
+    all_bigrams = []
+    all_trigrams = []
+
+    for sample in samples:
+        words = sample.split()
+        all_words.extend(words)
+        if len(words) >= 2:
+            all_bigrams.extend([tuple(words[i:i+2]) for i in range(len(words)-1)])
+        if len(words) >= 3:
+            all_trigrams.extend([tuple(words[i:i+3]) for i in range(len(words)-2)])
+
+    metrics = {
+        "unique_unigrams": len(set(all_words)) / max(len(all_words), 1),
+        "unique_bigrams": len(set(all_bigrams)) / max(len(all_bigrams), 1),
+        "unique_trigrams": len(set(all_trigrams)) / max(len(all_trigrams), 1),
+        "avg_length": sum(len(s) for s in samples) / max(len(samples), 1)
+    }
+
+    return metrics
+
+
+@torch.no_grad()
+def benchmark_sample_quality(
+    dataset: str = "openwebtext",
+    num_samples: int = 10,
+    max_new_tokens: int = 100,
+    temperature: float = 0.8,
+    top_k: int = 200,
+    device: str = "cuda",
+    dtype: str = "bfloat16",
+    seed: int = 1337,
+    verbose: bool = True
+) -> dict[str, dict[str, float]]:
+    """Benchmark sample generation quality for standard vs NeuroManifold attention.
+
+    Generates samples from both models and measures:
+    - Diversity (unique n-grams)
+    - Average length
+    - Relative quality metrics
+
+    Args:
+        dataset: Dataset name (directory under data/)
+        num_samples: Number of samples to generate per model
+        max_new_tokens: Tokens to generate per sample
+        temperature: Sampling temperature (higher = more random)
+        top_k: Keep only top-k tokens for sampling
+        device: 'cuda' or 'cpu'
+        dtype: 'bfloat16', 'float16', or 'float32'
+        seed: Random seed for reproducibility
+        verbose: Print progress
+
+    Returns:
+        Dict with 'standard' and 'neuromanifold' results, each containing diversity metrics
+    """
+    if verbose:
+        print("=" * 80)
+        print("NeuroManifold Sample Quality Benchmark")
+        print("=" * 80)
+        print(f"Dataset: {dataset}")
+        print(f"Samples: {num_samples}")
+        print(f"Max tokens: {max_new_tokens}")
+        print(f"Temperature: {temperature}")
+        print(f"Top-k: {top_k}")
+        print(f"Device: {device}")
+        print()
+
+    # Setup
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
+    device_type = "cuda" if "cuda" in device else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16
+    }[dtype]
+    ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+
+    # Setup encoding
+    encode, decode = setup_encoding(dataset)
+
+    # Start prompt
+    start = "\n"
+    start_ids = encode(start)
+    x = torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...]
+
+    results = {}
+
+    # Generate samples from standard attention model
+    if verbose:
+        print("Generating samples from standard attention model...")
+        start_time = time.time()
+
+    model_standard, _ = load_model(
+        "neuromanifold_gpt.config.benchmarks.standard_attention",
+        device=device,
+        dtype=dtype
+    )
+    model_standard.eval()
+
+    samples_standard = []
+    with torch.no_grad():
+        with ctx:
+            for k in range(num_samples):
+                y = model_standard.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                sample_text = decode(y[0].tolist())
+                samples_standard.append(sample_text)
+
+    diversity_standard = measure_sample_diversity(samples_standard)
+    results["standard"] = diversity_standard
+
+    if verbose:
+        elapsed = time.time() - start_time
+        print(f"  Unique unigrams: {diversity_standard['unique_unigrams']:.4f}")
+        print(f"  Unique bigrams:  {diversity_standard['unique_bigrams']:.4f}")
+        print(f"  Unique trigrams: {diversity_standard['unique_trigrams']:.4f}")
+        print(f"  Avg length:      {diversity_standard['avg_length']:.1f} chars")
+        print(f"  Time: {elapsed:.2f}s")
+        print()
+
+    # Clean up
+    del model_standard
+    if device_type == "cuda":
+        torch.cuda.empty_cache()
+
+    # Generate samples from NeuroManifold attention model
+    if verbose:
+        print("Generating samples from NeuroManifold attention model...")
+        start_time = time.time()
+
+    model_neuromanifold, _ = load_model(
+        "neuromanifold_gpt.config.benchmarks.neuromanifold_attention",
+        device=device,
+        dtype=dtype
+    )
+    model_neuromanifold.eval()
+
+    samples_neuromanifold = []
+    with torch.no_grad():
+        with ctx:
+            for k in range(num_samples):
+                y = model_neuromanifold.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                sample_text = decode(y[0].tolist())
+                samples_neuromanifold.append(sample_text)
+
+    diversity_neuromanifold = measure_sample_diversity(samples_neuromanifold)
+    results["neuromanifold"] = diversity_neuromanifold
+
+    if verbose:
+        elapsed = time.time() - start_time
+        print(f"  Unique unigrams: {diversity_neuromanifold['unique_unigrams']:.4f}")
+        print(f"  Unique bigrams:  {diversity_neuromanifold['unique_bigrams']:.4f}")
+        print(f"  Unique trigrams: {diversity_neuromanifold['unique_trigrams']:.4f}")
+        print(f"  Avg length:      {diversity_neuromanifold['avg_length']:.1f} chars")
+        print(f"  Time: {elapsed:.2f}s")
+        print()
+
+    # Clean up
+    del model_neuromanifold
+    if device_type == "cuda":
+        torch.cuda.empty_cache()
+
+    # Summary
+    if verbose:
+        print("=" * 80)
+        print("Sample quality Summary")
+        print("=" * 80)
+        print(f"Standard diversity (unigrams):      {results['standard']['unique_unigrams']:>10.4f}")
+        print(f"NeuroManifold diversity (unigrams): {results['neuromanifold']['unique_unigrams']:>10.4f}")
+        diversity_change = (
+            (results["neuromanifold"]["unique_unigrams"] - results["standard"]["unique_unigrams"])
+            / results["standard"]["unique_unigrams"] * 100
+        )
+        print(f"Diversity change:                   {diversity_change:>9.1f}%")
+        print()
+
+    return results
 
 
 def benchmark_quality(
@@ -362,12 +584,24 @@ def main():
         args.batch_size = 4
         args.block_size = 256
 
-    # Run benchmark
+    # Run perplexity benchmark
     results = benchmark_quality(
         dataset=args.dataset,
         eval_iters=args.eval_iters,
         batch_size=args.batch_size,
         block_size=args.block_size,
+        device=args.device,
+        dtype=args.dtype,
+        verbose=True
+    )
+
+    # Run sample quality benchmark
+    sample_results = benchmark_sample_quality(
+        dataset=args.dataset,
+        num_samples=5 if args.quick_test else 10,
+        max_new_tokens=50 if args.quick_test else 100,
+        temperature=0.8,
+        top_k=200,
         device=args.device,
         dtype=args.dtype,
         verbose=True
