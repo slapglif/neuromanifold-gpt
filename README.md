@@ -104,6 +104,55 @@ Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If y
 
 Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device=mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
 
+## attention mechanisms
+
+nanoGPT now supports multiple attention mechanisms that you can easily swap between using the `--attention` flag. This allows you to experiment with novel attention architectures without any code changes. By default, the repository uses standard attention for maximum compatibility.
+
+**Available attention types:**
+
+- **`standard`** (default) - Classic scaled dot-product attention with Flash Attention optimization when available. This is your baseline O(n²) attention mechanism, identical to the original GPT-2. Use this for maximum compatibility and well-understood behavior.
+
+- **`soliton`** - Attention via FitzHugh-Nagumo (FHN) excitable wave dynamics. Instead of computing attention weights directly, this mechanism propagates information through soliton waves—self-reinforcing pulses that travel through the sequence. The result is O(n) complexity with parallel scan, making it much faster for long sequences while maintaining biological plausibility.
+
+- **`sdr`** - SDR (Sparse Distributed Representation) Memory attention. Combines FHN dynamics with topological knot attention that leverages manifold structure to capture long-range dependencies. The sparse distributed encoding allows for compressed memory retrieval, making this particularly effective for tasks requiring associative memory.
+
+- **`fast-spectral`** - Spectral attention using learned eigenvector basis functions. Projects queries and keys into a low-rank spectral space before computing attention, achieving O(n·k) complexity where k is the number of eigenvectors (typically 32-64). This provides a sweet spot between efficiency and expressiveness for medium-length sequences.
+
+- **`kaufmann`** - The full NeuroManifold "Trifecta" combining FHN dynamics, topological knot attention, and reaction-diffusion propagation. This is the most sophisticated mechanism, incorporating principles from dynamical systems theory to model attention as an emergent phenomenon on a learned manifold. Most computationally intensive but potentially most powerful for complex reasoning tasks.
+
+**Usage examples:**
+
+Train with standard attention (default):
+```sh
+python train.py config/train_shakespeare_char.py
+# or explicitly:
+python train.py config/train_shakespeare_char.py --attention=standard
+```
+
+Experiment with soliton wave attention:
+```sh
+python train.py config/train_shakespeare_char.py --attention=soliton
+```
+
+Try fast spectral attention for efficiency:
+```sh
+python train.py config/train_shakespeare_char.py --attention=fast-spectral
+```
+
+Use the full trifecta model:
+```sh
+python train.py config/train_shakespeare_char.py --attention=kaufmann
+```
+
+**Which should I use?**
+
+- **Reproducing papers or baselines?** Use `standard`
+- **Want faster training on long sequences?** Try `soliton` or `fast-spectral`
+- **Exploring associative memory?** Experiment with `sdr`
+- **Maximum expressiveness for research?** Go for `kaufmann`
+
+All attention mechanisms work seamlessly with the existing position embeddings and model architectures. You can switch between them freely - they're true drop-in replacements that maintain the same interface.
+
 ## reproducing GPT-2
 
 A more serious deep learning professional may be more interested in reproducing GPT-2 results. So here we go - we first tokenize the dataset, in this case the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/), an open reproduction of OpenAI's (private) WebText:
