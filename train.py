@@ -67,6 +67,8 @@ class TrainConfig:
     log_interval: int = 10
     eval_iters: int = 200
     save_checkpoints: bool = True
+    save_separate_optimizer: bool = False
+    save_model_only: bool = False
 
     # Data
     dataset: str = "shakespeare_char"
