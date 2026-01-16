@@ -101,6 +101,10 @@ class NeuroManifoldConfig:
     use_fhn_partitioning: bool = True  # Enable energy balancing for stability
     use_fhn_fused: bool = False  # Disabled (Using JIT instead)
     use_fhn_parallel: bool = True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
+
+    # Chunked attention for memory-efficient long sequences
+    use_fhn_chunked: bool = True  # Enable chunked attention for reduced memory usage
+    fhn_chunk_size: int = 512  # Chunk size for processing long sequences (trade-off: memory vs speed)
     
     # Spectral regularization
     ortho_weight: float = 0.01
@@ -259,11 +263,6 @@ class NeuroManifoldConfig:
     # Weight initialization (DeepSeek-V3 style)
     # DeepSeek uses std=0.006 instead of typical 0.02 for faster early convergence
     init_std: float = 0.006
-
-    # Initialization strategy selection
-    # Options: 'gpt2' (standard), 'gpt3' (scaled residual), 'mup' (maximal update parametrization)
-    init_strategy: str = "gpt2"  # Default to GPT-2 style for backward compatibility
-    mup_base_width: int = 128  # Base width for muP hyperparameter transfer
 
     def __post_init__(self) -> None:
         """Validate configuration and compute derived values."""

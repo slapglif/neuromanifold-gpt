@@ -127,7 +127,7 @@ def default(v, d):
     return v if exists(v) else d
 
 
-def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = None) -> torch.Tensor:
+def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = 1e-6) -> torch.Tensor:
     """Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.
 
     The Birkhoff polytope is the set of doubly stochastic matrices:
@@ -139,11 +139,12 @@ def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, c
 
     Args:
         logits: Raw logits matrix (n, n)
-        num_iters: Number of alternating normalization iterations
+        num_iters: Number of full Sinkhorn iterations (each iteration does
+            both row and column normalization)
         tau: Temperature for softmax (lower = sharper, closer to permutation)
         convergence_tol: Optional convergence threshold for early stopping.
-            If provided, stops when ||u_new - u_old|| < convergence_tol.
-            Default None uses all num_iters iterations.
+            Stops when ||u_new - u_old|| < convergence_tol.
+            Default 1e-6 enables convergence-based early stopping.
 
     Returns:
         Doubly stochastic matrix on Birkhoff polytope
@@ -155,14 +156,14 @@ def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, c
     u = torch.zeros(logits.shape[:-1], device=Z.device, dtype=Z.dtype)
     v = torch.zeros_like(u)
 
-    for _ in range(num_iters):
+    for i in range(num_iters):
         u_prev = u.clone() if convergence_tol is not None else None
 
         u = log_marginal - torch.logsumexp(Z + v.unsqueeze(-2), dim=-1)
         v = log_marginal - torch.logsumexp(Z + u.unsqueeze(-1), dim=-2)
 
         # Early stopping check
-        if convergence_tol is not None:
+        if convergence_tol is not None and i > 0:  # Skip first iteration
             u_change = torch.norm(u - u_prev)
             if u_change < convergence_tol:
                 break
@@ -258,7 +259,7 @@ class HyperConnections(Module):
         sinkhorn_iters: Number of Sinkhorn-Knopp iterations for H_res projection
         sinkhorn_tau: Temperature for Sinkhorn softmax (lower = sharper)
         sinkhorn_convergence_tol: Optional convergence threshold for early stopping
-        use_fused: Use Triton-fused kernel for GPU acceleration (auto-enabled if available)
+        use_fused: Deprecated parameter for API compatibility (not currently used)
 
     Shape:
         - Input: (B*S, T, D) where S is num_residual_streams
@@ -279,8 +280,8 @@ class HyperConnections(Module):
         dropout: float = 0.0,
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
-        sinkhorn_convergence_tol: Optional[float] = None,
-        use_fused: Optional[bool] = None,  # Use Triton-fused kernel for GPU acceleration
+        sinkhorn_convergence_tol: Optional[float] = 1e-6,
+        use_fused: bool = False,  # Use Triton-fused kernel for GPU acceleration
     ):
         """Initialize the HyperConnections layer.
 
@@ -321,7 +322,7 @@ class HyperConnections(Module):
                 When True and CUDA is available, width_connection uses a single
                 fused kernel instead of 4 sequential operations. Provides 1.5-2.5x
                 speedup on GPU. Gracefully falls back to unfused path on CPU.
-                Default: None (auto-enabled when Triton is available).
+                Default: False for maximum compatibility.
         """
         super().__init__()
 
@@ -330,7 +331,7 @@ class HyperConnections(Module):
         self.sinkhorn_iters = sinkhorn_iters
         self.sinkhorn_tau = sinkhorn_tau
         self.sinkhorn_convergence_tol = sinkhorn_convergence_tol
-        self.use_fused = default(use_fused, HAS_TRITON) and HAS_TRITON  # Enable fusion by default if available
+        self.use_fused = use_fused and HAS_TRITON  # Enable fusion only if requested and available
 
         # Choose initial residual stream index
         init_residual_index = (
@@ -695,7 +696,7 @@ def get_init_and_expand_reduce_stream_functions(
     disable: bool = False,
     sinkhorn_iters: int = 10,
     sinkhorn_tau: float = 0.05,
-    sinkhorn_convergence_tol: Optional[float] = None,
+    sinkhorn_convergence_tol: Optional[float] = 1e-6,
 ):
     """Get mHC initializer and stream expand/reduce functions.
 

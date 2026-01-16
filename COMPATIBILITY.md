@@ -37,6 +37,50 @@ The following dependencies are pinned to specific tested versions:
 | ruff         | 0.1.14  | Fast Python linter         |
 | black        | 23.12.1 | Code formatter             |
 
+### Optional Backend Dependencies
+
+NeuroManifoldGPT supports multiple attention backends for broad GPU compatibility:
+
+| Package    | Version | GPU Requirement | Purpose                    |
+|------------|---------|-----------------|----------------------------|
+| xformers   | 0.0.25  | Volta+ (SM 7.0+) | Memory-efficient attention |
+| triton     | 2.2.0   | Volta+ (SM 7.0+) | Custom FHN kernels         |
+
+These are optional - the framework automatically selects the best available backend. See [GPU Compatibility Matrix](docs/gpu_compatibility.md) for detailed information.
+
+## GPU Compatibility
+
+NeuroManifoldGPT implements automatic backend selection to support a wide range of GPU architectures:
+
+| GPU Architecture | Flash Attention | xformers | Performance | Status |
+|------------------|-----------------|----------|-------------|--------|
+| Ampere+ (SM 8.0+) | ✅ | ✅ | Best | Recommended |
+| RTX 30xx/40xx, A100, H100 | ✅ | ✅ | Best | Recommended |
+| Turing/Volta (SM 7.0+) | ❌ | ✅ | Good | Supported |
+| RTX 20xx, V100, T4 | ❌ | ✅ | Good | Supported |
+| Pascal and older | ❌ | ❌ | Baseline | CPU-like performance |
+| CPU | ❌ | ❌ | Baseline | Fully functional |
+
+**Automatic Backend Selection**: Use `attention_backend="auto"` (default) to automatically select the best backend for your hardware.
+
+**For detailed GPU compatibility information**, including:
+- Complete GPU architecture matrix
+- Backend installation instructions per GPU type
+- Performance benchmarks and memory usage
+- Troubleshooting guides for common issues
+
+See the comprehensive [GPU Compatibility Matrix](docs/gpu_compatibility.md) documentation.
+
+### Quick GPU Check
+
+```sh
+# Check your GPU and recommended backend
+python -c "from neuromanifold_gpt.utils.gpu_detection import get_gpu_info_summary; print(get_gpu_info_summary())"
+
+# Verify attention backend
+python -c "from neuromanifold_gpt.model.attention.standard import StandardAttention; import torch; attn = StandardAttention(384, 6); x = torch.randn(2, 10, 384); y, info = attn(x); print(f'Backend: {info[\"backend\"]}')"
+```
+
 ## Recommended Configuration
 
 For the best stability and performance, we recommend:
@@ -172,6 +216,7 @@ If you discover a compatibility issue:
 
 ## References
 
+- [GPU Compatibility Matrix](docs/gpu_compatibility.md) - Comprehensive GPU and backend compatibility guide
 - [PyTorch Compatibility Matrix](https://pytorch.org/get-started/previous-versions/)
 - [Python Version Schedule](https://devguide.python.org/versions/)
 - [requirements.txt](requirements.txt) - Pinned runtime dependencies

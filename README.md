@@ -34,12 +34,14 @@ This downloads the Shakespeare dataset (~1MB) and creates `train.bin` and `val.b
 python train.py
 ```
 
-That's it! nanoGPT uses sensible defaults with no config files or arguments required. The configuration system is type-safe and provides helpful validation.
+That's it! nanoGPT now automatically detects your hardware and picks optimal settings. No config files, no arguments required.
 
 **3. What to expect**
 
 You'll see output like:
 ```
+Detected hardware: NVIDIA A100 (1 GPU)
+Auto-config: Using GPU-optimized settings for shakespeare_char dataset
 Training GPT with 10.7M parameters (6 layers, 6 heads, 384 dims)
 ...
 iter 0: loss 4.2302
@@ -54,20 +56,7 @@ On a modern GPU, this trains in ~3 minutes and achieves a validation loss around
 python sample.py --out_dir=out-shakespeare-char
 ```
 
-**Want more control?** You can override any setting via command-line arguments or use preset configurations:
-
-```sh
-# Override specific settings
-python train.py --batch_size=32 --learning_rate=1e-4
-
-# Use a preset configuration
-python train.py neuromanifold_gpt.config.presets.train_gpt2
-
-# Combine preset + overrides
-python train.py neuromanifold_gpt.config.presets.train_gpt2 --batch_size=32
-```
-
-See [Configuration Guide](docs/configuration.md) for detailed usage, or run `python train.py --help` to see all available options.
+**Want more control?** You can still override any setting by passing command-line arguments or config files. See the detailed sections below for advanced usage.
 
 ## install
 
@@ -95,17 +84,13 @@ python data/shakespeare_char/prepare.py
 
 This creates a `train.bin` and `val.bin` in that data directory. Now it is time to train your GPT. The size of it very much depends on the computational resources of your system:
 
-**I have a GPU**. Great, we can quickly train a baby GPT using the default configuration (or the Shakespeare preset):
+**I have a GPU**. Great, we can quickly train a baby GPT with the settings provided in the [config/train_shakespeare_char.py](config/train_shakespeare_char.py) config file:
 
 ```sh
-# Option 1: Use defaults (optimized for Shakespeare)
-python train.py
-
-# Option 2: Use the Shakespeare preset explicitly
-python train.py neuromanifold_gpt.config.presets.train_shakespeare_char
+python train.py config/train_shakespeare_char.py
 ```
 
-The default configuration trains a GPT with a context size of up to 256 characters, 384 feature channels, and it is a 6-layer Transformer with 6 heads in each layer. On one A100 GPU this training run takes about 3 minutes and the best validation loss is 1.4697. Model checkpoints are written to the `out-shakespeare-char` directory. Once training finishes, we can sample from the best model:
+If you peek inside it, you'll see that we're training a GPT with a context size of up to 256 characters, 384 feature channels, and it is a 6-layer Transformer with 6 heads in each layer. On one A100 GPU this training run takes about 3 minutes and the best validation loss is 1.4697. Based on the configuration, the model checkpoints are being written into the `--out_dir` directory `out-shakespeare-char`. So once the training finishes we can sample from the best model by pointing the sampling script at this directory:
 
 ```sh
 python sample.py --out_dir=out-shakespeare-char
@@ -139,13 +124,13 @@ lol  `¯\_(ツ)_/¯`. Not bad for a character-level model after 3 minutes of tra
 **I only have a macbook** (or other cheap computer). No worries, we can still train a GPT but we want to dial things down a notch. I recommend getting the bleeding edge PyTorch nightly ([select it here](https://pytorch.org/get-started/locally/) when installing) as it is currently quite likely to make your code more efficient. But even without it, a simple train run could look as follows:
 
 ```sh
-python train.py --devices=1 --precision=32 --compile_model=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
+python train.py config/train_shakespeare_char.py --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
 ```
 
-Here we turn off PyTorch 2.0 compile with `--compile_model=False` and use full precision (`--precision=32`). We get a faster but noisier evaluation estimate (`--eval_iters=20`, down from 200), our context size is only 64 characters instead of 256, and the batch size only 12 examples per iteration, not 64. We'll also use a much smaller Transformer (4 layers, 4 heads, 128 embedding size), and decrease the number of iterations to 2000 (and correspondingly usually decay the learning rate to around max_iters with `--lr_decay_iters`). Because our network is so small we also ease down on regularization (`--dropout=0.0`). This still runs in about ~3 minutes, but gets us a loss of only 1.88 and therefore also worse samples, but it's still good fun:
+Here, since we are running on CPU instead of GPU we must set both `--device=cpu` and also turn off PyTorch 2.0 compile with `--compile=False`. Then when we evaluate we get a bit more noisy but faster estimate (`--eval_iters=20`, down from 200), our context size is only 64 characters instead of 256, and the batch size only 12 examples per iteration, not 64. We'll also use a much smaller Transformer (4 layers, 4 heads, 128 embedding size), and decrease the number of iterations to 2000 (and correspondingly usually decay the learning rate to around max_iters with `--lr_decay_iters`). Because our network is so small we also ease down on regularization (`--dropout=0.0`). This still runs in about ~3 minutes, but gets us a loss of only 1.88 and therefore also worse samples, but it's still good fun:
 
 ```sh
-python sample.py --out_dir=out-shakespeare-char
+python sample.py --out_dir=out-shakespeare-char --device=cpu
 ```
 Generates samples like this:
 
@@ -159,7 +144,7 @@ No relving thee post mose the wear
 
 Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If you're willing to wait longer, feel free to tune the hyperparameters, increase the size of the network, the context length (`--block_size`), the length of training, etc.
 
-Finally, on Apple Silicon Macbooks with a recent PyTorch version, the system can automatically use Metal Performance Shaders (MPS) for GPU acceleration that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
+Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device=mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
 
 ## reproducing GPT-2
 
@@ -172,31 +157,33 @@ python data/openwebtext/prepare.py
 This downloads and tokenizes the [OpenWebText](https://huggingface.co/datasets/openwebtext) dataset. It will create a `train.bin` and `val.bin` which holds the GPT2 BPE token ids in one sequence, stored as raw uint16 bytes. Then we're ready to kick off training. To reproduce GPT-2 (124M) you'll want at least an 8X A100 40GB node and run:
 
 ```sh
-# Use the GPT-2 preset configuration
-python train.py neuromanifold_gpt.config.presets.train_gpt2 --devices=8
+torchrun --standalone --nproc_per_node=8 train.py config/train_gpt2.py
 ```
 
-This will run for about 4 days using PyTorch Lightning with Distributed Data Parallel (DDP) and go down to loss of ~2.85. Now, a GPT-2 model just evaluated on OWT gets a val loss of about 3.11, but if you finetune it it will come down to ~2.85 territory (due to an apparent domain gap), making the two models ~match.
+This will run for about 4 days using PyTorch Distributed Data Parallel (DDP) and go down to loss of ~2.85. Now, a GPT-2 model just evaluated on OWT gets a val loss of about 3.11, but if you finetune it it will come down to ~2.85 territory (due to an apparent domain gap), making the two models ~match.
 
-Multi-node training is supported via PyTorch Lightning. It is a good idea to benchmark your interconnect (e.g. iperf3). By default checkpoints are periodically written to the `--out_dir`. We can sample from the model by simply running `python sample.py`.
-
-To train on a single GPU, simply run `python train.py`. To see all available configuration options:
+If you're in a cluster environment and you are blessed with multiple GPU nodes you can make GPU go brrrr e.g. across 2 nodes like:
 
 ```sh
-python train.py --help
+# Run on the first (master) node with example IP 123.456.123.456:
+torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py
+# Run on the worker node:
+torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
 ```
 
-This shows every parameter with its type and default value. You can override any setting via command-line arguments. The configuration system is type-safe and will validate your inputs with helpful error messages.
+It is a good idea to benchmark your interconnect (e.g. iperf3). In particular, if you don't have Infiniband then also prepend `NCCL_IB_DISABLE=1` to the above launches. Your multinode training will work, but most likely _crawl_. By default checkpoints are periodically written to the `--out_dir`. We can sample from the model by simply `python sample.py`.
+
+Finally, to train on a single GPU simply run the `python train.py` script. Have a look at all of its args, the script tries to be very readable, hackable and transparent. You'll most likely want to tune a number of those variables depending on your needs.
 
 ## baselines
 
-OpenAI GPT-2 checkpoints allow us to get some baselines in place for openwebtext. We can get the numbers using the evaluation presets:
+OpenAI GPT-2 checkpoints allow us to get some baselines in place for openwebtext. We can get the numbers as follows:
 
 ```sh
-$ python train.py neuromanifold_gpt.config.presets.eval_gpt2
-$ python train.py neuromanifold_gpt.config.presets.eval_gpt2_medium
-$ python train.py neuromanifold_gpt.config.presets.eval_gpt2_large
-$ python train.py neuromanifold_gpt.config.presets.eval_gpt2_xl
+$ python train.py config/eval_gpt2.py
+$ python train.py config/eval_gpt2_medium.py
+$ python train.py config/eval_gpt2_large.py
+$ python train.py config/eval_gpt2_xl.py
 ```
 
 and observe the following losses on train and val:
@@ -221,7 +208,7 @@ Finetune pretrained GPT-2 models on your own data in minutes! Whether you're ada
 python data/shakespeare/prepare.py
 
 # 2. Start finetuning
-python train.py neuromanifold_gpt.config.presets.finetune.gpt2_small
+python train.py config/finetune/gpt2_small.py
 
 # 3. Sample from your model
 python sample.py --out_dir=out-finetune-gpt2-small
@@ -309,6 +296,101 @@ If you'd like to sample from a model you trained, use the `--out_dir` to point t
 For simple model benchmarking and profiling, `bench.py` might be useful. It's identical to what happens in the meat of the training loop of `train.py`, but omits much of the other complexities.
 
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
+
+## memory-efficient long sequence training
+
+NeuroManifoldGPT includes memory-efficient chunked attention for training on long sequences (2048+ tokens) without running out of memory. The FHN attention mechanism automatically uses chunked processing to reduce memory from O(T²) to O(chunk_size²).
+
+### Quick Start
+
+Train on long sequences with automatic chunking:
+
+```python
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
+
+# Default configuration (chunk_size=512)
+config = NeuroManifoldConfig(
+    attention_type="fhn",
+    block_size=4096,      # Train on 4096-token sequences
+    fhn_chunk_size=512,   # Process in 512-token chunks
+    n_fhn_steps=2,        # Enable FHN dynamics
+)
+
+# For limited GPU memory (8GB or less)
+config = NeuroManifoldConfig(
+    attention_type="fhn",
+    block_size=4096,
+    fhn_chunk_size=256,   # Smaller chunks = less memory
+    n_fhn_steps=2,
+)
+
+# For high-memory GPUs with very long sequences
+config = NeuroManifoldConfig(
+    attention_type="fhn",
+    block_size=8192,
+    fhn_chunk_size=1024,  # Larger chunks = faster processing
+    n_fhn_steps=2,
+)
+```
+
+### Memory Savings
+
+Expected memory reduction compared to standard attention:
+
+| Sequence Length | Memory Reduction | GPU Memory Required |
+|----------------|------------------|---------------------|
+| 1024 tokens    | ~10-20%         | ~4GB (baseline)     |
+| 2048 tokens    | ~30-40%         | ~6GB vs 10GB        |
+| 4096 tokens    | ~50-60%         | ~12GB vs 28GB       |
+| 8192 tokens    | ~70-80%         | ~24GB vs 112GB      |
+
+### Chunk Size Guidelines
+
+Choose chunk_size based on your GPU memory and sequence length:
+
+- **chunk_size=256**: Limited GPU memory (8GB or less)
+  - Supports sequences up to 4096 tokens on 8GB GPUs
+  - ~20% slower than larger chunks but uses minimal memory
+
+- **chunk_size=512** (default): Balanced for most GPUs (16GB+)
+  - Good balance between speed and memory efficiency
+  - Supports sequences up to 8192 tokens on 24GB GPUs
+
+- **chunk_size=1024**: High-memory GPUs (40GB+)
+  - Fastest chunked processing with minimal overhead
+  - Supports sequences 8192+ tokens on high-end GPUs
+
+### Benchmarking
+
+Benchmark memory usage on your hardware:
+
+```sh
+# Quick test (256, 512, 1024, 2048 tokens)
+python neuromanifold_gpt/benchmarks/bench_fhn_chunked_memory.py --quick-test
+
+# Full benchmark (up to 8192 tokens)
+python neuromanifold_gpt/benchmarks/bench_fhn_chunked_memory.py
+```
+
+This generates a report comparing:
+- Flash Attention (baseline, no FHN)
+- Non-chunked FHN (high memory)
+- Chunked FHN (memory-efficient)
+
+### Implementation Details
+
+The chunked attention mechanism:
+1. Splits long sequences into chunks of size `chunk_size`
+2. Processes each chunk while maintaining causal attention
+3. Applies FHN modulation at chunk granularity
+4. Reduces memory from O(T²) to O(chunk_size²)
+
+Three execution paths are available:
+- **Flash Attention** (n_fhn_steps=0): Fastest, no FHN modulation
+- **Chunked FHN** (T > chunk_size): Memory-efficient, preserves FHN dynamics
+- **Standard FHN** (T ≤ chunk_size): Full attention matrix with FHN modulation
+
+See `neuromanifold_gpt/model/attention/fhn.py` for implementation details and `neuromanifold_gpt/tests/test_fhn_chunked_memory.py` for correctness tests.
 
 ## ralph loop configuration system
 
@@ -507,34 +589,9 @@ You can see consistent, well-formatted output across all these scripts thanks to
 - Additional logging around network health (e.g. gradient clip events, magnitudes)
 - Few more investigations around better init etc.
 
-## configuration
-
-nanoGPT uses a type-safe configuration system built on Python dataclasses. This provides IDE autocomplete, type checking, and validation while remaining easy to use.
-
-**Quick usage:**
-
-```sh
-# Use defaults
-python train.py
-
-# Override specific settings
-python train.py --batch_size=32 --learning_rate=1e-4
-
-# Use a preset configuration
-python train.py neuromanifold_gpt.config.presets.train_gpt2
-
-# Combine preset + overrides
-python train.py neuromanifold_gpt.config.presets.train_gpt2 --max_iters=50000
-
-# See all available options
-python train.py --help
-```
-
-**See the complete [Configuration Guide](docs/configuration.md)** for detailed documentation, examples, and best practices.
-
 ## troubleshooting
 
-Note that by default this repo uses PyTorch 2.0 (i.e. `torch.compile`). This is fairly new and experimental, and not yet available on all platforms (e.g. Windows). If you're running into related error messages try to disable this by adding `--compile_model=False` flag. This will slow down the code but at least it will run.
+Note that by default this repo uses PyTorch 2.0 (i.e. `torch.compile`). This is fairly new and experimental, and not yet available on all platforms (e.g. Windows). If you're running into related error messages try to disable this by adding `--compile=False` flag. This will slow down the code but at least it will run.
 
 For some context on this repository, GPT, and language modeling it might be helpful to watch my [Zero To Hero series](https://karpathy.ai/zero-to-hero.html). Specifically, the [GPT video](https://www.youtube.com/watch?v=kCc8FmEb1nY) is popular if you have some prior language modeling context.
 

@@ -112,7 +112,7 @@ class NeuroManifoldBlock(nn.Module):
             self.spectral = None
 
         # FHN attention (with semi-implicit IMEX scheme)
-        if self.config.attention_type == "kaufmann":
+        if self.config.use_kaufmann_attention:
             # The Full Trifecta Model
             self.attention = KaufmannAttention(
                 self.config.embed_dim,
@@ -135,11 +135,13 @@ class NeuroManifoldBlock(nn.Module):
                 n_fhn_steps=self.config.fhn.n_fhn_steps,
                 use_imex=self.config.fhn.use_fhn_imex,
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
-                use_fused=self.config.fhn.use_fhn_fused
+                use_fused=self.config.fhn.use_fhn_fused,
+                chunk_size=self.config.fhn.fhn_chunk_size,
+                use_chunked=self.config.fhn.use_fhn_chunked
             )
 
         # Knot attention (optional)
-        if self.config.attention_type == "knot":
+        if self.config.use_knot_attention and not self.config.use_kaufmann_attention:
             self.knot_attention = KnotAttention(
                 embed_dim=self.config.embed_dim,
                 manifold_dim=self.config.manifold_dim,

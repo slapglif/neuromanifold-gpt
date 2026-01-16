@@ -108,6 +108,8 @@ class MHCConfig:
                             3-5 iterations are sufficient for convergence
         mhc_sinkhorn_tau: Sinkhorn temperature for smoothness (default 0.05)
                           Lower values make distribution sharper
+        mhc_sinkhorn_convergence_tol: Convergence tolerance for early stopping (default 1e-6)
+                                      Stop Sinkhorn iterations when error < tolerance
     """
 
     use_mhc: bool = True
@@ -116,6 +118,7 @@ class MHCConfig:
     mhc_residual_weight: float = 0.9
     mhc_sinkhorn_iters: int = 5
     mhc_sinkhorn_tau: float = 0.05
+    mhc_sinkhorn_convergence_tol: float = 1e-6
 
 
 @dataclass
@@ -255,7 +258,6 @@ class NeuroManifoldBlockConfig:
 
     # Optimization flags
     skip_manifold_spectral: bool = False
-    use_mhc_fused: bool = False  # Use Triton-optimized fused mHC operations
 
     # Attention type (registry pattern)
     attention_type: str = "fhn"  # "fhn", "knot", or "kaufmann"
@@ -320,6 +322,7 @@ class NeuroManifoldBlockConfig:
             mhc_residual_weight=config.mhc_residual_weight,
             mhc_sinkhorn_iters=config.mhc_sinkhorn_iters,
             mhc_sinkhorn_tau=config.mhc_sinkhorn_tau,
+            mhc_sinkhorn_convergence_tol=getattr(config, 'mhc_sinkhorn_convergence_tol', 1e-6),
         )
 
         # Create MLA sub-config from model config
@@ -360,7 +363,6 @@ class NeuroManifoldBlockConfig:
             bias=config.bias,
             block_size=config.block_size,
             skip_manifold_spectral=config.skip_manifold_spectral,
-            use_mhc_fused=getattr(config, 'use_mhc_fused', False),
             attention_type=attention_type,
             fhn=fhn_cfg,
             kan=kan_cfg,
