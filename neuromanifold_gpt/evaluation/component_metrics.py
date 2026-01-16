@@ -6,6 +6,8 @@ the model's info dict from forward() and computes all component-specific metrics
 - FHN wave stability metrics
 - MTP token prediction accuracy (if available)
 - Memory utilization metrics
+- KAN activation and grid utilization metrics
+- Spectral decomposition basis and eigenvalue metrics
 
 Usage:
     from neuromanifold_gpt.evaluation.component_metrics import ComponentMetricsAggregator
@@ -30,6 +32,8 @@ from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
 from neuromanifold_gpt.evaluation.fhn_metrics import FHNMetrics
 from neuromanifold_gpt.evaluation.mtp_metrics import MTPMetrics
 from neuromanifold_gpt.evaluation.memory_metrics import MemoryMetrics
+from neuromanifold_gpt.evaluation.kan_metrics import KANMetrics
+from neuromanifold_gpt.evaluation.spectral_metrics import SpectralMetrics
 
 
 class ComponentMetricsAggregator:
@@ -42,6 +46,8 @@ class ComponentMetricsAggregator:
     - FHN: Wave stability metrics (state statistics, pulse widths)
     - MTP: Multi-token prediction accuracy (if logits provided)
     - Memory: Engram memory utilization statistics
+    - KAN: Activation and grid utilization metrics
+    - Spectral: Basis and eigenvalue decomposition metrics
 
     The compute() method returns a nested dictionary with metrics grouped by
     component type, making it easy to log or analyze specific subsystems.
@@ -69,6 +75,9 @@ class ComponentMetricsAggregator:
                 - 'block_infos': List of per-block info dicts with FHN data
                 - 'memory_stats': Memory utilization statistics
                 - (optional) 'mtp_logits': Multi-token prediction logits
+                - (optional) 'kan_activations': KAN layer activations
+                - (optional) 'spectral_basis': Spectral basis coefficients
+                - (optional) 'spectral_freqs': Spectral eigenvalues/frequencies
             config: NeuroManifoldConfig instance with model hyperparameters
             logits: Optional main prediction logits for MTP metrics
                 Shape: (batch, seq_len, vocab_size)
@@ -100,6 +109,18 @@ class ComponentMetricsAggregator:
                         'memory_size': float,
                         'memory_utilization': float,
                         'total_size': float,
+                        ...
+                    },
+                    'kan': {
+                        'activation_mean': float,
+                        'activation_std': float,
+                        'grid_utilization_mean': float,
+                        ...
+                    },
+                    'spectral': {
+                        'eigenvalue_mean': float,
+                        'eigenvalue_std': float,
+                        'basis_mean': float,
                         ...
                     }
                 }
@@ -134,6 +155,19 @@ class ComponentMetricsAggregator:
             memory_stats = info['memory_stats']
             memory_metrics = MemoryMetrics.compute_all(memory_stats)
             metrics['memory'] = memory_metrics
+
+        # KAN Metrics
+        if 'kan_activations' in info and info['kan_activations'] is not None:
+            kan_metrics = KANMetrics.compute_all(info)
+            if kan_metrics:  # Only add if we found KAN data
+                metrics['kan'] = kan_metrics
+
+        # Spectral Metrics
+        if ('spectral_basis' in info and info['spectral_basis'] is not None) or \
+           ('spectral_freqs' in info and info['spectral_freqs'] is not None):
+            spectral_metrics = SpectralMetrics.compute_all(info)
+            if spectral_metrics:  # Only add if we found spectral data
+                metrics['spectral'] = spectral_metrics
 
         return metrics
 

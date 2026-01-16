@@ -53,11 +53,28 @@ def test_full_component_metrics_integration():
     logits = torch.randn(B, T, vocab_size)
     targets = torch.randint(0, vocab_size, (B, T))
 
+    # KAN component: activations, basis output, and spline weights
+    kan_activations = torch.randn(B, T, config.n_embd) * 0.5  # Bounded activations
+    kan_basis_output = torch.randn(B, T, config.n_embd, 8)  # 8 basis functions
+    kan_spline_weights = torch.randn(config.n_embd, 8) * 0.1  # Spline weights
+
+    # Spectral component: spectral basis, frequencies, and orthogonality loss
+    n_eig = 32  # Number of spectral modes
+    spectral_basis = torch.randn(B, T, n_eig) * 0.3  # Spectral coefficients
+    spectral_freqs = torch.rand(B, n_eig) * 2.0  # Eigenvalue estimates
+    ortho_loss = torch.tensor(0.05)  # Orthogonality loss
+
     # Assemble full info dict
     info = {
         'sdr': sdr,
         'block_infos': block_infos,
         'memory_stats': memory_stats,
+        'kan_activations': kan_activations,
+        'kan_basis_output': kan_basis_output,
+        'kan_spline_weights': kan_spline_weights,
+        'spectral_basis': spectral_basis,
+        'spectral_freqs': spectral_freqs,
+        'ortho_loss': ortho_loss,
     }
 
     print("Computing component metrics...")
@@ -66,7 +83,7 @@ def test_full_component_metrics_integration():
     print(f"Component metrics computed: {list(metrics.keys())}")
 
     # Verify all expected components are present
-    expected_components = ['sdr', 'fhn', 'mtp', 'memory']
+    expected_components = ['sdr', 'fhn', 'mtp', 'memory', 'kan', 'spectral']
     for component in expected_components:
         assert component in metrics, f"Missing component: {component}"
         print(f"  {component}: {list(metrics[component].keys())}")
@@ -112,6 +129,30 @@ def test_full_component_metrics_integration():
     assert not any(v != v for v in memory_metrics.values()), "NaNs in Memory metrics"
     print(f"  Memory size: {memory_metrics['memory_size']:.0f}")
     print(f"  Memory utilization: {memory_metrics['memory_utilization']:.4f}")
+
+    # Check KAN metrics
+    print("\nVerifying KAN metrics...")
+    kan_metrics = metrics['kan']
+    assert 'activation_mean' in kan_metrics
+    assert 'activation_std' in kan_metrics
+    assert 'grid_utilization_mean' in kan_metrics
+    assert 'spline_weight_mean' in kan_metrics
+    assert not any(v != v for v in kan_metrics.values()), "NaNs in KAN metrics"
+    print(f"  Activation mean: {kan_metrics['activation_mean']:.4f}")
+    print(f"  Grid utilization mean: {kan_metrics['grid_utilization_mean']:.4f}")
+    print(f"  Spline weight mean: {kan_metrics['spline_weight_mean']:.4f}")
+
+    # Check Spectral metrics
+    print("\nVerifying Spectral metrics...")
+    spectral_metrics = metrics['spectral']
+    assert 'eigenvalue_mean' in spectral_metrics
+    assert 'eigenvalue_std' in spectral_metrics
+    assert 'basis_mean' in spectral_metrics
+    assert 'ortho_loss' in spectral_metrics
+    assert not any(v != v for v in spectral_metrics.values()), "NaNs in Spectral metrics"
+    print(f"  Eigenvalue mean: {spectral_metrics['eigenvalue_mean']:.4f}")
+    print(f"  Basis mean: {spectral_metrics['basis_mean']:.4f}")
+    print(f"  Ortho loss: {spectral_metrics['ortho_loss']:.4f}")
 
     print("\nIntegration test PASSED!")
 
@@ -262,6 +303,142 @@ def test_component_metrics_aggregation_across_blocks():
     print("Aggregation test PASSED!")
 
 
+def test_kan_metrics_integration():
+    """Test ComponentMetricsAggregator with KAN metrics."""
+    print("Testing KAN metrics integration...")
+
+    config = NeuroManifoldConfigNano()
+    aggregator = ComponentMetricsAggregator()
+
+    B, T = 2, 32
+
+    # Create KAN component data
+    kan_activations = torch.randn(B, T, config.n_embd) * 0.5
+    kan_basis_output = torch.randn(B, T, config.n_embd, 8)
+    kan_spline_weights = torch.randn(config.n_embd, 8) * 0.1
+
+    info = {
+        'kan_activations': kan_activations,
+        'kan_basis_output': kan_basis_output,
+        'kan_spline_weights': kan_spline_weights,
+    }
+
+    print("Computing KAN metrics...")
+    metrics = aggregator.compute(info, config)
+
+    # Should have KAN metrics only
+    assert 'kan' in metrics
+    kan_metrics = metrics['kan']
+
+    # Verify all expected KAN metrics are present
+    expected_kan_metrics = [
+        'activation_mean', 'activation_std', 'activation_min', 'activation_max',
+        'grid_utilization_mean', 'grid_utilization_std',
+        'spline_weight_mean', 'spline_weight_std',
+    ]
+    for metric in expected_kan_metrics:
+        assert metric in kan_metrics, f"Missing KAN metric: {metric}"
+
+    # Verify no NaNs
+    assert not any(v != v for v in kan_metrics.values()), "NaNs in KAN metrics"
+
+    print(f"  KAN metrics computed: {list(kan_metrics.keys())}")
+    print(f"  Activation mean: {kan_metrics['activation_mean']:.4f}")
+    print(f"  Grid utilization mean: {kan_metrics['grid_utilization_mean']:.4f}")
+    print(f"  Spline weight mean: {kan_metrics['spline_weight_mean']:.4f}")
+
+    print("KAN metrics integration test PASSED!")
+
+
+def test_spectral_metrics_integration():
+    """Test ComponentMetricsAggregator with Spectral metrics."""
+    print("Testing Spectral metrics integration...")
+
+    config = NeuroManifoldConfigNano()
+    aggregator = ComponentMetricsAggregator()
+
+    B, T = 2, 32
+    n_eig = 32
+
+    # Create Spectral component data
+    spectral_basis = torch.randn(B, T, n_eig) * 0.3
+    spectral_freqs = torch.rand(B, n_eig) * 2.0
+    ortho_loss = torch.tensor(0.05)
+
+    info = {
+        'spectral_basis': spectral_basis,
+        'spectral_freqs': spectral_freqs,
+        'ortho_loss': ortho_loss,
+    }
+
+    print("Computing Spectral metrics...")
+    metrics = aggregator.compute(info, config)
+
+    # Should have Spectral metrics only
+    assert 'spectral' in metrics
+    spectral_metrics = metrics['spectral']
+
+    # Verify all expected Spectral metrics are present
+    expected_spectral_metrics = [
+        'eigenvalue_mean', 'eigenvalue_std', 'eigenvalue_min', 'eigenvalue_max',
+        'basis_mean', 'basis_std', 'basis_abs_mean',
+        'ortho_loss', 'basis_norm_mean', 'basis_norm_std',
+    ]
+    for metric in expected_spectral_metrics:
+        assert metric in spectral_metrics, f"Missing Spectral metric: {metric}"
+
+    # Verify no NaNs
+    assert not any(v != v for v in spectral_metrics.values()), "NaNs in Spectral metrics"
+
+    print(f"  Spectral metrics computed: {list(spectral_metrics.keys())}")
+    print(f"  Eigenvalue mean: {spectral_metrics['eigenvalue_mean']:.4f}")
+    print(f"  Basis mean: {spectral_metrics['basis_mean']:.4f}")
+    print(f"  Ortho loss: {spectral_metrics['ortho_loss']:.4f}")
+    print(f"  Basis norm mean: {spectral_metrics['basis_norm_mean']:.4f}")
+
+    print("Spectral metrics integration test PASSED!")
+
+
+def test_kan_and_spectral_together():
+    """Test ComponentMetricsAggregator with both KAN and Spectral metrics together."""
+    print("Testing KAN and Spectral metrics together...")
+
+    config = NeuroManifoldConfigNano()
+    aggregator = ComponentMetricsAggregator()
+
+    B, T = 2, 32
+    n_eig = 32
+
+    # Create both KAN and Spectral component data
+    kan_activations = torch.randn(B, T, config.n_embd) * 0.5
+    kan_basis_output = torch.randn(B, T, config.n_embd, 8)
+
+    spectral_basis = torch.randn(B, T, n_eig) * 0.3
+    spectral_freqs = torch.rand(B, n_eig) * 2.0
+    ortho_loss = torch.tensor(0.05)
+
+    info = {
+        'kan_activations': kan_activations,
+        'kan_basis_output': kan_basis_output,
+        'spectral_basis': spectral_basis,
+        'spectral_freqs': spectral_freqs,
+        'ortho_loss': ortho_loss,
+    }
+
+    print("Computing both KAN and Spectral metrics...")
+    metrics = aggregator.compute(info, config)
+
+    # Should have both KAN and Spectral metrics
+    assert 'kan' in metrics
+    assert 'spectral' in metrics
+
+    print(f"  Components present: {list(metrics.keys())}")
+    print(f"  KAN activation mean: {metrics['kan']['activation_mean']:.4f}")
+    print(f"  Spectral eigenvalue mean: {metrics['spectral']['eigenvalue_mean']:.4f}")
+
+    print("KAN and Spectral together test PASSED!")
+
+
 if __name__ == "__main__":
     test_full_component_metrics_integration()
     print("\n" + "="*60 + "\n")
@@ -272,3 +449,9 @@ if __name__ == "__main__":
     test_component_metrics_empty_info()
     print("\n" + "="*60 + "\n")
     test_component_metrics_aggregation_across_blocks()
+    print("\n" + "="*60 + "\n")
+    test_kan_metrics_integration()
+    print("\n" + "="*60 + "\n")
+    test_spectral_metrics_integration()
+    print("\n" + "="*60 + "\n")
+    test_kan_and_spectral_together()
