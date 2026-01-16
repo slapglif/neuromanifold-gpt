@@ -308,14 +308,19 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 pos_emb = self.position_embedding(
                     torch.arange(T, device=device)
                 ).unsqueeze(0)  # (1, T, D)
+                x = tok_emb + pos_emb  # (B, T, n_embd)
             elif self.config.pos_emb_type == 'ramanujan':
                 # Ramanujan expects (B, T) and returns (1, T, D)
                 pos_emb = self.position_embedding(
                     torch.arange(T, device=device).unsqueeze(0)
                 )  # (1, T, D)
+                x = tok_emb + pos_emb  # (B, T, n_embd)
+            elif self.config.pos_emb_type in ('rotary', 'alibi'):
+                # RoPE and ALiBi handle position information inside attention mechanism
+                # No additive position embedding needed
+                x = tok_emb  # (B, T, n_embd)
             else:
                 raise ValueError(f"Unsupported pos_emb_type: {self.config.pos_emb_type}")
-            x = tok_emb + pos_emb  # (B, T, n_embd)
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)  # Dummy SDR
             sdr_scores = None
 

@@ -29,6 +29,8 @@ class StandardAttention(nn.Module):
         dropout: float = 0.0,
         bias: bool = True,
         block_size: int = 1024,
+        pos_emb_type: str = "learned",  # Position embedding type
+        max_seq_len: int = 1024,  # For RoPE/ALiBi initialization
     ):
         super().__init__()
         assert embed_dim % n_heads == 0, "embed_dim must be divisible by n_heads"
@@ -38,6 +40,7 @@ class StandardAttention(nn.Module):
         self.head_dim = embed_dim // n_heads
         self.dropout = dropout
         self.block_size = block_size
+        self.pos_emb_type = pos_emb_type
 
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
@@ -49,12 +52,17 @@ class StandardAttention(nn.Module):
 
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        if not self.flash:
-            # causal mask to ensure that attention is only applied to the left in the input sequence
-            self.register_buffer(
-                "bias",
-                torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size)
-            )
+        # causal mask to ensure that attention is only applied to the left in the input sequence
+        # (always create this since we may need manual attention even with flash, e.g., for ALiBi)
+        self.register_buffer(
+            "bias",
+            torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size)
+        )
+
+        # RoPE and ALiBi position embeddings (lazy initialization)
+        self.rope = None
+        self.alibi = None
+        self.max_seq_len = max_seq_len  # Store for lazy init
 
     def forward(self, x: torch.Tensor, spectral_basis: torch.Tensor = None) -> tuple[torch.Tensor, dict]:
         """
@@ -72,15 +80,36 @@ class StandardAttention(nn.Module):
         """
         B, T, C = x.size()  # batch size, sequence length, embedding dimensionality
 
+        # Lazy initialization of position embeddings (only when first used)
+        if self.pos_emb_type == 'rotary' and self.rope is None:
+            from neuromanifold_gpt.model.embeddings import RotaryPositionalEmbedding
+            self.rope = RotaryPositionalEmbedding(
+                embed_dim=self.embed_dim,
+                head_dim=self.head_dim,
+                max_seq_len=self.max_seq_len
+            )
+        elif self.pos_emb_type == 'alibi' and self.alibi is None:
+            from neuromanifold_gpt.model.embeddings import ALiBiPositionalBias
+            self.alibi = ALiBiPositionalBias(
+                n_heads=self.n_heads,
+                embed_dim=self.embed_dim,
+                max_seq_len=self.max_seq_len
+            )
+
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         q, k, v = self.c_attn(x).split(self.embed_dim, dim=2)
         k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
         q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
         v = v.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
 
+        # Apply RoPE if enabled
+        if self.rope is not None:
+            q, k = self.rope(q, k)
+
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         attn_probs = None
-        if self.flash:
+        # Flash attention cannot be used with ALiBi (custom bias not supported)
+        if self.flash and self.alibi is None:
             # efficient attention using Flash Attention CUDA kernels
             y = torch.nn.functional.scaled_dot_product_attention(
                 q, k, v,
@@ -91,6 +120,13 @@ class StandardAttention(nn.Module):
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+
+            # Add ALiBi bias if enabled (before causal mask)
+            if self.alibi is not None:
+                alibi_bias = self.alibi(T)  # Shape: (1, n_heads, T, T)
+                # Expand to batch size and add to attention scores
+                att = att + alibi_bias.squeeze(0)  # Now shape: (B, nh, T, T)
+
             att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
             att = F.softmax(att, dim=-1)
             attn_probs = att

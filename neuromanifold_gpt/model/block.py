@@ -21,6 +21,7 @@ from .spectral import SpectralDecomposition
 from .attention.fhn import FHNAttention
 from .attention.knot import KnotAttention
 from .attention.kaufmann import KaufmannAttention
+from .attention.standard import StandardAttention
 from .kan.cheby import ChebyKANFFN
 from .kan.wave import WaveKANFFN
 from .kan.faster import FasterKANFFN
@@ -112,7 +113,7 @@ class NeuroManifoldBlock(nn.Module):
             self.manifold = None
             self.spectral = None
 
-        # FHN attention (with semi-implicit IMEX scheme)
+        # Attention mechanism selection
         if self.config.attention_type == "kaufmann":
             # The Full Trifecta Model
             self.attention = KaufmannAttention(
@@ -125,7 +126,19 @@ class NeuroManifoldBlock(nn.Module):
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
                 use_fused=self.config.fhn.use_fhn_fused
             )
+        elif self.config.attention_type == "standard":
+            # Standard nanoGPT-style attention with optional RoPE/ALiBi
+            self.attention = StandardAttention(
+                embed_dim=self.config.embed_dim,
+                n_heads=self.config.n_heads,
+                dropout=self.config.dropout,
+                bias=True,
+                block_size=self.config.block_size,
+                pos_emb_type=getattr(self.config, 'pos_emb_type', 'learned'),
+                max_seq_len=self.config.block_size
+            )
         else:
+            # FHN attention (with semi-implicit IMEX scheme)
             self.attention = FHNAttention(
                 embed_dim=self.config.embed_dim,
                 n_heads=self.config.n_heads,
