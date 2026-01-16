@@ -116,9 +116,12 @@ def ema_fft(
     # Broadcasting: x_f shape (..., T_freq, ...) * k_f shape (T_freq, ...) or (T_freq,)
     # Need to align k_f with x_f dimensions
     if k_f.ndim == 1:
-        # Scalar alpha: k_f is (T_freq,) -> reshape to (1, T_freq, 1, ...)
-        k_f_expanded = k_f.view(*([1] * (len(shape) - 2)), -1, *([1] * (len(shape) - 2)))
+        # Scalar alpha: k_f is (T_freq,) -> reshape to (1, T_freq, 1, 1, ...)
+        # Pattern: (1, T_freq, [1 for each remaining dim after time])
+        ndim = len(shape)
+        k_f_expanded = k_f.view(1, -1, *([1] * (ndim - 2)))
         # For (B, T, D): k_f becomes (1, T_freq, 1)
+        # For (B, T, H, D): k_f becomes (1, T_freq, 1, 1)
         h_f = x_f * k_f_expanded
     else:
         # Per-channel alpha: broadcast naturally
