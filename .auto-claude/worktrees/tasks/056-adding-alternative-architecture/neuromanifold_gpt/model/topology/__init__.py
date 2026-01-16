@@ -57,8 +57,16 @@ from neuromanifold_gpt.model.topology.braid import (
     TemperleyLiebAlgebra,
 )
 
+# Jones polynomial approximation
+from neuromanifold_gpt.model.topology.jones_polynomial import (
+    JonesApproximator,
+    JonesConfig,
+    JonesEvaluator,
+    JonesLoss,
+    KauffmanBracketNetwork,
+)
+
 # Placeholder imports - will be populated as submodules are implemented
-# from neuromanifold_gpt.model.topology.jones_polynomial import JonesApproximator
 # from neuromanifold_gpt.model.topology.topological_head import TopologicalHead
 
 __all__ = [
@@ -67,6 +75,10 @@ __all__ = [
     "BraidCrossing",
     "BraidConfig",
     "TemperleyLiebAlgebra",
-    # "JonesApproximator",
+    "JonesApproximator",
+    "JonesConfig",
+    "JonesEvaluator",
+    "JonesLoss",
+    "KauffmanBracketNetwork",
     # "TopologicalHead",
 ]
