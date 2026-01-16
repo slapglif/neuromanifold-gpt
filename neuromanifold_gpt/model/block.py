@@ -86,6 +86,7 @@ class NeuroManifoldBlock(nn.Module):
         kan_num_centers: int = 8,  # For FasterKAN RSWAF centers
         # Speed optimization
         skip_manifold_spectral: bool = False,  # Skip manifold/spectral for faster training
+        **kwargs  # Accept extra parameters for forward compatibility
     ):
         super().__init__()
 
