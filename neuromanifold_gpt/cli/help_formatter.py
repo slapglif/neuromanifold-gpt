@@ -344,8 +344,8 @@ def create_parser_from_globals(
 ) -> RichArgumentParser:
     """Create parser from a globals() dict (for backward compatibility).
 
-    This is a convenience wrapper for scripts that currently use:
-        exec(open('configurator.py').read())
+    This is a convenience wrapper for scripts that currently use the old
+    configurator.py exec pattern.
 
     It extracts simple typed values (str, int, float, bool) from globals
     and creates a parser from them.

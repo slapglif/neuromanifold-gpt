@@ -3,23 +3,23 @@
   "spec": "070-replace-exec-open-config-loading-with-type-safe-co",
   "state": "building",
   "subtasks": {
-    "completed": 10,
+    "completed": 13,
     "total": 17,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Migrate Files to New System",
+    "current": "Remove Old System",
     "id": null,
-    "total": 5
+    "total": 3
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 760,
+    "number": 763,
     "started_at": "2026-01-16T04:16:46.482350"
   },
-  "last_update": "2026-01-16T08:10:40.627502"
+  "last_update": "2026-01-16T08:20:03.536848"
 }

@@ -1,6 +1,6 @@
 """Type-safe configuration loader with CLI override support.
 
-This module provides a type-safe replacement for the exec(open()) pattern used in configurator.py.
+This module provides a type-safe replacement for the unsafe exec pattern used in configurator.py.
 Instead of executing arbitrary Python files, it safely imports config modules and uses dataclass
 fields for validation and type checking.
 
@@ -33,7 +33,7 @@ def load_config(
 ) -> T:
     """Load configuration with type-safe CLI overrides.
 
-    This function provides a type-safe alternative to exec(open('configurator.py').read()).
+    This function provides a type-safe alternative to executing configurator.py files.
     It loads configuration from dataclass defaults, optionally imports a preset module,
     and applies CLI overrides with type validation.
 
