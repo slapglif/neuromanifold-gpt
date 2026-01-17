@@ -73,3 +73,22 @@ show-fixes = true
 force-single-line = false
 force-sort-within-sections = false
 known-first-party = ["neuromanifold_gpt"]
+
+[tool.black]
+# Black code formatting configuration
+line-length = 88  # Match ruff's line length
+target-version = ['py310']  # Match project minimum Python version
+
+# Exclude patterns
+exclude = '''
+/(
+    \.git
+  | \.auto-claude
+  | __pycache__
+  | \.egg-info
+  | \.pytest_cache
+  | \.ruff_cache
+  | build
+  | dist
+)/
+'''
