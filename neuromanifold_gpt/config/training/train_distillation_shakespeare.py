@@ -10,7 +10,6 @@ eval_interval = 250
 eval_iters = 200
 log_interval = 10
 
-always_save_checkpoint = True
 save_checkpoints = True
 
 # Logging
@@ -72,7 +71,6 @@ def get_config() -> TrainConfig:
         eval_interval=eval_interval,
         eval_iters=eval_iters,
         log_interval=log_interval,
-        always_save_checkpoint=always_save_checkpoint,
         save_checkpoints=save_checkpoints,
 
         # Logging
