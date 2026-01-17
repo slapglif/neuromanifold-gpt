@@ -42,6 +42,8 @@ Components:
     - **get_expand_reduce_stream_functions**: Utilities for stream management
     - **get_init_and_expand_reduce_stream_functions**: Factory for mHC setup
 
+Module Structure: mhc.py (core), mhc_utils.py (utilities), mhc_fused.py (kernels).
+
 Usage Patterns:
     1. Direct wrapping:
         >>> hc = HyperConnections(num_streams=4, dim=384, branch=attention)
@@ -89,22 +91,30 @@ from random import randrange
 import torch
 from torch import nn
 from torch.nn import Module
-import torch.nn.functional as F
 from einops import rearrange, einsum
-from einops.layers.torch import Reduce
-
-# Import utility functions from shared modules
-from neuromanifold_gpt.utils.helpers import exists, default
-from neuromanifold_gpt.utils.sinkhorn import sinkhorn_log
-from neuromanifold_gpt.utils.stream_ops import get_expand_reduce_stream_functions
 
 # Try to import fused kernel for GPU acceleration
 try:
     from .mhc_fused import fused_mhc_width_connection
+
     HAS_TRITON = torch.cuda.is_available()
 except (ImportError, RuntimeError):
     HAS_TRITON = False
     fused_mhc_width_connection = None
+
+# Import utility functions
+from .mhc_utils import exists, default, sinkhorn_log, get_expand_reduce_stream_functions
+
+# Public API - re-export utility functions for backward compatibility
+__all__ = [
+    "HyperConnections",
+    "Residual",
+    "get_init_and_expand_reduce_stream_functions",
+    "sinkhorn_log",
+    "get_expand_reduce_stream_functions",
+    "SimplifiedMHC",
+    "HyperConnection",
+]
 
 
 class HyperConnections(Module):
@@ -193,8 +203,10 @@ class HyperConnections(Module):
         dropout: float = 0.0,
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
-        sinkhorn_convergence_tol: Optional[float] = None,
-        use_fused: Optional[bool] = None,  # Use Triton-fused kernel for GPU acceleration
+        sinkhorn_convergence_tol: Optional[float] = 1e-6,
+        use_fused: Optional[
+            bool
+        ] = None,  # Use Triton-fused kernel for GPU acceleration (auto-detect)
     ):
         """Initialize the HyperConnections layer.
 
@@ -244,7 +256,9 @@ class HyperConnections(Module):
         self.sinkhorn_iters = sinkhorn_iters
         self.sinkhorn_tau = sinkhorn_tau
         self.sinkhorn_convergence_tol = sinkhorn_convergence_tol
-        self.use_fused = default(use_fused, HAS_TRITON) and HAS_TRITON  # Enable fusion by default if available
+        self.use_fused = (
+            default(use_fused, HAS_TRITON) and HAS_TRITON
+        )  # Enable fusion by default if available
 
         # Choose initial residual stream index
         init_residual_index = (
@@ -265,9 +279,7 @@ class HyperConnections(Module):
 
         # H_post: Post-mixing matrix (softmax over streams)
         # Initialize to zeros (equal distribution)
-        self.H_post_logits = nn.Parameter(
-            torch.zeros(1, num_residual_streams)
-        )
+        self.H_post_logits = nn.Parameter(torch.zeros(1, num_residual_streams))
 
         self.dropout = nn.Dropout(dropout)
 
@@ -315,7 +327,7 @@ class HyperConnections(Module):
             self.H_res_logits,
             num_iters=self.sinkhorn_iters,
             tau=self.sinkhorn_tau,
-            convergence_tol=self.sinkhorn_convergence_tol
+            convergence_tol=self.sinkhorn_convergence_tol,
         )
         h_pre = self.H_pre_logits.softmax(dim=-1)  # (1, S)
         h_post = self.H_post_logits.softmax(dim=-1)  # (1, S)
@@ -325,9 +337,7 @@ class HyperConnections(Module):
             # Call fused kernel: combines all 4 operations into one GPU kernel
             # Input: (B*S, T, D) -> Output: branch_input (B, T, D), residuals_out (B*S, T, D)
             branch_input, residuals_out = fused_mhc_width_connection(
-                residuals,
-                h_res,
-                h_pre
+                residuals, h_res, h_pre
             )
             return branch_input, residuals_out, h_post
 
@@ -357,10 +367,7 @@ class HyperConnections(Module):
         return branch_input, residuals_out, h_post
 
     def depth_connection(
-        self,
-        branch_output: torch.Tensor,
-        residuals: torch.Tensor,
-        beta: torch.Tensor
+        self, branch_output: torch.Tensor, residuals: torch.Tensor, beta: torch.Tensor
     ) -> torch.Tensor:
         """Add branch output to residuals via H_post mixing (depth connection).
 
@@ -450,6 +457,7 @@ class HyperConnections(Module):
             The wrapped function preserves the signature of the original branch
             function, accepting arbitrary positional and keyword arguments.
         """
+
         def forward_and_add_residual(residual, *args, **kwargs):
             branch_input, add_residual = self.forward(residual)
             branch_output = branch(branch_input, *args, **kwargs)
@@ -538,38 +546,17 @@ class HyperConnections(Module):
 class Residual(Module):
     """Simple residual connection (identity fallback when mHC is disabled).
 
-    This class provides a drop-in replacement for HyperConnections when
-    mHC is disabled (e.g., num_streams=1 or explicit disable flag). It
-    implements standard residual connections without the manifold-constrained
-    mixing matrices, reducing to the classic transformer residual:
-        output = x + F(x)
-
-    The interface matches HyperConnections to enable seamless switching:
-    - Accepts same arguments (but ignores mHC-specific parameters)
-    - Returns same output shapes
-    - Supports both branch module and manual usage patterns
-
-    This allows architectural flexibility without code changes: models can
-    use mHC for multi-stream training or fall back to standard residuals
-    for single-stream deployment or baseline comparisons.
+    Drop-in replacement for HyperConnections when mHC is disabled. Implements
+    standard residual connections (output = x + F(x)) with the same interface
+    as HyperConnections for seamless switching between mHC and standard residuals.
 
     Args:
-        *args: Ignored (accepts HyperConnections args for compatibility)
         branch: Optional sublayer module to wrap (attention, MLP, etc.)
-        **kwargs: Ignored (accepts HyperConnections kwargs for compatibility)
+        *args, **kwargs: Ignored (accepts HyperConnections args for compatibility)
 
     Example:
-        >>> # Same interface as HyperConnections
         >>> residual = Residual(branch=attention_layer)
         >>> output = residual(x)  # Returns x + attention_layer(x)
-        >>>
-        >>> # Or manual usage
-        >>> residual = Residual()
-        >>> branch_input, add_residual_fn = residual(x)
-        >>> output = add_residual_fn(attention_layer(branch_input))
-
-    Note:
-        This class is also aliased as SimplifiedMHC for backwards compatibility.
     """
 
     def __init__(self, *args, branch: Optional[Module] = None, **kwargs):
@@ -589,11 +576,13 @@ class Residual(Module):
             If branch is None: (x, add_residual_fn) for manual use
         """
         if not exists(self.branch):
+
             def add_residual_fn(branch_out):
                 if isinstance(branch_out, tuple):
                     branch_out, *rest = branch_out
                     return (x + branch_out, *rest)
                 return x + branch_out
+
             return x, add_residual_fn
 
         branch_out = self.branch(x, *args, **kwargs)
@@ -609,7 +598,7 @@ def get_init_and_expand_reduce_stream_functions(
     disable: bool = False,
     sinkhorn_iters: int = 10,
     sinkhorn_tau: float = 0.05,
-    sinkhorn_convergence_tol: Optional[float] = None,
+    sinkhorn_convergence_tol: Optional[float] = 1e-6,
 ):
     """Get mHC initializer and stream expand/reduce functions.
 

@@ -50,7 +50,10 @@ from neuromanifold_gpt.model.soliton.base import PDESolver, PDEConfig
 from neuromanifold_gpt.model.soliton.sine_gordon import SineGordonSolver
 from neuromanifold_gpt.model.soliton.kdv import KdVSolver
 from neuromanifold_gpt.model.soliton.heimburg_jackson import HeimburgJacksonSolver
-from neuromanifold_gpt.model.soliton.attention import SolitonAttention, MultiHeadSolitonAttention
+from neuromanifold_gpt.model.soliton.attention import (
+    SolitonInteractionLayer,
+    MultiHeadSolitonAttention,
+)
 
 __all__ = [
     "PDESolver",
@@ -58,6 +61,6 @@ __all__ = [
     "SineGordonSolver",
     "KdVSolver",
     "HeimburgJacksonSolver",
-    "SolitonAttention",
+    "SolitonInteractionLayer",
     "MultiHeadSolitonAttention",
 ]

@@ -23,14 +23,18 @@ from neuromanifold_gpt.model.soliton import (
     SineGordonSolver,
     KdVSolver,
     HeimburgJacksonSolver,
-    SolitonAttention,
+    SolitonInteractionLayer,
     MultiHeadSolitonAttention,
 )
+
+# Alias for backward compatibility
+SolitonAttention = SolitonInteractionLayer
 
 
 # ==============================================================================
 # Fixtures
 # ==============================================================================
+
 
 @pytest.fixture
 def device():
@@ -90,6 +94,7 @@ def small_input(device, dtype):
 # PDEConfig Tests
 # ==============================================================================
 
+
 class TestPDEConfig:
     """Tests for PDEConfig dataclass."""
 
@@ -129,12 +134,14 @@ class TestPDEConfig:
     def test_config_is_dataclass(self):
         """Test that PDEConfig is a proper dataclass."""
         from dataclasses import is_dataclass
+
         assert is_dataclass(PDEConfig)
 
 
 # ==============================================================================
 # SineGordonSolver Tests
 # ==============================================================================
+
 
 class TestSineGordonSolver:
     """Tests for SineGordonSolver."""
@@ -176,11 +183,11 @@ class TestSineGordonSolver:
         solver = SineGordonSolver(dim=32, n_steps=2)
         _, info = solver(small_input, n_steps=2)
 
-        assert 'energy' in info
-        assert 'energy_initial' in info
-        assert 'energy_conservation' in info
-        assert 'topological_charge' in info
-        assert 'u_t' in info
+        assert "energy" in info
+        assert "energy_initial" in info
+        assert "energy_conservation" in info
+        assert "topological_charge" in info
+        assert "u_t" in info
 
     def test_forward_with_velocity(self, small_input):
         """Test forward pass with initial velocity."""
@@ -194,9 +201,9 @@ class TestSineGordonSolver:
         solver = SineGordonSolver(dim=32, n_steps=3)
         _, info = solver(small_input, n_steps=3, return_trajectory=True)
 
-        assert 'trajectory' in info
+        assert "trajectory" in info
         # Trajectory should have n_steps + 1 frames
-        assert info['trajectory'].shape[0] == 4
+        assert info["trajectory"].shape[0] == 4
 
     def test_compute_rhs(self, small_input):
         """Test right-hand side computation."""
@@ -270,13 +277,14 @@ class TestSineGordonSolver:
 
         # Damped should conserve energy less well (more dissipation)
         # Just verify both run without error
-        assert 'energy' in info_undamped
-        assert 'energy' in info_damped
+        assert "energy" in info_undamped
+        assert "energy" in info_damped
 
 
 # ==============================================================================
 # KdVSolver Tests
 # ==============================================================================
+
 
 class TestKdVSolver:
     """Tests for KdVSolver."""
@@ -313,13 +321,13 @@ class TestKdVSolver:
         solver = KdVSolver(dim=32, n_steps=2)
         _, info = solver(small_input, n_steps=2)
 
-        assert 'mass' in info
-        assert 'mass_initial' in info
-        assert 'mass_conservation' in info
-        assert 'momentum' in info
-        assert 'momentum_initial' in info
-        assert 'momentum_conservation' in info
-        assert 'energy' in info
+        assert "mass" in info
+        assert "mass_initial" in info
+        assert "mass_conservation" in info
+        assert "momentum" in info
+        assert "momentum_initial" in info
+        assert "momentum_conservation" in info
+        assert "energy" in info
 
     def test_compute_rhs(self, small_input):
         """Test right-hand side computation."""
@@ -363,10 +371,7 @@ class TestKdVSolver:
         solver = KdVSolver(dim=32)
         shape = (2, 16, 32)
         u = solver.create_two_soliton(
-            shape, device,
-            positions=(0.3, 0.7),
-            amplitudes=(2.0, 1.0),
-            dtype=dtype
+            shape, device, positions=(0.3, 0.7), amplitudes=(2.0, 1.0), dtype=dtype
         )
 
         assert u.shape == shape
@@ -376,8 +381,8 @@ class TestKdVSolver:
         solver = KdVSolver(dim=32, n_steps=3)
         _, info = solver(small_input, n_steps=3, return_trajectory=True)
 
-        assert 'trajectory' in info
-        assert info['trajectory'].shape[0] == 4
+        assert "trajectory" in info
+        assert info["trajectory"].shape[0] == 4
 
     def test_spectral_derivative(self, small_input):
         """Test spectral derivative computation."""
@@ -395,6 +400,7 @@ class TestKdVSolver:
 # ==============================================================================
 # HeimburgJacksonSolver Tests
 # ==============================================================================
+
 
 class TestHeimburgJacksonSolver:
     """Tests for HeimburgJacksonSolver."""
@@ -434,12 +440,12 @@ class TestHeimburgJacksonSolver:
         solver = HeimburgJacksonSolver(dim=32, n_steps=2)
         _, info = solver(small_input, n_steps=2)
 
-        assert 'enthalpy' in info
-        assert 'enthalpy_initial' in info
-        assert 'enthalpy_conservation' in info
-        assert 'compression' in info
-        assert 'wave_speed' in info
-        assert 'rho_t' in info
+        assert "enthalpy" in info
+        assert "enthalpy_initial" in info
+        assert "enthalpy_conservation" in info
+        assert "compression" in info
+        assert "wave_speed" in info
+        assert "rho_t" in info
 
     def test_forward_with_velocity(self, small_input):
         """Test forward pass with initial velocity."""
@@ -495,11 +501,12 @@ class TestHeimburgJacksonSolver:
         solver = HeimburgJacksonSolver(dim=32)
         shape = (2, 16, 32)
         rho, rho_t = solver.create_collision_state(
-            shape, device,
+            shape,
+            device,
             amplitudes=(0.5, 0.3),
             positions=(0.3, 0.7),
             velocities=(0.5, -0.5),
-            dtype=dtype
+            dtype=dtype,
         )
 
         assert rho.shape == shape
@@ -510,13 +517,14 @@ class TestHeimburgJacksonSolver:
         solver = HeimburgJacksonSolver(dim=32, n_steps=3)
         _, info = solver(small_input, n_steps=3, return_trajectory=True)
 
-        assert 'trajectory' in info
-        assert info['trajectory'].shape[0] == 4
+        assert "trajectory" in info
+        assert info["trajectory"].shape[0] == 4
 
 
 # ==============================================================================
 # PDESolver Base Class Tests
 # ==============================================================================
+
 
 class TestPDESolverBase:
     """Tests for PDESolver base class methods via concrete implementations."""
@@ -603,13 +611,14 @@ class TestPDESolverBase:
         """Test string representation."""
         solver = SineGordonSolver(dim=64)
         repr_str = solver.extra_repr()
-        assert 'dim=64' in repr_str
-        assert 'spectral' in repr_str
+        assert "dim=64" in repr_str
+        assert "spectral" in repr_str
 
 
 # ==============================================================================
 # SolitonAttention Tests
 # ==============================================================================
+
 
 class TestSolitonAttention:
     """Tests for SolitonAttention."""
@@ -671,9 +680,9 @@ class TestSolitonAttention:
         x = torch.randn(2, 16, embed_dim, device=device, dtype=dtype)
         _, info = attn(x)
 
-        assert 'soliton_gate' in info
-        assert 'attn_entropy' in info
-        assert 'solver_mix_weights' in info
+        assert "soliton_gate" in info
+        assert "attn_entropy" in info
+        assert "solver_mix_weights" in info
 
     def test_forward_with_mask(self, embed_dim, n_heads, device, dtype):
         """Test forward pass with attention mask."""
@@ -723,13 +732,15 @@ class TestSolitonAttention:
         x = torch.randn(2, 16, embed_dim, device=device, dtype=dtype)
         _, info = attn(x)
 
-        mix_weights = info['solver_mix_weights']
+        mix_weights = info["solver_mix_weights"]
         assert torch.isclose(mix_weights.sum(), torch.tensor(1.0), atol=1e-5)
 
     def test_pde_steps_parameter(self, embed_dim, n_heads, device, dtype):
         """Test that n_pde_steps affects computation."""
         attn_few = SolitonAttention(embed_dim=embed_dim, n_heads=n_heads, n_pde_steps=1)
-        attn_many = SolitonAttention(embed_dim=embed_dim, n_heads=n_heads, n_pde_steps=5)
+        attn_many = SolitonAttention(
+            embed_dim=embed_dim, n_heads=n_heads, n_pde_steps=5
+        )
 
         x = torch.randn(2, 16, embed_dim, device=device, dtype=dtype)
         out_few, _ = attn_few(x)
@@ -742,13 +753,14 @@ class TestSolitonAttention:
         """Test string representation."""
         attn = SolitonAttention(embed_dim=embed_dim, n_heads=n_heads)
         repr_str = attn.extra_repr()
-        assert f'embed_dim={embed_dim}' in repr_str
-        assert f'n_heads={n_heads}' in repr_str
+        assert f"embed_dim={embed_dim}" in repr_str
+        assert f"n_heads={n_heads}" in repr_str
 
 
 # ==============================================================================
 # MultiHeadSolitonAttention Tests
 # ==============================================================================
+
 
 class TestMultiHeadSolitonAttention:
     """Tests for MultiHeadSolitonAttention."""
@@ -786,9 +798,9 @@ class TestMultiHeadSolitonAttention:
         _, info = attn(x)
 
         # Should have info from each physics type
-        assert any('sg_' in k for k in info.keys())
-        assert any('kdv_' in k for k in info.keys())
-        assert any('hj_' in k for k in info.keys())
+        assert any("sg_" in k for k in info.keys())
+        assert any("kdv_" in k for k in info.keys())
+        assert any("hj_" in k for k in info.keys())
 
     def test_forward_with_mask(self, embed_dim, device, dtype):
         """Test forward pass with attention mask."""
@@ -813,6 +825,7 @@ class TestMultiHeadSolitonAttention:
 # ==============================================================================
 # Integration and Edge Case Tests
 # ==============================================================================
+
 
 class TestSolitonEdgeCases:
     """Tests for edge cases and numerical stability."""
@@ -905,7 +918,9 @@ class TestSolitonEdgeCases:
     def test_gradient_flow_attention(self, embed_dim, n_heads, device, dtype):
         """Test that gradients flow through SolitonAttention."""
         attn = SolitonAttention(embed_dim=embed_dim, n_heads=n_heads)
-        x = torch.randn(2, 16, embed_dim, device=device, dtype=dtype, requires_grad=True)
+        x = torch.randn(
+            2, 16, embed_dim, device=device, dtype=dtype, requires_grad=True
+        )
         out, _ = attn(x)
         loss = out.sum()
         loss.backward()
@@ -921,36 +936,36 @@ class TestSolitonParameterLearning:
         solver = SineGordonSolver(dim=32)
         params = list(solver.parameters())
         assert len(params) > 0
-        assert any('c_squared' in name for name, _ in solver.named_parameters())
-        assert any('nonlin_scale' in name for name, _ in solver.named_parameters())
-        assert any('dt' in name for name, _ in solver.named_parameters())
+        assert any("c_squared" in name for name, _ in solver.named_parameters())
+        assert any("nonlin_scale" in name for name, _ in solver.named_parameters())
+        assert any("dt" in name for name, _ in solver.named_parameters())
 
     def test_kdv_learnable_params(self):
         """Test KdV has learnable parameters."""
         solver = KdVSolver(dim=32)
         params = list(solver.parameters())
         assert len(params) > 0
-        assert any('nonlin_coeff' in name for name, _ in solver.named_parameters())
-        assert any('disp_coeff' in name for name, _ in solver.named_parameters())
+        assert any("nonlin_coeff" in name for name, _ in solver.named_parameters())
+        assert any("disp_coeff" in name for name, _ in solver.named_parameters())
 
     def test_hj_learnable_params(self):
         """Test HeimburgJackson has learnable parameters."""
         solver = HeimburgJacksonSolver(dim=32)
         params = list(solver.parameters())
         assert len(params) > 0
-        assert any('c0_squared' in name for name, _ in solver.named_parameters())
-        assert any('p_coeff' in name for name, _ in solver.named_parameters())
-        assert any('q_coeff' in name for name, _ in solver.named_parameters())
-        assert any('h_disp' in name for name, _ in solver.named_parameters())
+        assert any("c0_squared" in name for name, _ in solver.named_parameters())
+        assert any("p_coeff" in name for name, _ in solver.named_parameters())
+        assert any("q_coeff" in name for name, _ in solver.named_parameters())
+        assert any("h_disp" in name for name, _ in solver.named_parameters())
 
     def test_attention_learnable_params(self, embed_dim, n_heads):
         """Test SolitonAttention has learnable parameters."""
         attn = SolitonAttention(embed_dim=embed_dim, n_heads=n_heads)
         params = list(attn.parameters())
         assert len(params) > 0
-        assert any('solver_mix' in name for name, _ in attn.named_parameters())
-        assert any('qkv' in name for name, _ in attn.named_parameters())
-        assert any('out_proj' in name for name, _ in attn.named_parameters())
+        assert any("solver_mix" in name for name, _ in attn.named_parameters())
+        assert any("qkv" in name for name, _ in attn.named_parameters())
+        assert any("out_proj" in name for name, _ in attn.named_parameters())
 
 
 # ==============================================================================
