@@ -162,7 +162,7 @@ class WaveManifoldGPT(nn.Module):
 
                     # Simplified for initial training: MSE on the mean action
                     dist = self.continuous_head.actor(x)  # Returns Normal distribution
-                    action = dist.rsample()
+                    dist.rsample()
 
                     # Log prob of the target embedding under the policy
                     log_prob = dist.log_prob(target_embeds).sum(-1)
