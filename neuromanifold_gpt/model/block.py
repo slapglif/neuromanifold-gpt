@@ -252,7 +252,7 @@ class NeuroManifoldBlock(nn.Module):
             attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
 
             # Knot attention (if enabled)
-            if self.config.use_knot_attention:
+            if self.config.attention_type in ("knot", "kaufmann"):
                 knot_out, knot_info = self.knot_attention(self.norm1(branch_input), coords)
                 attn_info.update(knot_info)
                 gate = F.softmax(self.attn_gate(branch_input), dim=-1)

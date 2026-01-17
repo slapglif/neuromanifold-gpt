@@ -10,6 +10,7 @@ import pytest
 import torch
 from neuromanifold_gpt.config import NeuroManifoldConfigNano
 from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 # -----------------------------------------------------------------------------
 # Config Loader Hacks (from PR #32)
@@ -50,6 +51,17 @@ except Exception as e:
 # Shared Fixtures (from Master)
 # -----------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def reset_random_seed():
+    """Autouse fixture to reset random seed before each test.
+
+    This fixture runs automatically before every test to ensure reproducibility
+    by setting torch random seed to 42. Tests no longer need inline
+    torch.manual_seed() calls.
+    """
+    torch.manual_seed(42)
+
+
 @pytest.fixture
 def nano_config():
     """Fixture providing NeuroManifoldConfigNano instance.
@@ -58,6 +70,19 @@ def nano_config():
         NeuroManifoldConfigNano: Nano preset configuration for testing.
     """
     return NeuroManifoldConfigNano()
+
+
+@pytest.fixture
+def gpt_model(nano_config):
+    """Fixture providing NeuroManifoldGPT instance with nano_config.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        NeuroManifoldGPT: GPT model instance configured with nano preset.
+    """
+    return NeuroManifoldGPT(nano_config)
 
 
 @pytest.fixture
@@ -127,6 +152,98 @@ def sample_tokens():
 
 
 @pytest.fixture
+def tokens_1x10(nano_config):
+    """Single batch, short sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (1, 10) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (1, 10))
+
+
+@pytest.fixture
+def tokens_1x20(nano_config):
+    """Single batch, medium sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (1, 20) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (1, 20))
+
+
+@pytest.fixture
+def tokens_2x20(nano_config):
+    """Batch of 2, medium sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (2, 20) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (2, 20))
+
+
+@pytest.fixture
+def tokens_2x50(nano_config):
+    """Batch of 2, longer sequence token fixture.
+
+    Args:
+        nano_config: NeuroManifoldConfigNano fixture.
+
+    Returns:
+        torch.Tensor: Token ID tensor of shape (2, 50) with values in [0, vocab_size).
+    """
+    return torch.randint(0, nano_config.vocab_size, (2, 50))
+
+
+@pytest.fixture
+def sample_tensor_2d_grad():
+    """Fixture providing 2D tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: 2D tensor of shape (20, 64) with requires_grad=True.
+    """
+    return torch.randn(20, 64, requires_grad=True)
+
+
+@pytest.fixture
+def sample_tensor_3d_grad():
+    """Fixture providing 3D tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: 3D tensor of shape (2, 20, 64) with requires_grad=True.
+    """
+    return torch.randn(2, 20, 64, requires_grad=True)
+
+
+@pytest.fixture
+def sample_embeddings_grad():
+    """Fixture providing embedding tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: Embedding tensor of shape (2, 20, 128) with requires_grad=True.
+    """
+    return torch.randn(2, 20, 128, requires_grad=True)
+
+
+@pytest.fixture
+def sample_sdr_grad():
+    """Fixture providing SDR tensor with gradient enabled for testing.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2, 20, 2048) with requires_grad=True.
+    """
+    return torch.randn(2, 20, 2048, requires_grad=True)
+
+
+@pytest.fixture
 def device():
     """Fixture providing appropriate device for testing.
 
@@ -143,3 +260,80 @@ def seed():
     Sets torch random seed to 42 when called.
     """
     torch.manual_seed(42)
+
+
+# -----------------------------------------------------------------------------
+# SDR Test Helper Fixtures
+# -----------------------------------------------------------------------------
+
+@pytest.fixture
+def sdr_zero_with_active():
+    """Fixture providing zero SDR with first 40 bits active.
+
+    Common pattern for SDR operations testing. Creates a 2048-dimensional
+    zero tensor with the first 40 bits set to 1.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with first 40 bits set to 1.
+    """
+    sdr = torch.zeros(2048)
+    sdr[:40] = 1
+    return sdr
+
+
+@pytest.fixture
+def sdr_zero_with_active_offset():
+    """Fixture providing zero SDR with 40 active bits at offset 20.
+
+    Creates a 2048-dimensional zero tensor with bits 20-59 set to 1.
+    Useful for testing overlap and intersection operations.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with bits 20-59 set to 1.
+    """
+    sdr = torch.zeros(2048)
+    sdr[20:60] = 1
+    return sdr
+
+
+@pytest.fixture
+def sdr_zero_with_active_disjoint():
+    """Fixture providing zero SDR with 40 active bits at offset 100.
+
+    Creates a 2048-dimensional zero tensor with bits 100-139 set to 1.
+    Useful for testing disjoint SDR operations with zero overlap.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with bits 100-139 set to 1.
+    """
+    sdr = torch.zeros(2048)
+    sdr[100:140] = 1
+    return sdr
+
+
+@pytest.fixture
+def sdr_zero_empty():
+    """Fixture providing empty SDR with no active bits.
+
+    Creates a 2048-dimensional zero tensor with all bits set to 0.
+    Useful for testing edge cases and empty SDR operations.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2048,) with all bits set to 0.
+    """
+    return torch.zeros(2048)
+
+
+@pytest.fixture
+def sdr_zero_batched():
+    """Fixture providing batched zero SDR with first 40 bits active.
+
+    Creates a batched 2048-dimensional zero tensor with the first 40 bits
+    set to 1 across all batch dimensions. Useful for testing batched operations.
+
+    Returns:
+        torch.Tensor: SDR tensor of shape (2, 3, 2048) with first 40 bits set to 1.
+    """
+    sdr = torch.zeros(2, 3, 2048)
+    sdr[..., :40] = 1
+    return sdr

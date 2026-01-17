@@ -5,6 +5,9 @@ SDRs are the foundation of semantic folding. These tests verify:
 - overlap_count: bitwise AND population count
 - union: bitwise OR with clamping
 - semantic_similarity: overlap / n_active
+
+Note: These tests use the reset_random_seed autouse fixture from conftest.py
+to ensure reproducibility for tests using torch.randn().
 """
 import pytest
 import torch
