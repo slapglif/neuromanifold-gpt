@@ -89,6 +89,15 @@ class TrainConfig:
         wandb_log: Enable Weights & Biases logging
         wandb_project: W&B project name
         wandb_run_name: W&B run name
+        enable_sdr_collapse_monitor: Enable SDR collapse detection callback
+        sdr_check_interval: Steps between SDR health checks
+        sdr_collapse_threshold: Unique pattern ratio threshold for collapse detection
+        enable_divergence_rollback: Enable automatic checkpoint rollback on divergence
+        divergence_threshold: Loss multiplier to trigger divergence detection
+        rollback_checkpoint_interval: Steps between rollback checkpoint saves
+        enable_attention_viz: Enable periodic attention pattern visualization
+        attention_viz_interval: Steps between attention visualization saves
+        attention_viz_max_seq_len: Maximum sequence length to visualize
     """
 
     # I/O
@@ -170,3 +179,14 @@ class TrainConfig:
     wandb_log: bool = False
     wandb_project: str = "neuromanifold-gpt"
     wandb_run_name: str = "neuromanifold"
+
+    # Stability Toolkit
+    enable_sdr_collapse_monitor: bool = False
+    sdr_check_interval: int = 100
+    sdr_collapse_threshold: float = 0.3
+    enable_divergence_rollback: bool = False
+    divergence_threshold: float = 2.0
+    rollback_checkpoint_interval: int = 500
+    enable_attention_viz: bool = False
+    attention_viz_interval: int = 500
+    attention_viz_max_seq_len: int = 64

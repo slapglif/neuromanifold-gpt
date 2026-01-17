@@ -4,6 +4,13 @@ Includes config loader hacks to bypass torch dependencies where possible,
 and standard fixtures for model testing.
 """
 import sys
+
+# Fix sys.path to prioritize venv packages over global Auto-Claude packages
+# This must be done before any other imports
+_auto_claude_path = '/home/mikeb/Applications/Auto-Claude/resources/python-site-packages'
+if _auto_claude_path in sys.path:
+    sys.path.remove(_auto_claude_path)
+    sys.path.append(_auto_claude_path)  # Add it to the end instead
 import importlib.util
 from pathlib import Path
 import pytest

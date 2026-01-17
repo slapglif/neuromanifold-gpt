@@ -28,6 +28,11 @@ from neuromanifold_gpt.training.data_modules import StreamingDataModule, TextDat
 from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 from neuromanifold_gpt.training.callbacks import SampleGenerationCallback, MFUCallback
 from neuromanifold_gpt.training.checkpoint_callback import SeparatedCheckpointCallback
+from neuromanifold_gpt.callbacks.stability_toolkit import (
+    SDRCollapseMonitor,
+    DivergenceRollbackCallback,
+    AttentionVisualizationCallback,
+)
 from model import GPTConfig, GPT
 
 
@@ -192,6 +197,47 @@ def train(config: TrainConfig) -> None:
         )
 
     callbacks.append(MFUCallback(log_interval=config.log_interval))
+
+    # Stability Toolkit Callbacks
+    if config.enable_sdr_collapse_monitor:
+        callbacks.append(
+            SDRCollapseMonitor(
+                check_interval=config.sdr_check_interval,
+                collapse_threshold=config.sdr_collapse_threshold,
+            )
+        )
+        logger.info(
+            f"Enabled SDR collapse monitoring (check_interval={config.sdr_check_interval}, "
+            f"threshold={config.sdr_collapse_threshold})"
+        )
+
+    if config.enable_divergence_rollback:
+        rollback_dir = os.path.join(config.out_dir, "rollback_checkpoints")
+        callbacks.append(
+            DivergenceRollbackCallback(
+                checkpoint_dir=rollback_dir,
+                divergence_threshold=config.divergence_threshold,
+                checkpoint_interval=config.rollback_checkpoint_interval,
+            )
+        )
+        logger.info(
+            f"Enabled divergence rollback (threshold={config.divergence_threshold}x, "
+            f"checkpoint_interval={config.rollback_checkpoint_interval})"
+        )
+
+    if config.enable_attention_viz:
+        attention_viz_dir = os.path.join(config.out_dir, "attention_viz")
+        callbacks.append(
+            AttentionVisualizationCallback(
+                output_dir=attention_viz_dir,
+                save_interval=config.attention_viz_interval,
+                max_seq_len=config.attention_viz_max_seq_len,
+            )
+        )
+        logger.info(
+            f"Enabled attention visualization (save_interval={config.attention_viz_interval}, "
+            f"max_seq_len={config.attention_viz_max_seq_len})"
+        )
 
     # Logger
     pl_logger = None
