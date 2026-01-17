@@ -14,10 +14,10 @@ import torch.nn as nn
 from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
 from neuromanifold_gpt.model.continuous.output_head import ContinuousOutputHead
 from neuromanifold_gpt.model.fno.multimodal_encoder import MultimodalFNOEncoder
-from neuromanifold_gpt.model.topology.topological_head import TopologicalHead
-from neuromanifold_gpt.model.wave_manifold_block import WaveManifoldBlock
 from neuromanifold_gpt.model.hybrid_reasoning import HybridReasoningModule
 from neuromanifold_gpt.model.rl.sac_output import SACOutputHead
+from neuromanifold_gpt.model.topology.topological_head import TopologicalHead
+from neuromanifold_gpt.model.wave_manifold_block import WaveManifoldBlock
 
 
 class WaveManifoldGPT(nn.Module):
