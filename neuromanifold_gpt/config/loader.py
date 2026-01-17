@@ -7,27 +7,58 @@ fields for validation and type checking.
 Example usage:
     from neuromanifold_gpt.config.loader import load_config
     from neuromanifold_gpt.config.training import TrainingConfig
+    from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-    # Load with CLI overrides
+    # Basic: Load with CLI overrides from command line
     config = load_config(TrainingConfig, sys.argv[1:])
 
-    # Load from preset file
-    config = load_config(TrainingConfig, ['neuromanifold_gpt.config.presets.nano', '--batch_size=32'])
+    # Load from preset module
+    config = load_config(
+        TrainingConfig,
+        ['neuromanifold_gpt.config.presets.nano', '--batch_size=32']
+    )
+
+    # Load defaults and override specific values
+    config = load_config(TrainingConfig, [
+        '--dataset=shakespeare_char',
+        '--batch_size=64',
+        '--learning_rate=1e-3',
+        '--max_iters=5000'
+    ])
+
+    # Load model config with advanced features
+    config = load_config(NeuroManifoldConfig, [
+        '--n_layer=12',
+        '--n_embd=768',
+        '--use_kan=True',
+        '--use_mhc=True',
+        '--use_kaufmann_attention=False'
+    ])
+
+    # Combine preset with multiple overrides
+    config = load_config(TrainingConfig, [
+        'neuromanifold_gpt.config.presets.train_shakespeare',
+        '--wandb_log=True',
+        '--wandb_project=my-experiment',
+        '--learning_rate=3e-4'
+    ])
 """
 
-import importlib
 import sys
+import importlib
 from ast import literal_eval
-from dataclasses import MISSING, fields
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from dataclasses import fields, MISSING
+from typing import TypeVar, Type, List, Dict, Any, Optional
+from neuromanifold_gpt.errors import ValidationError, ConfigurationError
 
-from neuromanifold_gpt.errors import ConfigurationError, ValidationError
 
-T = TypeVar("T")
+T = TypeVar('T')
 
 
 def load_config(
-    config_class: Type[T], args: Optional[List[str]] = None, show_help: bool = True
+    config_class: Type[T],
+    args: Optional[List[str]] = None,
+    show_help: bool = True
 ) -> T:
     """Load configuration with type-safe CLI overrides.
 
@@ -57,7 +88,7 @@ def load_config(
         args = sys.argv[1:]
 
     # Handle --help
-    if show_help and "--help" in args:
+    if show_help and '--help' in args:
         _print_help(config_class)
         sys.exit(0)
 
@@ -66,24 +97,24 @@ def load_config(
     overrides: Dict[str, Any] = {}
 
     for arg in args:
-        if "=" not in arg:
+        if '=' not in arg:
             # Assume it's the name of a config module to import
-            if arg.startswith("--"):
+            if arg.startswith('--'):
                 raise ValidationError(
                     problem="Invalid config module argument format",
                     cause=f"Config module argument '{arg}' cannot start with '--'",
-                    recovery="Use either: python script.py module.path.to.config OR python script.py --key=value",
+                    recovery="Use either: python script.py module.path.to.config OR python script.py --key=value"
                 )
             config_module_name = arg
         else:
             # Assume it's a --key=value override
-            if not arg.startswith("--"):
+            if not arg.startswith('--'):
                 raise ValidationError(
                     problem="Invalid override argument format",
                     cause=f"Override argument '{arg}' must start with '--'",
-                    recovery="Use format: --key=value (e.g., --batch_size=32)",
+                    recovery="Use format: --key=value (e.g., --batch_size=32)"
                 )
-            key, val = arg.split("=", 1)
+            key, val = arg.split('=', 1)
             key = key[2:]  # Remove '--' prefix
             overrides[key] = val
 
@@ -103,11 +134,11 @@ def load_config(
     for key, val_str in overrides.items():
         if key not in config_dict:
             # Get available keys for helpful error message
-            available = ", ".join(sorted(config_dict.keys()))
+            available = ', '.join(sorted(config_dict.keys()))
             raise ValidationError(
                 problem=f"Unknown config key: {key}",
                 cause=f"'{key}' is not a valid configuration parameter for {config_class.__name__}",
-                recovery=f"Use one of: {available}",
+                recovery=f"Use one of: {available}"
             )
 
         # Get the expected type from the default value
@@ -125,7 +156,7 @@ def load_config(
             raise ValidationError(
                 problem="Configuration type mismatch",
                 cause=f"Cannot override '{key}': expected {expected_type.__name__}, got {type(parsed_val).__name__}",
-                recovery=f"Provide a value of type {expected_type.__name__} (current value: {config_dict[key]})",
+                recovery=f"Provide a value of type {expected_type.__name__} (current value: {config_dict[key]})"
             )
 
         print(f"  Overriding: {key} = {parsed_val}")
@@ -138,7 +169,7 @@ def load_config(
         raise ConfigurationError(
             problem=f"Failed to create {config_class.__name__}",
             cause=str(e),
-            recovery="Check that all required fields are provided and types are correct",
+            recovery="Check that all required fields are provided and types are correct"
         )
 
 
@@ -183,29 +214,29 @@ def _load_config_module(module_name: str) -> Dict[str, Any]:
         module = importlib.import_module(module_name)
     except (ImportError, ModuleNotFoundError):
         # Try as a file path
-        if module_name.endswith(".py"):
+        if module_name.endswith('.py'):
             # Convert file path to module name
             # e.g., 'config/train_gpt2.py' -> 'config.train_gpt2'
-            module_path = module_name[:-3].replace("/", ".")
+            module_path = module_name[:-3].replace('/', '.')
             try:
                 module = importlib.import_module(module_path)
             except (ImportError, ModuleNotFoundError) as e:
                 raise ValidationError(
                     problem=f"Cannot load config module: {module_name}",
                     cause=str(e),
-                    recovery="Provide a valid module path (e.g., 'neuromanifold_gpt.config.presets.nano') or file path",
+                    recovery="Provide a valid module path (e.g., 'neuromanifold_gpt.config.presets.nano') or file path"
                 )
         else:
             raise ValidationError(
                 problem=f"Cannot load config module: {module_name}",
                 cause="Module not found",
-                recovery="Provide a valid module path (e.g., 'neuromanifold_gpt.config.presets.nano') or file path",
+                recovery="Provide a valid module path (e.g., 'neuromanifold_gpt.config.presets.nano') or file path"
             )
 
     # Extract all module-level variables (except private ones)
     config_values = {}
     for name in dir(module):
-        if not name.startswith("_"):
+        if not name.startswith('_'):
             value = getattr(module, name)
             # Skip imported modules and classes
             if not callable(value) or isinstance(value, type):
@@ -222,8 +253,7 @@ def _print_help(config_class: Type) -> None:
     Args:
         config_class: The config dataclass to show help for
     """
-    print(
-        f"""
+    print(f"""
 Type-Safe Configuration Loader - {config_class.__name__}
 
 Usage:
@@ -235,8 +265,7 @@ Examples:
     python script.py neuromanifold_gpt.config.presets.nano --batch_size=32
 
 Available Configuration Options for {config_class.__name__}:
-"""
-    )
+""")
 
     # Show all available fields with their defaults
     for field in fields(config_class):
@@ -248,16 +277,14 @@ Available Configuration Options for {config_class.__name__}:
 
         # Get type hint as string
         type_hint = field.type
-        if hasattr(type_hint, "__name__"):
+        if hasattr(type_hint, '__name__'):
             type_name = type_hint.__name__
         else:
             type_name = str(type_hint)
 
         print(f"    --{field.name}=<{type_name}>{default_str}")
 
-    print(
-        """
+    print("""
 Note: Boolean values should be 'True' or 'False' (case-sensitive)
       Strings, numbers, and other Python literals are parsed automatically
-"""
-    )
+""")

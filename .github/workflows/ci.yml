@@ -103,7 +103,7 @@ jobs:
 
     - name: Lint with ruff
       run: |
-        ruff check neuromanifold_gpt/
+        ruff check neuromanifold_gpt/ --select E,F,W,I,N
 
     - name: Check formatting with black
       run: |
@@ -144,3 +144,125 @@ jobs:
           exit 1
         fi
         echo "All dependencies are properly pinned!"
+
+  config-compatibility:
+    name: Configuration System Compatibility Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch==2.2.2
+        pip install einops==0.7.0
+        pip install lightning==2.2.0
+        pip install scipy==1.11.4
+        pip install loguru==0.7.2
+        pip install rich==13.7.0
+        pip install pytest==7.4.4
+
+    - name: Test new type-safe config system
+      run: |
+        echo "Testing type-safe config loader..."
+        python -c "from neuromanifold_gpt.config.loader import load_config; print('✓ Config loader imports successfully')"
+        python -c "from neuromanifold_gpt.config.presets import get_nano_config; c = get_nano_config(); print('✓ Nano preset loaded: n_layer=' + str(c.n_layer))"
+        python -c "from neuromanifold_gpt.config.presets import get_small_config, get_medium_config, get_reasoning_config; print('✓ All presets importable')"
+
+    - name: Test backward compatibility layer
+      run: |
+        echo "Testing backward compatibility shim..."
+        python -c "from neuromanifold_gpt.config.compat import apply_config_overrides; print('✓ Compatibility layer imports successfully')"
+        python -c "
+        from neuromanifold_gpt.config.compat import apply_config_overrides
+        import warnings
+        c = {'batch_size': 16, 'learning_rate': 1e-3}
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always')
+            result = apply_config_overrides(c, ['--batch_size=32'])
+            assert result['batch_size'] == 32
+            assert len(w) > 0  # Deprecation warning should be issued
+        print('✓ Backward compatibility layer works with deprecation warnings')
+        "
+
+    - name: Test migrated scripts work
+      run: |
+        echo "Testing migrated scripts..."
+        python eval.py --help > /tmp/eval_help.txt
+        if grep -q "Type-Safe Configuration Loader" /tmp/eval_help.txt; then
+          echo "✓ eval.py uses type-safe config loader"
+        else
+          echo "✗ eval.py does not show type-safe config help"
+          exit 1
+        fi
+
+        python examples/train_with_component_metrics.py --help > /tmp/train_help.txt
+        if grep -q "Configuration" /tmp/train_help.txt; then
+          echo "✓ train_with_component_metrics.py uses type-safe config loader"
+        else
+          echo "✗ train_with_component_metrics.py does not show config help"
+          exit 1
+        fi
+
+    - name: Run config-specific tests
+      run: |
+        echo "Running comprehensive config loader tests..."
+        pytest neuromanifold_gpt/tests/test_config_loader.py -v --tb=short -k "test_load_config or test_preset or test_compat or test_backward"
+
+    - name: Test CLI override patterns (new system)
+      run: |
+        echo "Testing new config system with CLI overrides..."
+        python -c "
+        from neuromanifold_gpt.config.loader import load_config
+        from neuromanifold_gpt.config.training import TrainingConfig
+
+        # Test override with CLI args
+        c = load_config(TrainingConfig, ['--batch_size=64', '--learning_rate=0.001'], show_help=False)
+        assert c.batch_size == 64
+        assert c.learning_rate == 0.001
+        print('✓ CLI overrides work in new system')
+        "
+
+    - name: Verify legacy config files exist with warnings
+      run: |
+        echo "Verifying legacy config directory has deprecation notice..."
+        if [ -f "config/legacy/README.md" ]; then
+          if grep -q "DEPRECATED" config/legacy/README.md; then
+            echo "✓ Legacy config directory has deprecation warning"
+          else
+            echo "⚠ Legacy config directory exists but lacks deprecation warning"
+            exit 1
+          fi
+        else
+          echo "⚠ Legacy config directory README not found"
+          exit 1
+        fi
+
+    - name: Test migration path documentation
+      run: |
+        echo "Verifying migration documentation exists..."
+        if [ -f "docs/config-migration-guide.md" ]; then
+          echo "✓ Migration guide exists"
+          if grep -q "load_config" docs/config-migration-guide.md; then
+            echo "✓ Migration guide documents new load_config() API"
+          else
+            echo "✗ Migration guide missing load_config() documentation"
+            exit 1
+          fi
+        else
+          echo "✗ Migration guide not found"
+          exit 1
+        fi
+
+    - name: Full config loader test suite
+      run: |
+        echo "Running full config loader test suite..."
+        pytest neuromanifold_gpt/tests/test_config_loader.py -v --tb=short

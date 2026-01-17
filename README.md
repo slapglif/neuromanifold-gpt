@@ -56,7 +56,7 @@ On a modern GPU, this trains in ~3 minutes and achieves a validation loss around
 python sample.py --out_dir=out-shakespeare-char
 ```
 
-**Want more control?** You can still override any setting by passing command-line arguments or config files. See the detailed sections below for advanced usage.
+**Want more control?** You can still override any setting by passing command-line arguments or using the type-safe configuration system. See the [Configuration System](#configuration-system) section below for advanced usage.
 
 ## install
 
@@ -84,13 +84,20 @@ python data/shakespeare_char/prepare.py
 
 This creates a `train.bin` and `val.bin` in that data directory. Now it is time to train your GPT. The size of it very much depends on the computational resources of your system:
 
-**I have a GPU**. Great, we can quickly train a baby GPT with the settings provided in the [config/train_shakespeare_char.py](config/train_shakespeare_char.py) config file:
+**I have a GPU**. Great, we can quickly train a baby GPT using the type-safe configuration system:
 
 ```sh
+# New recommended way - using type-safe presets
+python train.py neuromanifold_gpt.config.presets.shakespeare_char
+
+# Or with CLI overrides
+python train.py neuromanifold_gpt.config.presets.shakespeare_char --batch_size=32 --learning_rate=1e-4
+
+# Legacy way (still works but deprecated)
 python train.py config/train_shakespeare_char.py
 ```
 
-If you peek inside it, you'll see that we're training a GPT with a context size of up to 256 characters, 384 feature channels, and it is a 6-layer Transformer with 6 heads in each layer. On one A100 GPU this training run takes about 3 minutes and the best validation loss is 1.4697. Based on the configuration, the model checkpoints are being written into the `--out_dir` directory `out-shakespeare-char`. So once the training finishes we can sample from the best model by pointing the sampling script at this directory:
+This trains a GPT with a context size of up to 256 characters, 384 feature channels, and it is a 6-layer Transformer with 6 heads in each layer. On one A100 GPU this training run takes about 3 minutes and the best validation loss is 1.4697. Based on the configuration, the model checkpoints are being written into the `--out_dir` directory `out-shakespeare-char`. So once the training finishes we can sample from the best model by pointing the sampling script at this directory:
 
 ```sh
 python sample.py --out_dir=out-shakespeare-char
@@ -124,6 +131,10 @@ lol  `¯\_(ツ)_/¯`. Not bad for a character-level model after 3 minutes of tra
 **I only have a macbook** (or other cheap computer). No worries, we can still train a GPT but we want to dial things down a notch. I recommend getting the bleeding edge PyTorch nightly ([select it here](https://pytorch.org/get-started/locally/) when installing) as it is currently quite likely to make your code more efficient. But even without it, a simple train run could look as follows:
 
 ```sh
+# New recommended way - using type-safe config with overrides
+python train.py neuromanifold_gpt.config.presets.shakespeare_char --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
+
+# Legacy way (still works but deprecated)
 python train.py config/train_shakespeare_char.py --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
 ```
 
@@ -146,6 +157,104 @@ Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If y
 
 Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device=mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
 
+## Configuration System
+
+nanoGPT now features a **type-safe configuration system** that replaces the legacy `exec()`-based config loading. This provides better security, IDE autocomplete, type checking, and helpful error messages.
+
+### Quick Start with Type-Safe Configs
+
+**Load a preset configuration:**
+```python
+from neuromanifold_gpt.config.loader import load_config
+from neuromanifold_gpt.config.training import TrainingConfig
+
+# Load default config
+config = load_config(TrainingConfig)
+
+# Load with a preset
+config = load_config(TrainingConfig, ['neuromanifold_gpt.config.presets.nano'])
+
+# Load preset with CLI overrides
+config = load_config(TrainingConfig, [
+    'neuromanifold_gpt.config.presets.shakespeare_char',
+    '--batch_size=32',
+    '--learning_rate=1e-4'
+])
+```
+
+**Available presets:**
+- `neuromanifold_gpt.config.presets.nano` - Fast experimentation (~1M parameters)
+- `neuromanifold_gpt.config.presets.shakespeare_char` - Character-level modeling
+- `neuromanifold_gpt.config.presets.small` - GPT-2 small scale (~124M parameters)
+- `neuromanifold_gpt.config.presets.medium` - GPT-2 medium scale (~350M parameters)
+- `neuromanifold_gpt.config.presets.reasoning` - System 2 reasoning components enabled
+
+### Command Line Usage
+
+All training scripts now support the type-safe configuration loader:
+
+```sh
+# Use a preset directly
+python train.py neuromanifold_gpt.config.presets.nano
+
+# Override specific parameters
+python train.py neuromanifold_gpt.config.presets.nano --batch_size=64 --max_iters=5000
+
+# Start from scratch with just overrides
+python train.py --learning_rate=1e-3 --max_iters=1000
+
+# Get help on available options
+python train.py --help
+```
+
+### Programmatic Usage
+
+**Direct instantiation:**
+```python
+from neuromanifold_gpt.config.training import TrainingConfig
+
+config = TrainingConfig(
+    batch_size=64,
+    learning_rate=1e-3,
+    max_iters=5000,
+    device='cuda'
+)
+```
+
+**Using preset functions:**
+```python
+from neuromanifold_gpt.config.presets import get_nano_config, get_shakespeare_char_config
+
+# Get a preset config
+config = get_nano_config()
+
+# Modify it as needed
+config.batch_size = 32
+config.learning_rate = 1e-4
+```
+
+### Migration from Legacy Configs
+
+If you have existing config files in `config/`, they still work but are **deprecated**:
+
+```sh
+# Old way (still works but shows deprecation warning)
+python train.py config/train_shakespeare_char.py
+
+# New way (recommended)
+python train.py neuromanifold_gpt.config.presets.shakespeare_char
+```
+
+For a complete migration guide, see [docs/config-migration-guide.md](docs/config-migration-guide.md).
+
+### Benefits of Type-Safe Configs
+
+✅ **Type Safety** - Full IDE autocomplete and type checking
+✅ **Security** - No arbitrary code execution
+✅ **Validation** - Clear error messages with recovery suggestions
+✅ **Documentation** - Self-documenting with field types and defaults
+✅ **Testability** - Configs are data, not code
+
 ## reproducing GPT-2
 
 A more serious deep learning professional may be more interested in reproducing GPT-2 results. So here we go - we first tokenize the dataset, in this case the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/), an open reproduction of OpenAI's (private) WebText:
@@ -157,6 +266,10 @@ python data/openwebtext/prepare.py
 This downloads and tokenizes the [OpenWebText](https://huggingface.co/datasets/openwebtext) dataset. It will create a `train.bin` and `val.bin` which holds the GPT2 BPE token ids in one sequence, stored as raw uint16 bytes. Then we're ready to kick off training. To reproduce GPT-2 (124M) you'll want at least an 8X A100 40GB node and run:
 
 ```sh
+# New recommended way
+torchrun --standalone --nproc_per_node=8 train.py neuromanifold_gpt.config.presets.small
+
+# Legacy way (still works)
 torchrun --standalone --nproc_per_node=8 train.py config/train_gpt2.py
 ```
 
@@ -180,6 +293,11 @@ Finally, to train on a single GPU simply run the `python train.py` script. Have 
 OpenAI GPT-2 checkpoints allow us to get some baselines in place for openwebtext. We can get the numbers as follows:
 
 ```sh
+# New recommended way
+$ python eval.py neuromanifold_gpt.config.presets.small
+$ python eval.py neuromanifold_gpt.config.presets.medium
+
+# Legacy way (still works)
 $ python train.py config/eval_gpt2.py
 $ python train.py config/eval_gpt2_medium.py
 $ python train.py config/eval_gpt2_large.py
@@ -207,7 +325,10 @@ Finetune pretrained GPT-2 models on your own data in minutes! Whether you're ada
 # 1. Prepare your data (example: Shakespeare)
 python data/shakespeare/prepare.py
 
-# 2. Start finetuning
+# 2. Start finetuning (new recommended way)
+python train.py neuromanifold_gpt.config.presets.small --init_from=gpt2
+
+# Legacy way (still works)
 python train.py config/finetune/gpt2_small.py
 
 # 3. Sample from your model

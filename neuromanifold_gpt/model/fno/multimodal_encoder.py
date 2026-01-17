@@ -453,6 +453,7 @@ class MultimodalFNOEncoder(nn.Module):
         audio_hop_length: int = 128,
         image_patch_size: int = 16,
         image_channels: int = 3,
+        fno_blend_alpha: float = 0.0,
     ):
         """
         Initialize multimodal FNO encoder.
@@ -530,6 +531,9 @@ class MultimodalFNOEncoder(nn.Module):
         # Final layer norm
         self.final_norm = nn.LayerNorm(embed_dim)
 
+        # FNO blend alpha: 0=pure embeddings (bypass), 1=pure FNO
+        self.fno_blend_alpha = fno_blend_alpha
+
         # Initialize weights
         self._init_weights()
 
@@ -591,11 +595,22 @@ class MultimodalFNOEncoder(nn.Module):
             0
         )  # Broadcast across batch and sequence
 
-        # Apply FNO backbone for spectral processing
-        fno_features = self.fno_encoder(embedded)
+        # Store pre-FNO embeddings (preserves token distinctiveness)
+        pre_fno = embedded
 
-        # Output projection with residual
-        output = fno_features + self.output_proj(fno_features)
+        # Apply FNO backbone for spectral/global context
+        fno_features = self.fno_encoder(embedded)
+        fno_projected = self.output_proj(fno_features)
+
+        # FNO FIX: Blend pre-FNO embeddings with FNO output to preserve token distinctiveness.
+        # The FNO provides global/spectral context (low frequencies) while the residual
+        # preserves local token information (high frequencies).
+        # alpha controls the blend: 0 = pure embeddings, 1 = pure FNO
+        alpha = getattr(self, "fno_blend_alpha", 0.0)
+        if alpha > 0:
+            output = (1 - alpha) * pre_fno + alpha * fno_projected
+        else:
+            output = pre_fno
 
         # Final normalization
         output = self.final_norm(output)

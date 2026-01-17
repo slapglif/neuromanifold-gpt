@@ -25,6 +25,7 @@ class WaveManifoldConfig(RalphBaseConfig):
     # Input Processing
     use_fno_encoder: bool = True
     fno_modes: int = 32
+    fno_blend_alpha: float = 0.0
 
     # Backbone
     backbone_type: str = "hyena"  # "mamba", "hyena", or "mom"

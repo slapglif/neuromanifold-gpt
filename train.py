@@ -108,6 +108,7 @@ class TrainingConfig:
     use_fno_encoder: bool = False
     fno_modes: int = 16
     fno_width: int = 32
+    fno_blend_alpha: float = 0.0
 
     use_mixture_of_mamba: bool = False
     mom_num_experts: int = 4
@@ -150,6 +151,7 @@ class TrainingConfig:
     use_fno_encoder: bool = True
     fno_modes: int = 32
     use_mamba_backbone: bool = True
+    backbone_type: str = "hyena"
     mamba_state_dim: int = 16
     mamba_expand: int = 2
     use_soliton_mixing: bool = True
@@ -680,7 +682,9 @@ def train(config: TrainingConfig) -> None:
             # Wave specific
             use_fno_encoder=config.use_fno_encoder,
             fno_modes=config.fno_modes,
+            fno_blend_alpha=getattr(config, "fno_blend_alpha", 0.0),
             use_mamba_backbone=config.use_mamba_backbone,
+            backbone_type=config.backbone_type,
             mamba_state_dim=config.mamba_state_dim,
             mamba_expand=config.mamba_expand,
             use_soliton_mixing=config.use_soliton_mixing,

@@ -33,6 +33,7 @@ class WaveManifoldGPT(nn.Module):
                 else 50304,
                 embed_dim=config.n_embd,
                 fno_modes=config.fno_modes,
+                fno_blend_alpha=getattr(config, "fno_blend_alpha", 0.0),
             )
         else:
             self.token_emb = nn.Embedding(config.vocab_size, config.n_embd)
@@ -132,7 +133,7 @@ class WaveManifoldGPT(nn.Module):
                 logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1
             )
             loss = loss_discrete
-            info["loss_discrete"] = loss_discrete.item()
+            info["loss_discrete"] = loss_discrete  # Keep as tensor
 
             # Continuous Loss (Flow Matching / SAC)
             if self.config.use_continuous_head:
@@ -160,16 +161,12 @@ class WaveManifoldGPT(nn.Module):
                     # 1. Actor Loss: MSE(action, target) (BC)
                     # 2. Critic Loss: Bellman update (if we had a reward)
 
-                    # Simplified for initial training: MSE on the mean action
-                    dist = self.continuous_head.actor(x)  # Returns Normal distribution
-                    dist.rsample()
-
-                    # Log prob of the target embedding under the policy
-                    log_prob = dist.log_prob(target_embeds).sum(-1)
-                    loss_sac = -log_prob.mean()  # Maximize likelihood of target
+                    # Behavior cloning: MSE between predicted mean and target embeddings
+                    dist = self.continuous_head.actor.get_dist(x)
+                    loss_sac = torch.nn.functional.mse_loss(dist.mean, target_embeds)
 
                     loss = loss + loss_sac * 0.1  # Weighting
-                    info["loss_sac"] = loss_sac.item()
+                    info["loss_sac"] = loss_sac  # Keep as tensor to avoid graph break
                 else:
                     cont_out = self.continuous_head.compute_loss(
                         target_embeds, condition=x
@@ -178,12 +175,12 @@ class WaveManifoldGPT(nn.Module):
 
                     # Add to total loss
                     loss = loss + loss_cont
-                    info["loss_continuous"] = loss_cont.item()
+                    info["loss_continuous"] = loss_cont  # Keep as tensor
 
             # Topological Loss
             if self.config.use_topological_loss:
                 topo_loss, topo_info = self.topo_head(x)
                 loss = loss + self.config.topology_weight * topo_loss
-                info.update(topo_info)
+                info.update(topo_info)  # topo_info should ideally contain tensors
 
         return logits, loss, info
