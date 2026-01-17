@@ -79,6 +79,9 @@ class TrainConfig:
         warmup_iters: Number of warmup iterations
         lr_decay_iters: Number of iterations for LR decay
         early_stopping_patience: Patience for early stopping (epochs)
+        teacher_checkpoint: Path to teacher model checkpoint for distillation
+        distillation_alpha: Weight for distillation loss (0=task only, 1=distillation only)
+        distillation_temperature: Temperature for softening teacher predictions
         sample_interval: Generate samples every N steps
         sample_max_tokens: Maximum tokens to generate per sample
         sample_temperature: Sampling temperature
@@ -154,6 +157,11 @@ class TrainConfig:
 
     # Early stopping
     early_stopping_patience: int = 50
+
+    # Distillation
+    teacher_checkpoint: str = ""
+    distillation_alpha: float = 0.5
+    distillation_temperature: float = 2.0
 
     # Sampling during training
     sample_interval: int = 500
