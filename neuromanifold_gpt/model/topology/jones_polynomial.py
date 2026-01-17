@@ -405,7 +405,7 @@ class JonesApproximator(nn.Module):
             evaluations = self.evaluator(bracket)  # (B, n_evals)
             features.append(evaluations)
 
-            info["bracket_norm"] = bracket.norm(dim=-1).mean().item()
+            info["bracket_norm"] = bracket.norm(dim=-1).mean()
             info["poly_evals"] = evaluations.detach()
         else:
             # Direct evaluation from representation
@@ -421,7 +421,7 @@ class JonesApproximator(nn.Module):
         if self.use_temperley_lieb:
             tl_features = self.tl_processor(rep_flat)  # (B, tl_dim)
             features.append(tl_features)
-            info["tl_norm"] = tl_features.norm(dim=-1).mean().item()
+            info["tl_norm"] = tl_features.norm(dim=-1).mean()
 
         # Writhe (signed crossing number)
         writhe = self.writhe_head(rep_flat)  # (B, 1)
@@ -464,9 +464,7 @@ class JonesApproximator(nn.Module):
 
         # Compile info dictionary
         info = {
-            "braid_rep": braid_rep.detach(),
-            "generator_weights": braid_info["generator_weights"],
-            "dominant_generator": braid_info["dominant_generator"],
+            "braid_norm": braid_rep.norm(dim=(-2, -1)).mean(),
             **invariant_info,
         }
 

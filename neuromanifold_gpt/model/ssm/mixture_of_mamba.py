@@ -96,6 +96,7 @@ class MixtureOfMambaBlock(nn.Module):
         expand_factor: int = 2,
         load_balance_weight: float = 0.01,
         jitter_noise: float = 0.01,
+        memory_efficient: bool = False,
         **mamba_kwargs,
     ):
         super().__init__()
@@ -117,6 +118,7 @@ class MixtureOfMambaBlock(nn.Module):
                     embed_dim=embed_dim,
                     state_dim=state_dim,
                     expand_factor=expand_factor,
+                    memory_efficient=memory_efficient,
                     **mamba_kwargs,
                 )
                 for _ in range(num_experts)
@@ -172,7 +174,7 @@ class MixtureOfMambaBlock(nn.Module):
             "load_balance_loss": load_balance_loss,
             "expert_load": load,
             "routing_entropy": routing_entropy,
-            "num_experts_used": (load > 0).sum().item(),
+            "num_experts_used": (load > 0).sum(),
         }
 
         return output, info
@@ -215,6 +217,7 @@ class AdaptiveMixtureOfMamba(nn.Module):
         top_k: int = 2,
         state_dim: int = 16,
         use_spectral_routing: bool = True,
+        memory_efficient: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -226,6 +229,7 @@ class AdaptiveMixtureOfMamba(nn.Module):
             num_experts=num_experts,
             top_k=top_k,
             state_dim=state_dim,
+            memory_efficient=memory_efficient,
             **kwargs,
         )
 

@@ -56,6 +56,7 @@ class WaveManifoldBlock(nn.Module):
                 use_spectral_routing=True,
                 expand_factor=config.mamba_expand,
                 dropout=config.dropout,
+                memory_efficient=False,
             )
         else:
             self.mixer = MambaBlock(
@@ -63,6 +64,7 @@ class WaveManifoldBlock(nn.Module):
                 state_dim=config.mamba_state_dim,
                 expand_factor=config.mamba_expand,
                 dropout=config.dropout,
+                memory_efficient=False,
             )
 
         # 2. Soliton Interaction (Feature Physics)

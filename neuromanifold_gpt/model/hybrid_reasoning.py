@@ -38,9 +38,9 @@ class ThinkingLayer(nn.Module):
         self.embed_dim = embed_dim
         self.n_heads = n_heads
 
-        assert (
-            embed_dim % n_heads == 0
-        ), f"embed_dim {embed_dim} must be divisible by n_heads {n_heads}"
+        assert embed_dim % n_heads == 0, (
+            f"embed_dim {embed_dim} must be divisible by n_heads {n_heads}"
+        )
         self.head_dim = embed_dim // n_heads
 
         self.attn = nn.MultiheadAttention(
@@ -173,6 +173,7 @@ class HybridReasoningModule(nn.Module):
         std_features = x.std(dim=1)
         return torch.cat([mean_features, max_features, std_features], dim=-1)
 
+    @torch.compiler.disable
     def forward(
         self,
         x: torch.Tensor,
@@ -218,17 +219,17 @@ class HybridReasoningModule(nn.Module):
                 thinking_x = x[thinking_mask]
                 for layer in self.thinking_layers:
                     thinking_x = layer(thinking_x)
-                output[thinking_mask] = thinking_x
+                output[thinking_mask] = thinking_x.to(output.dtype)
 
             if fast_mask.any():
                 fast_x = x[fast_mask]
                 fast_out = self.fast_path(fast_x)
-                output[fast_mask] = fast_out
+                output[fast_mask] = fast_out.to(output.dtype)
 
         info = {
             "thinking_probs": thinking_probs,
             "mode_selections": mode_selections,
-            "thinking_ratio": mode_selections.float().mean().item(),
+            "thinking_ratio": mode_selections.float().mean(),
         }
 
         return output, info

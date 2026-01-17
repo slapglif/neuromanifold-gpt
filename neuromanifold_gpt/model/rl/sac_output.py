@@ -28,7 +28,7 @@ class GaussianActor(nn.Module):
         state_dim: int,
         action_dim: int,
         hidden_dim: int = 256,
-        log_std_min: float = -20.0,
+        log_std_min: float = -5.0,
         log_std_max: float = 2.0,
     ):
         super().__init__()
@@ -47,6 +47,22 @@ class GaussianActor(nn.Module):
         self.mean_head = nn.Linear(hidden_dim, action_dim)
         self.log_std_head = nn.Linear(hidden_dim, action_dim)
 
+    def get_dist(self, state: torch.Tensor) -> Normal:
+        """
+        Get the policy distribution for a given state.
+
+        Args:
+            state: [batch, seq_len, state_dim]
+        Returns:
+            Normal distribution
+        """
+        features = self.net(state)
+        mean = self.mean_head(features)
+        log_std = self.log_std_head(features)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        std = torch.exp(log_std)
+        return Normal(mean, std)
+
     def forward(
         self, state: torch.Tensor, deterministic: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -60,17 +76,13 @@ class GaussianActor(nn.Module):
             log_prob: [batch, seq_len, 1]
             mean: [batch, seq_len, action_dim]
         """
-        features = self.net(state)
-        mean = self.mean_head(features)
-        log_std = self.log_std_head(features)
-        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
-        std = torch.exp(log_std)
+        dist = self.get_dist(state)
+        mean = dist.mean
 
         if deterministic:
             action = torch.tanh(mean)
             log_prob = torch.zeros_like(mean[..., :1])
         else:
-            dist = Normal(mean, std)
             action_pre_tanh = dist.rsample()
             log_prob = dist.log_prob(action_pre_tanh).sum(dim=-1, keepdim=True)
             log_prob = log_prob - (
@@ -197,6 +209,41 @@ class SACOutputHead(nn.Module):
         with torch.no_grad():
             action, _, _ = self.actor(state, deterministic=deterministic)
         return action
+
+    def evaluate_action(
+        self, state: torch.Tensor, action: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Evaluate log probability of an action (target) under the current policy.
+
+        Args:
+            state: [batch, seq_len, embed_dim]
+            action: [batch, seq_len, embed_dim] (target embedding)
+
+        Returns:
+            log_prob: [batch, seq_len]
+        """
+        dist = self.actor.get_dist(state)
+
+        # Invert tanh to get pre-tanh action
+        # action = tanh(u) => u = atanh(action)
+        # Numerical stability: clamp action to (-1 + eps, 1 - eps)
+        eps = 1e-6
+        action_clamped = torch.clamp(action, -1.0 + eps, 1.0 - eps)
+        action_pre_tanh = torch.atanh(action_clamped)
+
+        log_prob = dist.log_prob(action_pre_tanh).sum(dim=-1)
+
+        # Tanh correction for log_prob
+        # log(pi(a)) = log(mu(u)) - sum(log(1 - tanh(u)^2))
+        correction = 2 * (
+            torch.log(torch.tensor(2.0))
+            - action_pre_tanh
+            - F.softplus(-2 * action_pre_tanh)
+        )
+        log_prob = log_prob - correction.sum(dim=-1)
+
+        return log_prob
 
     def compute_loss(
         self,

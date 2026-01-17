@@ -305,14 +305,12 @@ class SineGordonSolver(PDESolver):
         charge = self.compute_topological_charge(u)
 
         info = {
-            "energy": energy_final.mean().item(),
-            "energy_initial": energy_initial.mean().item(),
+            "energy": energy_final.mean(),
+            "energy_initial": energy_initial.mean(),
             "energy_conservation": (
                 (energy_final - energy_initial).abs() / (energy_initial.abs() + 1e-8)
-            )
-            .mean()
-            .item(),
-            "topological_charge": charge.mean().item(),
+            ).mean(),
+            "topological_charge": charge.mean(),
             "u_t": u_t,  # Return velocity for chaining
         }
 

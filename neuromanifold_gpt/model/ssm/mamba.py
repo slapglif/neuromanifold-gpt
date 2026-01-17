@@ -35,6 +35,9 @@ from neuromanifold_gpt.model.ssm.selective_scan import (
     ParallelSelectiveScan,
     SelectiveScan,
 )
+from neuromanifold_gpt.model.ssm.selective_scan_optimized import (
+    MemoryEfficientSelectiveScan,
+)
 
 
 class MambaBlock(nn.Module):
@@ -74,6 +77,8 @@ class MambaBlock(nn.Module):
         use_conv_bias: bool = True,
         use_norm: bool = True,
         use_parallel_scan: bool = False,
+        memory_efficient: bool = True,
+        chunk_size: int = 64,
     ):
         """
         Initialize MambaBlock.
@@ -93,6 +98,8 @@ class MambaBlock(nn.Module):
             use_conv_bias: Whether to use bias in convolution
             use_norm: Whether to use layer normalization
             use_parallel_scan: Whether to use parallel associative scan (faster for long sequences)
+            memory_efficient: Use memory-efficient chunked scan (recommended for limited GPU memory)
+            chunk_size: Chunk size for memory-efficient scan (lower = less memory, more overhead)
         """
         super().__init__()
 
@@ -120,17 +127,37 @@ class MambaBlock(nn.Module):
         )
 
         # Selective scan (core SSM mechanism)
-        # Choose between sequential and parallel implementation
-        scan_class = ParallelSelectiveScan if use_parallel_scan else SelectiveScan
-        self.ssm = scan_class(
-            embed_dim=self.inner_dim,
-            state_dim=state_dim,
-            dt_rank=dt_rank,
-            dt_min=dt_min,
-            dt_max=dt_max,
-            use_hippo_init=use_hippo_init,
-            hippo_type=hippo_type,
-        )
+        # Priority: memory_efficient > parallel > sequential
+        if memory_efficient:
+            self.ssm = MemoryEfficientSelectiveScan(
+                embed_dim=self.inner_dim,
+                state_dim=state_dim,
+                dt_rank=dt_rank,
+                dt_min=dt_min,
+                dt_max=dt_max,
+                chunk_size=chunk_size,
+                gradient_checkpointing=True,
+            )
+        elif use_parallel_scan:
+            self.ssm = ParallelSelectiveScan(
+                embed_dim=self.inner_dim,
+                state_dim=state_dim,
+                dt_rank=dt_rank,
+                dt_min=dt_min,
+                dt_max=dt_max,
+                use_hippo_init=use_hippo_init,
+                hippo_type=hippo_type,
+            )
+        else:
+            self.ssm = SelectiveScan(
+                embed_dim=self.inner_dim,
+                state_dim=state_dim,
+                dt_rank=dt_rank,
+                dt_min=dt_min,
+                dt_max=dt_max,
+                use_hippo_init=use_hippo_init,
+                hippo_type=hippo_type,
+            )
 
         # Output projection: inner_dim -> embed_dim
         self.out_proj = nn.Linear(self.inner_dim, embed_dim, bias=bias)

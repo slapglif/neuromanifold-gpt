@@ -349,22 +349,22 @@ class TopologicalHead(nn.Module):
             # Smoothness loss on polynomial coefficients
             smoothness_loss = self.compute_smoothness_loss(poly_features)
             total_loss = total_loss + self.smoothness_weight * smoothness_loss
-            info["smoothness_loss"] = smoothness_loss.item()
+        info["smoothness_loss"] = smoothness_loss
 
-            # Regularity loss on invariants
-            regularity_loss = self.compute_regularity_loss(poly_features)
-            total_loss = total_loss + self.regularity_weight * regularity_loss
-            info["regularity_loss"] = regularity_loss.item()
+        # 3. Regularity loss (optional)
+        regularity_loss = self.regularity_weight * poly_features.norm(dim=-1).mean()
+        total_loss = total_loss + regularity_loss
+        info["regularity_loss"] = regularity_loss
 
-            # Store Jones info
-            info["poly_norm"] = poly_features.norm(dim=-1).mean().item()
-            info.update(
-                {
-                    f"jones_{k}": v
-                    for k, v in jones_info.items()
-                    if isinstance(v, (int, float))
-                }
-            )
+        # Add diagnostics
+        info["poly_norm"] = poly_features.norm(dim=-1).mean()
+        info.update(
+            {
+                f"jones_{k}": v
+                for k, v in jones_info.items()
+                if isinstance(v, (int, float))
+            }
+        )
 
         # Braid representation computation
         if self.use_braid:
@@ -373,26 +373,24 @@ class TopologicalHead(nn.Module):
             # Consistency loss on braid representation
             consistency_loss = self.compute_consistency_loss(braid_rep)
             total_loss = total_loss + self.consistency_weight * consistency_loss
-            info["consistency_loss"] = consistency_loss.item()
+            info["consistency_loss"] = consistency_loss
 
             # Store braid info
-            info["braid_norm"] = braid_rep.norm(dim=(-2, -1)).mean().item()
-            info["dominant_generator"] = (
-                braid_info["dominant_generator"].float().mean().item()
-            )
+            info["braid_norm"] = braid_rep.norm(dim=(-2, -1)).mean()
+            info["dominant_generator"] = braid_info["dominant_generator"].float().mean()
 
         # Temporal coherence loss
         if self.use_temporal_coherence:
             coherence_loss = self.compute_coherence_loss(x)
             total_loss = total_loss + self.coherence_weight * coherence_loss
-            info["coherence_loss"] = coherence_loss.item()
+            info["coherence_loss"] = coherence_loss
 
         # Apply temperature scaling
         total_loss = total_loss / temperature
 
         # Store summary statistics
-        info["total_loss"] = total_loss.item()
-        info["temperature"] = temperature.item()
+        info["total_loss"] = total_loss
+        info["temperature"] = temperature
 
         return total_loss, info
 
