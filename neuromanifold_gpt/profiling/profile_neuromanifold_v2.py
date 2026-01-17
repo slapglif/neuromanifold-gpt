@@ -5,13 +5,13 @@ NeuroManifoldGPT Performance Profiler v2
 Uses smaller batch size initially to avoid OOM, then scales.
 """
 
-import time
-import gc
 import torch
 import torch.nn as nn
-from typing import Callable
 from rich.console import Console
 from rich.table import Table
+
+# Import profiling utilities
+from neuromanifold_gpt.utils.profiling import profile_component, profile_forward_backward, cleanup
 
 # Import model components
 from neuromanifold_gpt.config import NeuroManifoldConfig
@@ -35,114 +35,6 @@ SEQ_LEN = 256
 N_WARMUP = 2
 N_ITERS = 5  # Very fast
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def cleanup():
-    gc.collect()
-    if DEVICE == "cuda":
-        torch.cuda.empty_cache()
-
-
-def profile_component(
-    name: str,
-    module: nn.Module,
-    input_fn: Callable[[], tuple],
-    n_warmup: int = N_WARMUP,
-    n_iters: int = N_ITERS,
-) -> dict:
-    """Profile a single component."""
-    module = module.to(DEVICE)
-    module.eval()
-
-    # Warmup
-    with torch.no_grad():
-        for _ in range(n_warmup):
-            inputs = input_fn()
-            _ = module(*inputs)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-    # Timed runs
-    times = []
-    with torch.no_grad():
-        for _ in range(n_iters):
-            inputs = input_fn()
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-            start = time.perf_counter()
-            output = module(*inputs)
-
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-            end = time.perf_counter()
-            times.append((end - start) * 1000)  # ms
-
-    # Cleanup
-    del module
-    cleanup()
-
-    return {
-        "name": name,
-        "mean_ms": sum(times) / len(times),
-        "min_ms": min(times),
-        "max_ms": max(times),
-    }
-
-
-def profile_forward_backward(
-    name: str,
-    module: nn.Module,
-    input_fn: Callable[[], tuple],
-    loss_fn: Callable,
-    n_warmup: int = N_WARMUP,
-    n_iters: int = N_ITERS,
-) -> dict:
-    """Profile forward + backward pass."""
-    module = module.to(DEVICE)
-    module.train()
-
-    # Warmup
-    for _ in range(n_warmup):
-        inputs = input_fn()
-        output = module(*inputs)
-        loss = loss_fn(output)
-        loss.backward()
-        module.zero_grad()
-        if DEVICE == "cuda":
-            torch.cuda.synchronize()
-
-    # Timed runs
-    times = []
-    for _ in range(n_iters):
-        inputs = input_fn()
-        if DEVICE == "cuda":
-            torch.cuda.synchronize()
-
-        start = time.perf_counter()
-
-        output = module(*inputs)
-        loss = loss_fn(output)
-        loss.backward()
-        module.zero_grad()
-
-        if DEVICE == "cuda":
-            torch.cuda.synchronize()
-
-        end = time.perf_counter()
-        times.append((end - start) * 1000)  # ms
-
-    # Cleanup
-    del module
-    cleanup()
-
-    return {
-        "name": name,
-        "mean_ms": sum(times) / len(times),
-        "min_ms": min(times),
-        "max_ms": max(times),
-    }
 
 
 def main():
@@ -188,7 +80,7 @@ def main():
     def encoder_input():
         return (torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE),)
 
-    result = profile_component("SemanticFoldingEncoder", encoder, encoder_input)
+    result = profile_component("SemanticFoldingEncoder", encoder, encoder_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("SemanticFoldingEncoder", result['mean_ms'], unit="ms")
 
@@ -205,7 +97,7 @@ def main():
         sdr = torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE)
         return (sdr,)
 
-    result = profile_component("ManifoldProjection", manifold, manifold_input)
+    result = profile_component("ManifoldProjection", manifold, manifold_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("ManifoldProjection", result['mean_ms'], unit="ms")
 
@@ -225,7 +117,7 @@ def main():
         ).contiguous()
         return (coords, metric)
 
-    result = profile_component("SpectralDecomposition", spectral, spectral_input)
+    result = profile_component("SpectralDecomposition", spectral, spectral_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("SpectralDecomposition", result['mean_ms'], unit="ms")
 
@@ -250,7 +142,7 @@ def main():
         )
         return (stimulus, config.n_fhn_steps)
 
-    result = profile_component("FHNDynamics", fhn_dynamics, fhn_input)
+    result = profile_component("FHNDynamics", fhn_dynamics, fhn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("FHNDynamics", result['mean_ms'], unit="ms")
 
@@ -273,7 +165,7 @@ def main():
         spectral_basis = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_eigenvectors, device=DEVICE)
         return (x, spectral_basis)
 
-    result = profile_component("FHNAttention", fhn_attn, fhn_attn_input)
+    result = profile_component("FHNAttention", fhn_attn, fhn_attn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("FHNAttention", result['mean_ms'], unit="ms")
 
@@ -293,7 +185,7 @@ def main():
         x = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE)
         return (x,)
 
-    result = profile_component("WaveKAN_FFN", wavekan_ffn, ffn_input)
+    result = profile_component("WaveKAN_FFN", wavekan_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("WaveKAN_FFN", result['mean_ms'], unit="ms")
 
@@ -307,7 +199,7 @@ def main():
         hidden_dim=swiglu_hidden,
     )
 
-    result = profile_component("SwiGLU_FFN", swiglu_ffn, ffn_input)
+    result = profile_component("SwiGLU_FFN", swiglu_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("SwiGLU_FFN", result['mean_ms'], unit="ms")
 
@@ -321,7 +213,7 @@ def main():
         degree=config.kan_degree,
     )
 
-    result = profile_component("ChebyKAN_FFN", chebykan_ffn, ffn_input)
+    result = profile_component("ChebyKAN_FFN", chebykan_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("ChebyKAN_FFN", result['mean_ms'], unit="ms")
 
@@ -336,7 +228,7 @@ def main():
         sdr = torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE)
         return (sdr,)
 
-    result = profile_component("NeuroManifoldBlock", block, block_input)
+    result = profile_component("NeuroManifoldBlock", block, block_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("NeuroManifoldBlock", result['mean_ms'], unit="ms")
 
@@ -350,7 +242,7 @@ def main():
         tokens = torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE)
         return (tokens,)
 
-    result = profile_component("FullModel_Forward", model, model_input)
+    result = profile_component("FullModel_Forward", model, model_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("FullModel_Forward", result['mean_ms'], unit="ms")
 
@@ -369,7 +261,7 @@ def main():
         logits, loss, info = output
         return loss
 
-    result = profile_forward_backward("FullModel_FwdBwd", model, model_input_train, loss_fn_model)
+    result = profile_forward_backward("FullModel_FwdBwd", model, model_input_train, loss_fn_model, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(result)
     logger.metric("FullModel_FwdBwd", result['mean_ms'], unit="ms")
 

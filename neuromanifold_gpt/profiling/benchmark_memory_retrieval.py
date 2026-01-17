@@ -14,6 +14,13 @@ import torch
 from rich.console import Console
 from rich.table import Table
 
+# Note: We import shared profiling utilities for consistency with other profiling scripts.
+# However, benchmark_loop_based() and benchmark_vectorized() are specialized benchmark
+# functions that compare loop-based vs vectorized memory retrieval approaches.
+# They cannot be directly replaced with profile_component() since they benchmark
+# specific method calls on a memory object rather than profiling a full module.
+from neuromanifold_gpt.utils.profiling import cleanup
+
 console = Console()
 
 # Benchmark parameters
@@ -164,6 +171,9 @@ def main():
     populate_memory(memory, MEMORY_CAPACITY)
     console.print(f"Populated memory with {len(memory)} items\n")
 
+    # Clean up after memory population
+    cleanup()
+
     # Verify correctness first
     console.print("[bold]Verifying correctness...[/bold]")
     test_batch_size = 8
@@ -178,6 +188,9 @@ def main():
     else:
         console.print("[red]✗ Correctness check failed - results differ between methods[/red]\n")
         return
+
+    # Clean up after correctness verification
+    cleanup()
 
     # Benchmark across different batch sizes
     console.print("[bold]Running benchmarks...[/bold]\n")

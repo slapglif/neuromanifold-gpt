@@ -3,6 +3,11 @@
 Standalone Benchmark for Memory Retrieval: Loop vs Vectorized
 
 Runs without complex imports - directly includes the SDREngramMemory code.
+
+Note: This file is intentionally standalone and does NOT import from
+neuromanifold_gpt.utils.profiling. It includes all necessary code inline
+to allow benchmarking without requiring the full codebase to be set up.
+For production profiling that uses shared utilities, see benchmark_memory_retrieval.py.
 """
 
 import time

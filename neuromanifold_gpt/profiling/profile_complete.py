@@ -4,13 +4,12 @@ Complete NeuroManifoldGPT Profiler
 Works around JIT warm-up issues by running sufficient warm-up iterations.
 """
 
-import time
-import gc
 import torch
 import torch.nn as nn
 from rich.console import Console
 from rich.table import Table
 from neuromanifold_gpt.utils.logging import get_logger
+from neuromanifold_gpt.utils.profiling import profile_component, profile_forward_backward, cleanup
 
 logger = get_logger(__name__)
 console = Console()  # Keep for table rendering
@@ -21,115 +20,6 @@ SEQ_LEN = 256
 N_WARMUP = 10  # Extra warmup to handle JIT issues
 N_ITERS = 20
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def cleanup():
-    gc.collect()
-    if DEVICE == "cuda":
-        torch.cuda.empty_cache()
-
-
-def profile_component(name, module, input_fn, n_warmup=N_WARMUP, n_iters=N_ITERS):
-    """Profile a single component."""
-    module = module.to(DEVICE)
-    module.eval()
-
-    # Extended warmup
-    with torch.no_grad():
-        for _ in range(n_warmup):
-            inputs = input_fn()
-            _ = module(*inputs)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-    # Memory before
-    if DEVICE == "cuda":
-        torch.cuda.reset_peak_memory_stats()
-        mem_before = torch.cuda.memory_allocated()
-
-    # Timed runs
-    times = []
-    with torch.no_grad():
-        for _ in range(n_iters):
-            inputs = input_fn()
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-            start = time.perf_counter()
-            _ = module(*inputs)
-
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-            times.append((time.perf_counter() - start) * 1000)
-
-    # Memory after
-    if DEVICE == "cuda":
-        mem_peak = torch.cuda.max_memory_allocated()
-        mem_used = (mem_peak - mem_before) / 1e6
-    else:
-        mem_used = 0
-
-    # Cleanup
-    del module
-    cleanup()
-
-    return {
-        "name": name,
-        "mean_ms": sum(times) / len(times),
-        "min_ms": min(times),
-        "max_ms": max(times),
-        "std_ms": (sum((t - sum(times)/len(times))**2 for t in times) / len(times)) ** 0.5,
-        "mem_mb": mem_used,
-    }
-
-
-def profile_fwd_bwd(name, module, input_fn, loss_fn, n_warmup=N_WARMUP, n_iters=N_ITERS):
-    """Profile forward + backward pass."""
-    module = module.to(DEVICE)
-    module.train()
-
-    # Extended warmup
-    for _ in range(n_warmup):
-        inputs = input_fn()
-        output = module(*inputs)
-        loss = loss_fn(output)
-        loss.backward()
-        module.zero_grad()
-        if DEVICE == "cuda":
-            torch.cuda.synchronize()
-
-    # Timed runs
-    times = []
-    for _ in range(n_iters):
-        inputs = input_fn()
-        if DEVICE == "cuda":
-            torch.cuda.synchronize()
-
-        start = time.perf_counter()
-
-        output = module(*inputs)
-        loss = loss_fn(output)
-        loss.backward()
-        module.zero_grad()
-
-        if DEVICE == "cuda":
-            torch.cuda.synchronize()
-
-        times.append((time.perf_counter() - start) * 1000)
-
-    # Cleanup
-    del module
-    cleanup()
-
-    return {
-        "name": name,
-        "mean_ms": sum(times) / len(times),
-        "min_ms": min(times),
-        "max_ms": max(times),
-        "std_ms": (sum((t - sum(times)/len(times))**2 for t in times) / len(times)) ** 0.5,
-        "mem_mb": 0,
-    }
 
 
 def main():
@@ -183,8 +73,10 @@ def main():
     )
     def encoder_input():
         return (torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE),)
-    r = profile_component("SemanticFoldingEncoder", encoder, encoder_input)
+    r = profile_component("SemanticFoldingEncoder", encoder, encoder_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del encoder
+    cleanup()
     logger.metric("SemanticFoldingEncoder", r['mean_ms'], unit="ms")
 
     # 2. ManifoldProjection
@@ -192,8 +84,10 @@ def main():
     manifold = ManifoldProjection(config.sdr_size, config.manifold_dim)
     def manifold_input():
         return (torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE),)
-    r = profile_component("ManifoldProjection", manifold, manifold_input)
+    r = profile_component("ManifoldProjection", manifold, manifold_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del manifold
+    cleanup()
     logger.metric("ManifoldProjection", r['mean_ms'], unit="ms")
 
     # 3. SpectralDecomposition
@@ -202,8 +96,10 @@ def main():
     def spectral_input():
         coords = torch.randn(BATCH_SIZE, SEQ_LEN, config.manifold_dim, device=DEVICE)
         return (coords, None)
-    r = profile_component("SpectralDecomposition", spectral, spectral_input)
+    r = profile_component("SpectralDecomposition", spectral, spectral_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del spectral
+    cleanup()
     logger.metric("SpectralDecomposition", r['mean_ms'], unit="ms")
 
     # 4. FHNAttention
@@ -221,8 +117,10 @@ def main():
         x = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE)
         spectral_basis = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_eigenvectors, device=DEVICE)
         return (x, spectral_basis)
-    r = profile_component("FHNAttention", fhn_attn, fhn_input)
+    r = profile_component("FHNAttention", fhn_attn, fhn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del fhn_attn
+    cleanup()
     logger.metric("FHNAttention", r['mean_ms'], unit="ms")
 
     # 5. WaveKAN FFN
@@ -236,22 +134,28 @@ def main():
     )
     def ffn_input():
         return (torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE),)
-    r = profile_component("WaveKAN_FFN", wavekan_ffn, ffn_input)
+    r = profile_component("WaveKAN_FFN", wavekan_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del wavekan_ffn
+    cleanup()
     logger.metric("WaveKAN_FFN", r['mean_ms'], unit="ms")
 
     # 6. SwiGLU FFN
     logger.info("Profiling SwiGLU FFN...")
     swiglu_ffn = SwiGLU(config.n_embd, int(mlp_hidden * 2 / 3))
-    r = profile_component("SwiGLU_FFN", swiglu_ffn, ffn_input)
+    r = profile_component("SwiGLU_FFN", swiglu_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del swiglu_ffn
+    cleanup()
     logger.metric("SwiGLU_FFN", r['mean_ms'], unit="ms")
 
     # 7. ChebyKAN FFN
     logger.info("Profiling ChebyKAN FFN...")
     chebykan_ffn = ChebyKANFFN(config.n_embd, mlp_hidden, degree=config.kan_degree)
-    r = profile_component("ChebyKAN_FFN", chebykan_ffn, ffn_input)
+    r = profile_component("ChebyKAN_FFN", chebykan_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del chebykan_ffn
+    cleanup()
     logger.metric("ChebyKAN_FFN", r['mean_ms'], unit="ms")
 
     # 8. NeuroManifoldBlock
@@ -260,8 +164,10 @@ def main():
     block = NeuroManifoldBlock(config=block_cfg)
     def block_input():
         return (torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE),)
-    r = profile_component("NeuroManifoldBlock", block, block_input)
+    r = profile_component("NeuroManifoldBlock", block, block_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del block
+    cleanup()
     logger.metric("NeuroManifoldBlock", r['mean_ms'], unit="ms")
 
     # 9. Full Model Forward
@@ -269,8 +175,10 @@ def main():
     model = NeuroManifoldGPT(config)
     def model_input():
         return (torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE),)
-    r = profile_component("FullModel_Forward", model, model_input)
+    r = profile_component("FullModel_Forward", model, model_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del model
+    cleanup()
     logger.metric("FullModel_Forward", r['mean_ms'], unit="ms")
 
     # 10. Full Model Forward+Backward
@@ -283,8 +191,10 @@ def main():
     def loss_fn(output):
         logits, loss, info = output
         return loss
-    r = profile_fwd_bwd("FullModel_FwdBwd", model, model_input_train, loss_fn)
+    r = profile_forward_backward("FullModel_FwdBwd", model, model_input_train, loss_fn, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE, track_memory=True)
     results.append(r)
+    del model
+    cleanup()
     logger.metric("FullModel_FwdBwd", r['mean_ms'], unit="ms")
 
     # =========================================================================

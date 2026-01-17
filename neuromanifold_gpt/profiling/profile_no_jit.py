@@ -4,14 +4,13 @@ Profile without JIT-compiled FHN.
 Uses plain Python FHN implementation.
 """
 
-import time
-import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, einsum
 from rich.console import Console
 from rich.table import Table
+from neuromanifold_gpt.utils.profiling import profile_component, cleanup
 
 console = Console()
 
@@ -20,12 +19,6 @@ SEQ_LEN = 256
 N_WARMUP = 5
 N_ITERS = 10
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def cleanup():
-    gc.collect()
-    if DEVICE == "cuda":
-        torch.cuda.empty_cache()
 
 
 class FHNDynamicsNoJIT(nn.Module):
@@ -134,41 +127,6 @@ class FHNAttentionNoJIT(nn.Module):
         return out, {}
 
 
-def profile_component(name, module, input_fn, n_warmup=N_WARMUP, n_iters=N_ITERS):
-    module = module.to(DEVICE)
-    module.eval()
-
-    # Warmup
-    with torch.no_grad():
-        for _ in range(n_warmup):
-            inputs = input_fn()
-            _ = module(*inputs)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-    # Timed runs
-    times = []
-    with torch.no_grad():
-        for _ in range(n_iters):
-            inputs = input_fn()
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-            start = time.perf_counter()
-            _ = module(*inputs)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-            times.append((time.perf_counter() - start) * 1000)
-
-    del module
-    cleanup()
-
-    return {
-        "name": name,
-        "mean_ms": sum(times) / len(times),
-        "min_ms": min(times),
-    }
-
-
 def main():
     console.print(f"\n[bold cyan]NeuroManifoldGPT Profiler (No JIT)[/bold cyan]")
     console.print(f"Device: {DEVICE}")
@@ -200,8 +158,10 @@ def main():
     encoder = SemanticFoldingEncoder(65, config.sdr_size, config.sdr_n_active)
     def encoder_input():
         return (torch.randint(0, 65, (BATCH_SIZE, SEQ_LEN), device=DEVICE),)
-    r = profile_component("SemanticFoldingEncoder", encoder, encoder_input)
+    r = profile_component("SemanticFoldingEncoder", encoder, encoder_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del encoder
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # 2. Manifold
@@ -209,8 +169,10 @@ def main():
     manifold = ManifoldProjection(config.sdr_size, config.manifold_dim)
     def manifold_input():
         return (torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE),)
-    r = profile_component("ManifoldProjection", manifold, manifold_input)
+    r = profile_component("ManifoldProjection", manifold, manifold_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del manifold
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # 3. Spectral
@@ -218,8 +180,10 @@ def main():
     spectral = SpectralDecomposition(config.manifold_dim, config.n_eigenvectors)
     def spectral_input():
         return (torch.randn(BATCH_SIZE, SEQ_LEN, config.manifold_dim, device=DEVICE), None)
-    r = profile_component("SpectralDecomposition", spectral, spectral_input)
+    r = profile_component("SpectralDecomposition", spectral, spectral_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del spectral
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # 4. FHN Attention (No JIT)
@@ -229,8 +193,10 @@ def main():
         x = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE)
         spectral_basis = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_eigenvectors, device=DEVICE)
         return (x, spectral_basis)
-    r = profile_component("FHNAttention", fhn_attn, fhn_input)
+    r = profile_component("FHNAttention", fhn_attn, fhn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del fhn_attn
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # 5. WaveKAN
@@ -239,22 +205,28 @@ def main():
     wavekan = WaveKANFFN(config.n_embd, mlp_hidden, wavelet_type="dog", use_fast_wavekan=True)
     def ffn_input():
         return (torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE),)
-    r = profile_component("WaveKAN_FFN", wavekan, ffn_input)
+    r = profile_component("WaveKAN_FFN", wavekan, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del wavekan
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # 6. SwiGLU
     console.print("6. SwiGLU FFN...", end=" ")
     swiglu = SwiGLU(config.n_embd, int(mlp_hidden * 2 / 3))
-    r = profile_component("SwiGLU_FFN", swiglu, ffn_input)
+    r = profile_component("SwiGLU_FFN", swiglu, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del swiglu
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # 7. ChebyKAN
     console.print("7. ChebyKAN FFN...", end=" ")
     chebykan = ChebyKANFFN(config.n_embd, mlp_hidden, degree=4)
-    r = profile_component("ChebyKAN_FFN", chebykan, ffn_input)
+    r = profile_component("ChebyKAN_FFN", chebykan, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
     results.append(r)
+    del chebykan
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms")
 
     # Results

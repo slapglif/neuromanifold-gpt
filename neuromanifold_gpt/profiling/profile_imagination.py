@@ -4,11 +4,10 @@ Imagination Module Profiler - profiles ConsistencyImaginationModule.
 Tests different configurations and counterfactual generation scenarios.
 """
 
-import time
-import gc
 import torch
 from rich.console import Console
 from rich.table import Table
+from neuromanifold_gpt.utils.profiling import profile_component, cleanup
 
 console = Console()
 
@@ -16,57 +15,6 @@ console = Console()
 BATCH_SIZE = 4
 SEQ_LEN = 64
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def profile_module(name, module, input_tensors, n_iters=5):
-    """Profile a module's forward pass."""
-    module = module.to(DEVICE)
-    module.eval()
-
-    # Warmup
-    with torch.no_grad():
-        for _ in range(2):
-            _ = module(*input_tensors)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-    # Memory before
-    if DEVICE == "cuda":
-        torch.cuda.reset_peak_memory_stats()
-        mem_before = torch.cuda.memory_allocated()
-
-    # Profile
-    times = []
-    with torch.no_grad():
-        for _ in range(n_iters):
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-            start = time.perf_counter()
-            _ = module(*input_tensors)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-            times.append((time.perf_counter() - start) * 1000)
-
-    # Memory after
-    if DEVICE == "cuda":
-        mem_peak = torch.cuda.max_memory_allocated()
-        mem_used = mem_peak - mem_before
-    else:
-        mem_used = 0
-
-    mean_ms = sum(times) / len(times)
-
-    # Cleanup
-    del module
-    gc.collect()
-    if DEVICE == "cuda":
-        torch.cuda.empty_cache()
-
-    return {
-        "name": name,
-        "mean_ms": mean_ms,
-        "mem_mb": mem_used / 1e6,
-    }
 
 
 def main():
@@ -84,57 +32,60 @@ def main():
     # Test 1: Encoder only
     console.print("1. Imagination Encoder...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=4)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
     # Just run encoder
     imagination_encoder = imagination.encoder
-    r = profile_module("Imagination_Encoder", imagination_encoder, (x,))
+    r = profile_component("Imagination_Encoder", imagination_encoder, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE),), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination_encoder
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Test 2: Decoder only
     console.print("2. Imagination Decoder...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=4)
-    z = torch.randn(BATCH_SIZE, SEQ_LEN, manifold_dim, device=DEVICE)
     imagination_decoder = imagination.decoder
-    r = profile_module("Imagination_Decoder", imagination_decoder, (z,))
+    r = profile_component("Imagination_Decoder", imagination_decoder, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, manifold_dim, device=DEVICE),), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination_decoder
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Test 3: Full module with n_alternatives=1
     console.print("3. Imagination (1 alternative, 4 steps)...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=4)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-
-    # Wrap forward call for profiling
-    def forward_wrapper(x):
-        return imagination(x, n_alternatives=1)
-
-    r = profile_module("Imagination_1alt_4steps", imagination, (x, 1))
+    r = profile_component("Imagination_1alt_4steps", imagination, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE), 1), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Test 4: Full module with n_alternatives=4
     console.print("4. Imagination (4 alternatives, 4 steps)...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=4)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("Imagination_4alt_4steps", imagination, (x, 4))
+    r = profile_component("Imagination_4alt_4steps", imagination, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE), 4), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Test 5: Full module with n_alternatives=8
     console.print("5. Imagination (8 alternatives, 4 steps)...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=4)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("Imagination_8alt_4steps", imagination, (x, 8))
+    r = profile_component("Imagination_8alt_4steps", imagination, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE), 8), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Test 6: Different n_imagination_steps (2 steps)
     console.print("6. Imagination (4 alternatives, 2 steps)...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=2)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("Imagination_4alt_2steps", imagination, (x, 4))
+    r = profile_component("Imagination_4alt_2steps", imagination, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE), 4), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Test 7: sample_single method
@@ -142,16 +93,18 @@ def main():
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim, n_imagination_steps=4)
     imagination = imagination.to(DEVICE)
     imagination.eval()
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
 
-    # Profile sample_single
+    # Profile sample_single - needs manual profiling since it's a different method
+    import time
     if DEVICE == "cuda":
+        import torch.cuda
         torch.cuda.reset_peak_memory_stats()
         mem_before = torch.cuda.memory_allocated()
 
     times = []
     with torch.no_grad():
         for _ in range(5):
+            x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
             if DEVICE == "cuda":
                 torch.cuda.synchronize()
             start = time.perf_counter()
@@ -172,16 +125,15 @@ def main():
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     del imagination
-    gc.collect()
-    if DEVICE == "cuda":
-        torch.cuda.empty_cache()
+    cleanup()
 
     # Test 8: Larger manifold_dim
     console.print("8. Imagination (manifold_dim=128)...", end=" ")
     imagination = ConsistencyImaginationModule(embed_dim, manifold_dim=128, n_imagination_steps=4)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("Imagination_manifold128", imagination, (x, 4))
+    r = profile_component("Imagination_manifold128", imagination, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE), 4), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del imagination
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Results table

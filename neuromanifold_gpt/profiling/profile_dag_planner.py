@@ -4,11 +4,10 @@ DAG Planner profiler - profiles DAG-based planning components.
 Focus on hierarchical planning and task decomposition performance.
 """
 
-import time
-import gc
 import torch
 from rich.console import Console
 from rich.table import Table
+from neuromanifold_gpt.utils.profiling import profile_component, cleanup
 
 console = Console()
 
@@ -16,57 +15,6 @@ console = Console()
 BATCH_SIZE = 4
 SEQ_LEN = 64
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def profile_module(name, module, input_tensors, n_iters=5):
-    """Profile a module's forward pass."""
-    module = module.to(DEVICE)
-    module.eval()
-
-    # Warmup
-    with torch.no_grad():
-        for _ in range(2):
-            _ = module(*input_tensors)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-
-    # Memory before
-    if DEVICE == "cuda":
-        torch.cuda.reset_peak_memory_stats()
-        mem_before = torch.cuda.memory_allocated()
-
-    # Profile
-    times = []
-    with torch.no_grad():
-        for _ in range(n_iters):
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-            start = time.perf_counter()
-            _ = module(*input_tensors)
-            if DEVICE == "cuda":
-                torch.cuda.synchronize()
-            times.append((time.perf_counter() - start) * 1000)
-
-    # Memory after
-    if DEVICE == "cuda":
-        mem_peak = torch.cuda.max_memory_allocated()
-        mem_used = mem_peak - mem_before
-    else:
-        mem_used = 0
-
-    mean_ms = sum(times) / len(times)
-
-    # Cleanup
-    del module
-    gc.collect()
-    if DEVICE == "cuda":
-        torch.cuda.empty_cache()
-
-    return {
-        "name": name,
-        "mean_ms": mean_ms,
-        "mem_mb": mem_used / 1e6,
-    }
 
 
 def main():
@@ -85,35 +33,38 @@ def main():
     console.print("1. ForcedDAGPlanner (N=32)...", end=" ")
     from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
     planner = ForcedDAGPlanner(embed_dim, manifold_dim, max_nodes=max_nodes, min_nodes=min_nodes)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("DAGPlanner_N32", planner, (x,))
+    r = profile_component("DAGPlanner_N32", planner, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE),), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del planner
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # 2. ForcedDAGPlanner with smaller graph (N=16)
     console.print("2. ForcedDAGPlanner (N=16)...", end=" ")
     planner_small = ForcedDAGPlanner(embed_dim, manifold_dim, max_nodes=16, min_nodes=3)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("DAGPlanner_N16", planner_small, (x,))
+    r = profile_component("DAGPlanner_N16", planner_small, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE),), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del planner_small
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # 3. ForcedDAGPlanner with larger graph (N=64)
     console.print("3. ForcedDAGPlanner (N=64)...", end=" ")
     planner_large = ForcedDAGPlanner(embed_dim, manifold_dim, max_nodes=64, min_nodes=3)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("DAGPlanner_N64", planner_large, (x,))
+    r = profile_component("DAGPlanner_N64", planner_large, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE),), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del planner_large
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # 4. DAGExecutor
     console.print("4. DAGExecutor...", end=" ")
     from neuromanifold_gpt.model.planning.dag_planner import DAGExecutor
     executor = DAGExecutor(embed_dim, manifold_dim)
-    node_embeddings = torch.randn(BATCH_SIZE, max_nodes, manifold_dim, device=DEVICE)
-    adj_matrix = torch.randn(BATCH_SIZE, max_nodes, max_nodes, device=DEVICE)
-    r = profile_module("DAGExecutor", executor, (node_embeddings, adj_matrix))
+    r = profile_component("DAGExecutor", executor, lambda: (torch.randn(BATCH_SIZE, max_nodes, manifold_dim, device=DEVICE), torch.randn(BATCH_SIZE, max_nodes, max_nodes, device=DEVICE)), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del executor
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # 5. Full pipeline: Planning + Execution
@@ -133,9 +84,10 @@ def main():
             return result
 
     pipeline = DAGPipeline(planner_full, executor_full)
-    x = torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE)
-    r = profile_module("DAG_Pipeline", pipeline, (x,))
+    r = profile_component("DAG_Pipeline", pipeline, lambda: (torch.randn(BATCH_SIZE, SEQ_LEN, embed_dim, device=DEVICE),), n_warmup=2, n_iters=5, device=DEVICE, track_memory=True)
     results.append(r)
+    del pipeline
+    cleanup()
     console.print(f"{r['mean_ms']:.2f} ms, {r['mem_mb']:.1f} MB")
 
     # Results table
