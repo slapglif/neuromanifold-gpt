@@ -20,7 +20,7 @@ import torch
 from contextlib import nullcontext
 from typing import Dict, List, Tuple
 
-from neuromanifold_gpt.model.mhc import sinkhorn_log
+from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
 
 def measure_convergence_iterations(

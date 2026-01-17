@@ -2,7 +2,8 @@
 """Tests comparing unfused vs fused mHC width_connection operations."""
 import pytest
 import torch
-from neuromanifold_gpt.model.mhc import HyperConnections, sinkhorn_log
+from neuromanifold_gpt.model.mhc import HyperConnections
+from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
 # Try to import Triton-based fused implementation
 try:

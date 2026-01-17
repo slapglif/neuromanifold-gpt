@@ -21,7 +21,7 @@ from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.block import NeuroManifoldBlock
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
-from neuromanifold_gpt.model.mhc import get_expand_reduce_stream_functions
+from neuromanifold_gpt.model.mhc_utils import get_expand_reduce_stream_functions
 from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
 from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
 from neuromanifold_gpt.model.system_two_mixin import SystemTwoReasoningMixin
@@ -758,58 +758,6 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         if non_embedding and self.use_sdr:
             n_params -= self.encoder.token_embed.weight.numel()
         return n_params
-
-    def get_param_breakdown(self):
-        """
-        Return a breakdown of parameters by component.
-        Returns a dictionary with parameter counts for each major component.
-        """
-        breakdown = {}
-
-        # Token embeddings (SDR or standard)
-        if self.use_sdr:
-            breakdown['token_embeddings'] = sum(p.numel() for p in self.encoder.parameters())
-            if self.embed_to_sdr is not None:
-                breakdown['embed_to_sdr'] = sum(p.numel() for p in self.embed_to_sdr.parameters())
-            breakdown['position_embeddings'] = sum(p.numel() for p in self.ramanujan_pos.parameters())
-        else:
-            breakdown['token_embeddings'] = sum(p.numel() for p in self.token_embedding.parameters())
-            breakdown['position_embeddings'] = sum(p.numel() for p in self.position_embedding.parameters())
-
-        # Transformer blocks (all layers combined)
-        breakdown['transformer_blocks'] = sum(p.numel() for p in self.blocks.parameters())
-
-        # Final layer norm
-        breakdown['final_layer_norm'] = sum(p.numel() for p in self.ln_f.parameters())
-
-        # Language model head
-        breakdown['lm_head'] = sum(p.numel() for p in self.lm_head.parameters())
-
-        # Memory
-        breakdown['memory'] = sum(p.numel() for p in self.memory.parameters())
-
-        # Multi-Token Prediction heads (if enabled)
-        if self.use_mtp and self.mtp_n_predict > 1 and hasattr(self, 'mtp_projs'):
-            breakdown['mtp_heads'] = sum(p.numel() for p in self.mtp_projs.parameters())
-
-        # Memory retrieval projection (if enabled)
-        if self.memory_active_retrieval and hasattr(self, 'memory_retrieval_proj'):
-            breakdown['memory_retrieval_proj'] = sum(p.numel() for p in self.memory_retrieval_proj.parameters())
-
-        # System 2 components (if enabled)
-        if hasattr(self, 'hybrid_reasoner') and self.hybrid_reasoner is not None:
-            breakdown['hybrid_reasoner'] = sum(p.numel() for p in self.hybrid_reasoner.parameters())
-        if hasattr(self, 'dag_planner') and self.dag_planner is not None:
-            breakdown['dag_planner'] = sum(p.numel() for p in self.dag_planner.parameters())
-        if hasattr(self, 'hierarchical_memory') and self.hierarchical_memory is not None:
-            breakdown['hierarchical_memory'] = sum(p.numel() for p in self.hierarchical_memory.parameters())
-        if hasattr(self, 'imagination_engine') and self.imagination_engine is not None:
-            breakdown['imagination_engine'] = sum(p.numel() for p in self.imagination_engine.parameters())
-
-        # Total parameters
-        breakdown['total'] = sum(p.numel() for p in self.parameters())
-
-        return breakdown
 
     def estimate_mfu(self, fwdbwd_per_iter: int, dt: float) -> float:
         N = self.num_parameters()

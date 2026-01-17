@@ -24,7 +24,7 @@ from .attention.kaufmann import KaufmannAttention
 from .kan.cheby import ChebyKANFFN
 from .kan.wave import WaveKANFFN
 from .kan.faster import FasterKANFFN
-from .mhc import HyperConnections, Residual, get_init_and_expand_reduce_stream_functions
+from .mhc import HyperConnections, Residual
 from ..config.block_config import NeuroManifoldBlockConfig
 
 

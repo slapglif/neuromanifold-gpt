@@ -5,7 +5,7 @@ import torch
 import pytest
 from loguru import logger
 
-from neuromanifold_gpt.model.mhc import sinkhorn_log
+from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
 
 class TestSinkhornConvergence:
@@ -68,8 +68,8 @@ class TestSinkhornConvergence:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         # Test with different matrix sizes
+        # Use well-initialized matrices (like mHC uses) for realistic convergence
         for size in [8, 16, 32]:
-            # Use well-initialized matrices for realistic convergence
             logits = torch.full((size, size), -8.0, device=device)
             logits.fill_diagonal_(0.0)
 
@@ -165,9 +165,9 @@ class TestSinkhornConvergence:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         # Batched input: (B, N, N)
+        # Use well-initialized matrices for realistic convergence
         batch_size = 4
         size = 8
-        # Use well-initialized matrices for realistic convergence
         logits = torch.full((batch_size, size, size), -8.0, device=device)
         for b in range(batch_size):
             logits[b].fill_diagonal_(0.0)

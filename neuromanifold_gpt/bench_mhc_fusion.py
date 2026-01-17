@@ -1,7 +1,8 @@
 
 import torch
 import time
-from neuromanifold_gpt.model.mhc import HyperConnections, sinkhorn_log
+from neuromanifold_gpt.model.mhc import HyperConnections
+from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
 try:
     from neuromanifold_gpt.model.mhc_fused import fused_mhc_width_connection
