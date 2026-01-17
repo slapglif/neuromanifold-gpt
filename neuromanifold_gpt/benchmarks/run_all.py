@@ -20,7 +20,9 @@ from datetime import datetime
 from pathlib import Path
 
 
-def run_all_benchmarks(quick_test: bool = False, output_file: str = None, dataset: str = "shakespeare_char"):
+def run_all_benchmarks(
+    quick_test: bool = False, output_file: str = None, dataset: str = "shakespeare_char"
+):
     """Run all benchmark suites and collect results.
 
     Args:
@@ -58,7 +60,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None, datase
     try:
         from neuromanifold_gpt.benchmarks.attention_quality import (
             benchmark_quality,
-            benchmark_sample_quality
+            benchmark_sample_quality,
         )
 
         # Perplexity benchmark
@@ -69,7 +71,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None, datase
             block_size=256 if quick_test else 1024,
             device="cuda",
             dtype="bfloat16",
-            verbose=True
+            verbose=True,
         )
 
         # Sample quality benchmark
@@ -81,7 +83,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None, datase
             top_k=200,
             device="cuda",
             dtype="bfloat16",
-            verbose=True
+            verbose=True,
         )
 
         results["quality"] = {
@@ -108,7 +110,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None, datase
 
         results["speed"] = {
             "status": "completed",
-            "note": "See console output for detailed timing results"
+            "note": "See console output for detailed timing results",
         }
 
         print("✓ Speed benchmarks completed")
@@ -130,7 +132,7 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None, datase
 
         results["memory"] = {
             "status": "completed",
-            "note": "See console output for detailed memory usage results"
+            "note": "See console output for detailed memory usage results",
         }
 
         print("✓ Memory benchmarks completed")
@@ -154,11 +156,19 @@ def run_all_benchmarks(quick_test: bool = False, output_file: str = None, datase
     if results["quality"] and "perplexity" in results["quality"]:
         perplexity_data = results["quality"]["perplexity"]
         print("Quality Results:")
-        print(f"  Standard perplexity:      {perplexity_data['standard']['perplexity']:.2f}")
-        print(f"  NeuroManifold perplexity: {perplexity_data['neuromanifold']['perplexity']:.2f}")
+        print(
+            f"  Standard perplexity:      {perplexity_data['standard']['perplexity']:.2f}"
+        )
+        print(
+            f"  NeuroManifold perplexity: {perplexity_data['neuromanifold']['perplexity']:.2f}"
+        )
         improvement = (
-            (perplexity_data["standard"]["perplexity"] - perplexity_data["neuromanifold"]["perplexity"])
-            / perplexity_data["standard"]["perplexity"] * 100
+            (
+                perplexity_data["standard"]["perplexity"]
+                - perplexity_data["neuromanifold"]["perplexity"]
+            )
+            / perplexity_data["standard"]["perplexity"]
+            * 100
         )
         print(f"  Improvement:              {improvement:.1f}%")
         print()
@@ -196,13 +206,13 @@ Examples:
 
   # Just verify the benchmarks work
   python neuromanifold_gpt/benchmarks/run_all.py --quick-test --output test_results.json
-        """
+        """,
     )
 
     parser.add_argument(
         "--quick-test",
         action="store_true",
-        help="Run quick test with reduced iterations"
+        help="Run quick test with reduced iterations",
     )
 
     parser.add_argument(
@@ -210,7 +220,7 @@ Examples:
         "-o",
         type=str,
         default=None,
-        help="Save results to JSON file (e.g., benchmark_results.json)"
+        help="Save results to JSON file (e.g., benchmark_results.json)",
     )
 
     parser.add_argument(
@@ -218,16 +228,14 @@ Examples:
         "-d",
         type=str,
         default="shakespeare_char",
-        help="Dataset name (default: shakespeare_char)"
+        help="Dataset name (default: shakespeare_char)",
     )
 
     args = parser.parse_args()
 
     try:
-        results = run_all_benchmarks(
-            quick_test=args.quick_test,
-            output_file=args.output,
-            dataset=args.dataset
+        run_all_benchmarks(
+            quick_test=args.quick_test, output_file=args.output, dataset=args.dataset
         )
 
         # Exit with success
@@ -240,6 +248,7 @@ Examples:
     except Exception as e:
         print(f"\n\nFatal error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 

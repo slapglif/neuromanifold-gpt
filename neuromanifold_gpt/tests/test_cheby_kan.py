@@ -14,7 +14,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from neuromanifold_gpt.model.kan.cheby import ChebyKANLinear, ChebyKANFFN
+from neuromanifold_gpt.model.kan.cheby import ChebyKANFFN, ChebyKANLinear
 
 
 class TestChebyKANLinear:
@@ -40,9 +40,9 @@ class TestChebyKANLinear:
         # Check initialization: mean should be ~0, std should be 1/(in_features * (degree+1))
         expected_std = 1.0 / (64 * 5)
         actual_std = layer.coeffs.std().item()
-        assert abs(actual_std - expected_std) < 0.01, (
-            f"std={actual_std}, expected={expected_std}"
-        )
+        assert (
+            abs(actual_std - expected_std) < 0.01
+        ), f"std={actual_std}, expected={expected_std}"
 
         # Bias should be zero-initialized
         assert torch.allclose(layer.bias, torch.zeros_like(layer.bias))
@@ -147,9 +147,9 @@ class TestChebyKANFFN:
     def test_forward_shape(self, ffn, input_tensor):
         """Test FFN preserves input shape."""
         output = ffn(input_tensor)
-        assert output.shape == input_tensor.shape, (
-            f"Expected {input_tensor.shape}, got {output.shape}"
-        )
+        assert (
+            output.shape == input_tensor.shape
+        ), f"Expected {input_tensor.shape}, got {output.shape}"
 
     def test_backward_pass(self, ffn, input_tensor):
         """Test FFN backward pass."""
@@ -210,8 +210,8 @@ class TestCausalityPreservation:
         x2[:, 5, :] = torch.randn(1, 64)  # Change future position
 
         # Forward pass
-        out1 = layer(x1)
-        out2 = layer(x2)
+        layer(x1)
+        layer(x2)
 
         # Outputs at t<5 should be DIFFERENT because ChebyKAN uses InstanceNorm
         # which looks at the whole sequence

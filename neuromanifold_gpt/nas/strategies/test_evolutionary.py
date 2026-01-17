@@ -9,8 +9,9 @@ Tests cover:
 """
 
 import pytest
+
+from neuromanifold_gpt.nas.search_space import ArchitectureConfig, SearchSpace
 from neuromanifold_gpt.nas.strategies.evolutionary import EvolutionarySearch
-from neuromanifold_gpt.nas.search_space import SearchSpace, ArchitectureConfig
 
 
 @pytest.fixture
@@ -83,7 +84,9 @@ class TestEvolutionarySearchInitialization:
 class TestMutationOperations:
     """Test mutation operations."""
 
-    def test_mutate_returns_different_architecture(self, evolutionary_search, sample_architecture):
+    def test_mutate_returns_different_architecture(
+        self, evolutionary_search, sample_architecture
+    ):
         """Test that mutation produces a different architecture."""
         mutated = evolutionary_search._mutate(sample_architecture)
 
@@ -102,14 +105,17 @@ class TestMutationOperations:
 
         assert different, "Mutation never changed the architecture"
 
-    def test_mutate_respects_constraints(self, evolutionary_search, sample_architecture):
+    def test_mutate_respects_constraints(
+        self, evolutionary_search, sample_architecture
+    ):
         """Test that mutation respects architectural constraints."""
         for _ in range(20):
             mutated = evolutionary_search._mutate(sample_architecture)
 
             # Check divisibility constraint
-            assert mutated.n_embd % mutated.n_heads == 0, \
-                f"n_embd={mutated.n_embd} not divisible by n_heads={mutated.n_heads}"
+            assert (
+                mutated.n_embd % mutated.n_heads == 0
+            ), f"n_embd={mutated.n_embd} not divisible by n_heads={mutated.n_heads}"
 
             # Check validity
             is_valid, error = mutated.validate()
@@ -141,8 +147,9 @@ class TestMutationOperations:
             sdr_sizes.add(mutated.sdr_size)
 
         # Should see variation (probabilistically)
-        assert len(use_sdr_values) > 1 or len(sdr_sizes) > 1, \
-            "Mutation never changed SDR parameters"
+        assert (
+            len(use_sdr_values) > 1 or len(sdr_sizes) > 1
+        ), "Mutation never changed SDR parameters"
 
 
 class TestCrossoverOperations:
@@ -183,8 +190,9 @@ class TestCrossoverOperations:
             offspring = evolutionary_search._crossover(parent1, parent2)
 
             # Check constraints
-            assert offspring.n_embd % offspring.n_heads == 0, \
-                f"Offspring n_embd={offspring.n_embd} not divisible by n_heads={offspring.n_heads}"
+            assert (
+                offspring.n_embd % offspring.n_heads == 0
+            ), f"Offspring n_embd={offspring.n_embd} not divisible by n_heads={offspring.n_heads}"
 
             is_valid, error = offspring.validate()
             assert is_valid, f"Offspring invalid: {error}"
@@ -259,11 +267,12 @@ class TestDiversityCalculation:
         assert distance >= 0.0
         assert isinstance(distance, float)
 
-    def test_architecture_distance_identical(self, evolutionary_search, sample_architecture):
+    def test_architecture_distance_identical(
+        self, evolutionary_search, sample_architecture
+    ):
         """Test distance between identical architectures is zero."""
         distance = evolutionary_search._architecture_distance(
-            sample_architecture,
-            sample_architecture
+            sample_architecture, sample_architecture
         )
 
         assert distance == 0.0
@@ -287,7 +296,9 @@ class TestDiversityCalculation:
 
         individual = ArchitectureConfig(n_layer=10, n_embd=640)
 
-        diversity = evolutionary_search._calculate_diversity_score(individual, population)
+        diversity = evolutionary_search._calculate_diversity_score(
+            individual, population
+        )
 
         assert diversity >= 0.0
         assert isinstance(diversity, float)
@@ -317,7 +328,9 @@ class TestDiversityCalculation:
         diversity = evolutionary_search._calculate_population_diversity(population)
 
         # Diversity should be low (close to 0)
-        assert diversity < 0.1, f"Expected low diversity for identical population, got {diversity}"
+        assert (
+            diversity < 0.1
+        ), f"Expected low diversity for identical population, got {diversity}"
 
 
 class TestElitism:
@@ -332,10 +345,8 @@ class TestElitism:
         """Test that elitism concept is present (implementation-level test)."""
         # This is more of a documentation test
         search_space = SearchSpace()
-        search = EvolutionarySearch(
-            search_space=search_space,
-            population_size=10,
-            elitism_ratio=0.3
+        EvolutionarySearch(
+            search_space=search_space, population_size=10, elitism_ratio=0.3
         )
 
         # Elite count should be based on elitism_ratio
@@ -348,10 +359,7 @@ class TestTournamentSelection:
 
     def test_tournament_size(self, search_space):
         """Test tournament size parameter."""
-        search = EvolutionarySearch(
-            search_space=search_space,
-            tournament_size=5
-        )
+        search = EvolutionarySearch(search_space=search_space, tournament_size=5)
 
         assert search.tournament_size == 5
 

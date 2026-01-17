@@ -2,18 +2,25 @@
 """Tests comparing unfused vs fused mHC width_connection operations."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.mhc import HyperConnections
 from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
 # Try to import Triton-based fused implementation
 try:
-    from neuromanifold_gpt.model.mhc_fused import FusedMHCWidthConnection, fused_mhc_width_connection
+    from neuromanifold_gpt.model.mhc_fused import (
+        FusedMHCWidthConnection,
+        fused_mhc_width_connection,
+    )
+
     has_triton = torch.cuda.is_available()
 except (ImportError, RuntimeError):
     has_triton = False
 
 # Decorator for tests that require CUDA
-requires_cuda = pytest.mark.skipif(not has_triton, reason="CUDA required for Triton kernels")
+requires_cuda = pytest.mark.skipif(
+    not has_triton, reason="CUDA required for Triton kernels"
+)
 
 
 @requires_cuda
@@ -31,18 +38,32 @@ def test_output_shapes_match():
     residuals = torch.randn(batch_size * num_streams, seq_len, dim)
 
     # Unfused path: call width_connection
-    branch_input_unfused, residuals_out_unfused, h_post_unfused = hc.width_connection(residuals)
+    branch_input_unfused, residuals_out_unfused, h_post_unfused = hc.width_connection(
+        residuals
+    )
 
     # Fused path: manually compute H_res and H_pre, then call fused kernel
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
         h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+        residuals, h_res, h_pre
+    )
 
     # Check shapes
-    assert branch_input_unfused.shape == branch_input_fused.shape == (batch_size, seq_len, dim)
-    assert residuals_out_unfused.shape == residuals_out_fused.shape == (batch_size * num_streams, seq_len, dim)
+    assert (
+        branch_input_unfused.shape
+        == branch_input_fused.shape
+        == (batch_size, seq_len, dim)
+    )
+    assert (
+        residuals_out_unfused.shape
+        == residuals_out_fused.shape
+        == (batch_size * num_streams, seq_len, dim)
+    )
     assert h_post_unfused.shape == (1, num_streams)
 
 
@@ -65,16 +86,22 @@ def test_forward_pass_equivalence():
 
     # Fused path
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
         h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+        residuals, h_res, h_pre
+    )
 
     # Check numerical equivalence
-    assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5), \
-        f"branch_input mismatch: max diff = {(branch_input_unfused - branch_input_fused).abs().max()}"
-    assert torch.allclose(residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5), \
-        f"residuals_out mismatch: max diff = {(residuals_out_unfused - residuals_out_fused).abs().max()}"
+    assert torch.allclose(
+        branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+    ), f"branch_input mismatch: max diff = {(branch_input_unfused - branch_input_fused).abs().max()}"
+    assert torch.allclose(
+        residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5
+    ), f"residuals_out mismatch: max diff = {(residuals_out_unfused - residuals_out_fused).abs().max()}"
 
 
 def test_gradient_flow_unfused_path():
@@ -130,7 +157,9 @@ def test_backward_pass_equivalence():
     seq_len = 10
 
     # Create shared inputs
-    residuals_unfused = torch.randn(batch_size * num_streams, seq_len, dim, requires_grad=True)
+    residuals_unfused = torch.randn(
+        batch_size * num_streams, seq_len, dim, requires_grad=True
+    )
     residuals_fused = residuals_unfused.clone().detach().requires_grad_(True)
 
     # Create HyperConnections
@@ -138,7 +167,9 @@ def test_backward_pass_equivalence():
 
     # Get H matrices
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
         h_pre = hc.H_pre_logits.softmax(dim=-1)
 
     # Make them require grad for comparison
@@ -146,7 +177,9 @@ def test_backward_pass_equivalence():
     h_pre_fused = h_pre.clone().detach().requires_grad_(True)
 
     # Unfused path
-    branch_input_unfused, residuals_out_unfused, _ = hc.width_connection(residuals_unfused)
+    branch_input_unfused, residuals_out_unfused, _ = hc.width_connection(
+        residuals_unfused
+    )
     loss_unfused = branch_input_unfused.sum() + residuals_out_unfused.sum()
     loss_unfused.backward()
 
@@ -158,8 +191,9 @@ def test_backward_pass_equivalence():
     loss_fused.backward()
 
     # Compare gradients
-    assert torch.allclose(residuals_unfused.grad, residuals_fused.grad, rtol=1e-3, atol=1e-4), \
-        f"residuals grad mismatch: max diff = {(residuals_unfused.grad - residuals_fused.grad).abs().max()}"
+    assert torch.allclose(
+        residuals_unfused.grad, residuals_fused.grad, rtol=1e-3, atol=1e-4
+    ), f"residuals grad mismatch: max diff = {(residuals_unfused.grad - residuals_fused.grad).abs().max()}"
 
 
 @requires_cuda
@@ -178,15 +212,23 @@ def test_single_stream():
 
     # Fused path
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
         h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+        residuals, h_res, h_pre
+    )
 
     assert branch_input_unfused.shape == (batch_size, seq_len, dim)
     assert residuals_out_unfused.shape == (batch_size * num_streams, seq_len, dim)
-    assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5)
-    assert torch.allclose(residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5)
+    assert torch.allclose(
+        branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+    )
+    assert torch.allclose(
+        residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5
+    )
 
 
 @requires_cuda
@@ -205,15 +247,23 @@ def test_large_streams():
 
     # Fused path
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
         h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+        residuals, h_res, h_pre
+    )
 
     assert branch_input_unfused.shape == (batch_size, seq_len, dim)
     assert residuals_out_unfused.shape == (batch_size * num_streams, seq_len, dim)
-    assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5)
-    assert torch.allclose(residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5)
+    assert torch.allclose(
+        branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+    )
+    assert torch.allclose(
+        residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5
+    )
 
 
 @requires_cuda
@@ -232,14 +282,20 @@ def test_various_batch_sizes():
 
         # Fused path
         with torch.no_grad():
-            h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+            h_res = sinkhorn_log(
+                hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+            )
             h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-        branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+        branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+            residuals, h_res, h_pre
+        )
 
         assert branch_input_unfused.shape == (batch_size, seq_len, dim)
         assert residuals_out_unfused.shape == (batch_size * num_streams, seq_len, dim)
-        assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5)
+        assert torch.allclose(
+            branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+        )
 
 
 @requires_cuda
@@ -258,14 +314,20 @@ def test_various_sequence_lengths():
 
         # Fused path
         with torch.no_grad():
-            h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+            h_res = sinkhorn_log(
+                hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+            )
             h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-        branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+        branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+            residuals, h_res, h_pre
+        )
 
         assert branch_input_unfused.shape == (batch_size, seq_len, dim)
         assert residuals_out_unfused.shape == (batch_size * num_streams, seq_len, dim)
-        assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5)
+        assert torch.allclose(
+            branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+        )
 
 
 @requires_cuda
@@ -284,14 +346,20 @@ def test_various_dimensions():
 
         # Fused path
         with torch.no_grad():
-            h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+            h_res = sinkhorn_log(
+                hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+            )
             h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-        branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+        branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+            residuals, h_res, h_pre
+        )
 
         assert branch_input_unfused.shape == (batch_size, seq_len, dim)
         assert residuals_out_unfused.shape == (batch_size * num_streams, seq_len, dim)
-        assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5)
+        assert torch.allclose(
+            branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+        )
 
 
 @requires_cuda
@@ -317,10 +385,14 @@ def test_deterministic_with_fixed_seed():
         residuals = torch.randn(batch_size * num_streams, seq_len, dim)
 
         with torch.no_grad():
-            h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+            h_res = sinkhorn_log(
+                hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+            )
             h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-        branch_input, residuals_out = fused_mhc_width_connection(residuals, h_res, h_pre)
+        branch_input, residuals_out = fused_mhc_width_connection(
+            residuals, h_res, h_pre
+        )
         return branch_input, residuals_out
 
     # Run unfused twice with same seed
@@ -382,14 +454,22 @@ def test_non_contiguous_tensors():
 
     # Fused path (should handle non-contiguous via .contiguous() call)
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
         h_pre = hc.H_pre_logits.softmax(dim=-1)
 
-    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+    branch_input_fused, residuals_out_fused = fused_mhc_width_connection(
+        residuals, h_res, h_pre
+    )
 
     # Should still produce correct outputs
-    assert torch.allclose(branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5)
-    assert torch.allclose(residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5)
+    assert torch.allclose(
+        branch_input_unfused, branch_input_fused, rtol=1e-4, atol=1e-5
+    )
+    assert torch.allclose(
+        residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5
+    )
 
 
 def test_h_res_doubly_stochastic():
@@ -401,7 +481,9 @@ def test_h_res_doubly_stochastic():
 
     # Get H_res via Sinkhorn
     with torch.no_grad():
-        h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+        h_res = sinkhorn_log(
+            hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+        )
 
     # Check doubly stochastic properties
     # Row sums should be 1
@@ -449,7 +531,7 @@ def test_backward_with_different_loss_functions():
     # Test with different loss functions
     for loss_fn in [
         lambda x, y: x.sum() + y.sum(),
-        lambda x, y: (x ** 2).mean() + (y ** 2).mean(),
+        lambda x, y: (x**2).mean() + (y**2).mean(),
         lambda x, y: x.mean() - y.mean(),
     ]:
         # Reset gradients
@@ -460,7 +542,9 @@ def test_backward_with_different_loss_functions():
         if h_pre.grad is not None:
             h_pre.grad.zero_()
 
-        branch_input, residuals_out = fused_mhc_width_connection(residuals, h_res, h_pre)
+        branch_input, residuals_out = fused_mhc_width_connection(
+            residuals, h_res, h_pre
+        )
         loss = loss_fn(branch_input, residuals_out)
         loss.backward()
 

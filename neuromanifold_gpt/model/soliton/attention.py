@@ -17,17 +17,15 @@ Reference:
 - Heimburg & Jackson, "On soliton propagation in biomembranes" (2005)
 """
 
-import math
 from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 
-from .sine_gordon import SineGordonSolver
-from .kdv import KdVSolver
 from .heimburg_jackson import HeimburgJacksonSolver
+from .kdv import KdVSolver
+from .sine_gordon import SineGordonSolver
 
 
 class SolitonInteractionLayer(nn.Module):
@@ -35,13 +33,13 @@ class SolitonInteractionLayer(nn.Module):
     Pure Soliton Interaction Layer (Linear O(N)).
 
     Replaces quadratic attention with physics-based elastic scattering.
-    
+
     Mechanism:
     1. Input U represents the wave field state.
     2. Hyena/SSM block (external) moves information globally.
     3. This layer applies the local non-linear PDE dynamics (collision logic).
     4. Solitons interact via the non-linearity (e.g. sin(u)) but preserve shape.
-    
+
     Complexity: O(N) (Linear)
     """
 
@@ -61,7 +59,7 @@ class SolitonInteractionLayer(nn.Module):
         # No head division needed for pure interaction, but kept for compatibility
         self.embed_dim = embed_dim
         self.n_pde_steps = n_pde_steps
-        
+
         # Feature flags
         self.use_sine_gordon = use_sine_gordon
         self.use_kdv = use_kdv
@@ -70,13 +68,13 @@ class SolitonInteractionLayer(nn.Module):
         # Solvers
         if self.use_sine_gordon:
             self.sine_gordon = SineGordonSolver(
-                dim=embed_dim, # Full dimension
+                dim=embed_dim,  # Full dimension
                 dt=dt,
                 n_steps=n_pde_steps,
                 wave_speed=1.0,
                 use_rk4=True,
-                damping=0.5, # High damping for stability/locality
-                causal=causal
+                damping=0.5,  # High damping for stability/locality
+                causal=causal,
             )
 
         if self.use_kdv:
@@ -86,7 +84,7 @@ class SolitonInteractionLayer(nn.Module):
                 n_steps=n_pde_steps,
                 use_rk4=True,
                 damping=0.5,
-                causal=causal
+                causal=causal,
             )
 
         if self.use_heimburg_jackson:
@@ -96,13 +94,15 @@ class SolitonInteractionLayer(nn.Module):
                 n_steps=n_pde_steps,
                 use_rk4=True,
                 damping=0.5,
-                causal=causal
+                causal=causal,
             )
 
         # Gating/Mixing weights
         n_solvers = sum([use_sine_gordon, use_kdv, use_heimburg_jackson])
-        self.solver_mix = nn.Parameter(torch.ones(max(1, n_solvers)) / max(1, n_solvers))
-        
+        self.solver_mix = nn.Parameter(
+            torch.ones(max(1, n_solvers)) / max(1, n_solvers)
+        )
+
         # Output projection
         self.out_proj = nn.Linear(embed_dim, embed_dim)
         self.norm = nn.LayerNorm(embed_dim)
@@ -111,66 +111,66 @@ class SolitonInteractionLayer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None, # Unused, PDE is local/causal
+        mask: Optional[torch.Tensor] = None,  # Unused, PDE is local/causal
     ) -> tuple[torch.Tensor, dict]:
         """
         Apply soliton elastic scattering.
-        
+
         Args:
             x: (B, T, D) Wave field
-            
+
         Returns:
             out: (B, T, D) Evolved field
         """
         B, T, D = x.shape
         info = {}
-        
+
         # 1. Prepare Field (Normalize for PDE stability range [-pi, pi])
         # Soft clamp to keep dynamics valid
-        x_field = torch.tanh(x) * 2.0 
-        
+        x_field = torch.tanh(x) * 2.0
+
         outputs = []
         mix_weights = F.softmax(self.solver_mix, dim=0)
         idx = 0
-        
+
         # 2. Parallel Physics Evolution
         if self.use_sine_gordon:
             sg_out, sg_info = self.sine_gordon(x_field)
             outputs.append(sg_out * mix_weights[idx])
             idx += 1
-            
+
         if self.use_kdv:
             kdv_out, kdv_info = self.kdv(x_field)
             outputs.append(kdv_out * mix_weights[idx])
             idx += 1
-            
+
         if self.use_heimburg_jackson:
             hj_out, hj_info = self.heimburg_jackson(x_field)
             outputs.append(hj_out * mix_weights[idx])
             idx += 1
-            
+
         # 3. Combine Results
         if outputs:
             evolved = sum(outputs)
         else:
             evolved = x_field
-            
+
         # 4. Project and Residual
         # Note: The block usually handles residual, but we project here
         out = self.out_proj(evolved)
         out = self.dropout(out)
-        
+
         return out, info
 
     def extra_repr(self) -> str:
         """Extra representation for module printing."""
         solvers = []
         if self.use_sine_gordon:
-            solvers.append('SineGordon')
+            solvers.append("SineGordon")
         if self.use_kdv:
-            solvers.append('KdV')
+            solvers.append("KdV")
         if self.use_heimburg_jackson:
-            solvers.append('HeimburgJackson')
+            solvers.append("HeimburgJackson")
 
         return (
             f"embed_dim={self.embed_dim}, "
@@ -227,47 +227,58 @@ class MultiHeadSolitonAttention(nn.Module):
         remainder = n_heads % 3
 
         self.group_sizes = [
-            base_group_size + (1 if i < remainder else 0)
-            for i in range(3)
+            base_group_size + (1 if i < remainder else 0) for i in range(3)
         ]
 
         # Create attention modules for each physics type
         # Each group has group_size heads, so embed_dim = group_size * head_dim
-        self.sine_gordon_attn = SolitonAttention(
-            embed_dim=self.group_sizes[0] * self.head_dim,
-            n_heads=self.group_sizes[0],
-            dropout=dropout,
-            n_pde_steps=n_pde_steps,
-            use_sine_gordon=True,
-            use_kdv=False,
-            use_heimburg_jackson=False,
-            dt=dt,
-            causal=causal,
-        ) if self.group_sizes[0] > 0 else None
+        self.sine_gordon_attn = (
+            SolitonAttention(
+                embed_dim=self.group_sizes[0] * self.head_dim,
+                n_heads=self.group_sizes[0],
+                dropout=dropout,
+                n_pde_steps=n_pde_steps,
+                use_sine_gordon=True,
+                use_kdv=False,
+                use_heimburg_jackson=False,
+                dt=dt,
+                causal=causal,
+            )
+            if self.group_sizes[0] > 0
+            else None
+        )
 
-        self.kdv_attn = SolitonAttention(
-            embed_dim=self.group_sizes[1] * self.head_dim,
-            n_heads=self.group_sizes[1],
-            dropout=dropout,
-            n_pde_steps=n_pde_steps,
-            use_sine_gordon=False,
-            use_kdv=True,
-            use_heimburg_jackson=False,
-            dt=dt,
-            causal=causal,
-        ) if self.group_sizes[1] > 0 else None
+        self.kdv_attn = (
+            SolitonAttention(
+                embed_dim=self.group_sizes[1] * self.head_dim,
+                n_heads=self.group_sizes[1],
+                dropout=dropout,
+                n_pde_steps=n_pde_steps,
+                use_sine_gordon=False,
+                use_kdv=True,
+                use_heimburg_jackson=False,
+                dt=dt,
+                causal=causal,
+            )
+            if self.group_sizes[1] > 0
+            else None
+        )
 
-        self.hj_attn = SolitonAttention(
-            embed_dim=self.group_sizes[2] * self.head_dim,
-            n_heads=self.group_sizes[2],
-            dropout=dropout,
-            n_pde_steps=n_pde_steps,
-            use_sine_gordon=False,
-            use_kdv=False,
-            use_heimburg_jackson=True,
-            dt=dt,
-            causal=causal,
-        ) if self.group_sizes[2] > 0 else None
+        self.hj_attn = (
+            SolitonAttention(
+                embed_dim=self.group_sizes[2] * self.head_dim,
+                n_heads=self.group_sizes[2],
+                dropout=dropout,
+                n_pde_steps=n_pde_steps,
+                use_sine_gordon=False,
+                use_kdv=False,
+                use_heimburg_jackson=True,
+                dt=dt,
+                causal=causal,
+            )
+            if self.group_sizes[2] > 0
+            else None
+        )
 
         # Projection layers to split/merge
         self.in_proj = nn.Linear(embed_dim, embed_dim)
@@ -304,17 +315,17 @@ class MultiHeadSolitonAttention(nn.Module):
         if self.sine_gordon_attn is not None and self.group_sizes[0] > 0:
             sg_out, sg_info = self.sine_gordon_attn(x_groups[0], mask)
             outputs.append(sg_out)
-            info.update({f'sg_{k}': v for k, v in sg_info.items()})
+            info.update({f"sg_{k}": v for k, v in sg_info.items()})
 
         if self.kdv_attn is not None and self.group_sizes[1] > 0:
             kdv_out, kdv_info = self.kdv_attn(x_groups[1], mask)
             outputs.append(kdv_out)
-            info.update({f'kdv_{k}': v for k, v in kdv_info.items()})
+            info.update({f"kdv_{k}": v for k, v in kdv_info.items()})
 
         if self.hj_attn is not None and self.group_sizes[2] > 0:
             hj_out, hj_info = self.hj_attn(x_groups[2], mask)
             outputs.append(hj_out)
-            info.update({f'hj_{k}': v for k, v in hj_info.items()})
+            info.update({f"hj_{k}": v for k, v in hj_info.items()})
 
         # Concatenate outputs
         out = torch.cat(outputs, dim=-1)

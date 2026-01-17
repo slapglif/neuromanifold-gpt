@@ -33,18 +33,6 @@ include = ["neuromanifold_gpt*"]
 line-length = 88  # Match black's default line length
 target-version = "py310"  # Match project minimum Python version
 
-# Enable rule categories
-select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "W",   # pycodestyle warnings
-    "I",   # isort (import sorting)
-    "N",   # pep8-naming
-]
-
-# Ignore specific rules if needed
-ignore = []
-
 # Exclude patterns
 exclude = [
     ".git",
@@ -57,18 +45,63 @@ exclude = [
     "dist",
 ]
 
+[tool.ruff.lint]
+# Enable rule categories
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+]
+
+# Ignore specific rules if needed
+ignore = [
+    "E501",  # Line too long (many ML equations/formulas need longer lines)
+    "N806",  # Variable naming (B, T, D are standard in ML for batch, time, dimension)
+    "N812",  # Import naming (F for functional, L for lightning are ML conventions)
+]
+
 # Allow autofix for all enabled rules
 fixable = ["ALL"]
 unfixable = []
 
-# Show an enumeration of all autofixed violations
-show-fixes = true
+[tool.ruff.lint.per-file-ignores]
+# Ignore import errors and common test patterns in test files
+"**/{tests,test_*}/*" = ["F401", "E402", "E741", "N802"]
+# Ignore various errors in debug/benchmark scripts (not production code)
+"**/debug/*" = ["E402", "F821", "E741"]
+"**/benchmarks/*" = ["E741", "F821"]
+"bench_*.py" = ["E741"]
+# Ignore undefined names in config files (forward references, dynamic imports)
+"config/*.py" = ["E721", "F821"]
+# Ignore module-level imports in data prep scripts
+"data/prepare_*.py" = ["E741"]
+# Ignore in training scripts (may have dynamic config, DDP imports)
+"train*.py" = ["F821", "E741", "N817"]
+"sample*.py" = ["E741"]
+# Ignore physics notation and Triton conventions in model code
+"neuromanifold_gpt/model/attention/fhn*.py" = ["E741", "N803"]  # I is physics notation, BLOCK_SIZE is Triton
+"neuromanifold_gpt/model/attention/kaufmann.py" = ["N803"]  # I_base notation
+"neuromanifold_gpt/model/attention/parallel_scan.py" = ["E741", "N803"]  # I notation
+"neuromanifold_gpt/model/physics/*.py" = ["E741", "N802"]  # Physics notation (V for potential, H for Hamiltonian)
+"neuromanifold_gpt/model/attention/__init__.py" = ["F821"]  # Forward references
+"neuromanifold_gpt/model/ssm/*.py" = ["E741", "N803", "F811"]  # SSM notation, conditional function definitions
+"neuromanifold_gpt/model/fno/*.py" = ["N803"]  # FNO notation (L for layer size)
+"neuromanifold_gpt/model/mhc_fused.py" = ["N803"]  # Triton: B, T, D, S, BLOCK_SIZE
+"neuromanifold_gpt/model/neuro_symbolic_wave.py" = ["E741"]  # l for length
+"neuromanifold_gpt/model/soliton/attention.py" = ["F821"]  # Forward references
+"neuromanifold_gpt/model/spectral.py" = ["E402"]  # Imports after compile check
+"neuromanifold_gpt/hpo/test_visualize.py" = ["F401"]  # Test imports
+# Ignore errors in profiling and research scripts (experimental code)
+"neuromanifold_gpt/profiling/*.py" = ["E741", "N803"]  # Physics notation
+"neuromanifold_gpt/research/*.py" = ["E402"]  # Module imports after sys.path modification
+# Ignore forward references in NAS and config modules
+"neuromanifold_gpt/nas/*.py" = ["F821", "F401"]  # Forward references and test imports
+"neuromanifold_gpt/config/*.py" = ["E721", "F821"]  # Forward references, dynamic type checks
+"neuromanifold_gpt/data/prepare_shakespeare.py" = ["E741"]  # l is common for list parameter
 
-[tool.ruff.per-file-ignores]
-# Ignore import errors in test files
-"**/{tests,test_*}/*" = ["F401"]
-
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 # Use Google-style import sorting
 force-single-line = false
 force-sort-within-sections = false

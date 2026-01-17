@@ -22,28 +22,29 @@ Usage:
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Union
 
 try:
     import matplotlib
-    matplotlib.use('Agg')  # Use non-interactive backend
+
+    matplotlib.use("Agg")  # Use non-interactive backend
     import matplotlib.pyplot as plt
     import numpy as np
+
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
 try:
     import optuna
+
     OPTUNA_AVAILABLE = True
 except ImportError:
     OPTUNA_AVAILABLE = False
 
 
 def plot_optimization_history(
-    study: 'optuna.Study',
-    output_path: Union[str, Path],
-    show_best: bool = True
+    study: "optuna.Study", output_path: Union[str, Path], show_best: bool = True
 ):
     """Plot optimization history showing objective value over trials.
 
@@ -90,15 +91,30 @@ def plot_optimization_history(
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Plot completed trials
-    completed_mask = np.array([s == optuna.trial.TrialState.COMPLETE for s in trial_states])
+    completed_mask = np.array(
+        [s == optuna.trial.TrialState.COMPLETE for s in trial_states]
+    )
     if np.any(completed_mask):
         completed_nums = np.array(trial_numbers)[completed_mask]
         completed_vals = np.array([v for v in trial_values if v is not None])
 
-        ax.scatter(completed_nums, completed_vals,
-                  color='#3498db', s=50, alpha=0.6, label='Completed', zorder=3)
-        ax.plot(completed_nums, completed_vals,
-               color='#3498db', alpha=0.3, linewidth=1, zorder=2)
+        ax.scatter(
+            completed_nums,
+            completed_vals,
+            color="#3498db",
+            s=50,
+            alpha=0.6,
+            label="Completed",
+            zorder=3,
+        )
+        ax.plot(
+            completed_nums,
+            completed_vals,
+            color="#3498db",
+            alpha=0.3,
+            linewidth=1,
+            zorder=2,
+        )
 
     # Plot pruned trials (if any)
     pruned_mask = np.array([s == optuna.trial.TrialState.PRUNED for s in trial_states])
@@ -107,11 +123,23 @@ def plot_optimization_history(
         # Use a placeholder value at the bottom of the plot for pruned trials
         if np.any(completed_mask):
             completed_vals_arr = np.array([v for v in trial_values if v is not None])
-            pruned_y = np.min(completed_vals_arr) if study.direction == optuna.study.StudyDirection.MINIMIZE else np.max(completed_vals_arr)
+            pruned_y = (
+                np.min(completed_vals_arr)
+                if study.direction == optuna.study.StudyDirection.MINIMIZE
+                else np.max(completed_vals_arr)
+            )
         else:
             pruned_y = 0
-        ax.scatter(pruned_nums, [pruned_y] * len(pruned_nums),
-                  color='#95a5a6', s=30, alpha=0.5, marker='x', label='Pruned', zorder=3)
+        ax.scatter(
+            pruned_nums,
+            [pruned_y] * len(pruned_nums),
+            color="#95a5a6",
+            s=30,
+            alpha=0.5,
+            marker="x",
+            label="Pruned",
+            zorder=3,
+        )
 
     # Plot failed trials (if any)
     failed_mask = np.array([s == optuna.trial.TrialState.FAIL for s in trial_states])
@@ -120,11 +148,23 @@ def plot_optimization_history(
         # Use a placeholder value at the top of the plot for failed trials
         if np.any(completed_mask):
             completed_vals_arr = np.array([v for v in trial_values if v is not None])
-            failed_y = np.max(completed_vals_arr) if study.direction == optuna.study.StudyDirection.MINIMIZE else np.min(completed_vals_arr)
+            failed_y = (
+                np.max(completed_vals_arr)
+                if study.direction == optuna.study.StudyDirection.MINIMIZE
+                else np.min(completed_vals_arr)
+            )
         else:
             failed_y = 0
-        ax.scatter(failed_nums, [failed_y] * len(failed_nums),
-                  color='#e74c3c', s=30, alpha=0.5, marker='x', label='Failed', zorder=3)
+        ax.scatter(
+            failed_nums,
+            [failed_y] * len(failed_nums),
+            color="#e74c3c",
+            s=30,
+            alpha=0.5,
+            marker="x",
+            label="Failed",
+            zorder=3,
+        )
 
     # Plot best value line
     if show_best and np.any(completed_mask):
@@ -136,56 +176,85 @@ def plot_optimization_history(
         else:
             best_values = np.maximum.accumulate(completed_vals_arr)
 
-        ax.plot(completed_nums_arr, best_values,
-               color='#2ecc71', linewidth=2, label='Best Value', zorder=4)
+        ax.plot(
+            completed_nums_arr,
+            best_values,
+            color="#2ecc71",
+            linewidth=2,
+            label="Best Value",
+            zorder=4,
+        )
 
         # Mark the best trial
-        best_idx = np.argmin(best_values) if study.direction == optuna.study.StudyDirection.MINIMIZE else np.argmax(best_values)
-        ax.scatter([completed_nums_arr[best_idx]], [best_values[best_idx]],
-                  color='#2ecc71', s=200, marker='*', zorder=5, edgecolors='black', linewidths=1.5)
+        best_idx = (
+            np.argmin(best_values)
+            if study.direction == optuna.study.StudyDirection.MINIMIZE
+            else np.argmax(best_values)
+        )
+        ax.scatter(
+            [completed_nums_arr[best_idx]],
+            [best_values[best_idx]],
+            color="#2ecc71",
+            s=200,
+            marker="*",
+            zorder=5,
+            edgecolors="black",
+            linewidths=1.5,
+        )
 
     # Formatting
-    ax.set_xlabel('Trial Number', fontsize=12)
-    ax.set_ylabel('Objective Value', fontsize=12)
+    ax.set_xlabel("Trial Number", fontsize=12)
+    ax.set_ylabel("Objective Value", fontsize=12)
 
-    direction_text = 'minimize' if study.direction == optuna.study.StudyDirection.MINIMIZE else 'maximize'
-    ax.set_title(f'Optimization History (direction: {direction_text})',
-                fontsize=14, fontweight='bold')
+    direction_text = (
+        "minimize"
+        if study.direction == optuna.study.StudyDirection.MINIMIZE
+        else "maximize"
+    )
+    ax.set_title(
+        f"Optimization History (direction: {direction_text})",
+        fontsize=14,
+        fontweight="bold",
+    )
 
     ax.grid(alpha=0.3, zorder=1)
-    ax.legend(fontsize=10, loc='best')
+    ax.legend(fontsize=10, loc="best")
 
     # Add study statistics as text
     n_completed = sum(1 for s in trial_states if s == optuna.trial.TrialState.COMPLETE)
     n_pruned = sum(1 for s in trial_states if s == optuna.trial.TrialState.PRUNED)
     n_failed = sum(1 for s in trial_states if s == optuna.trial.TrialState.FAIL)
 
-    stats_text = f'Trials: {len(trial_numbers)} (✓ {n_completed}'
+    stats_text = f"Trials: {len(trial_numbers)} (✓ {n_completed}"
     if n_pruned > 0:
-        stats_text += f', ✂ {n_pruned}'
+        stats_text += f", ✂ {n_pruned}"
     if n_failed > 0:
-        stats_text += f', ✗ {n_failed}'
-    stats_text += ')'
+        stats_text += f", ✗ {n_failed}"
+    stats_text += ")"
 
     if n_completed > 0:
-        stats_text += f'\nBest: {study.best_value:.4f} (trial {study.best_trial.number})'
+        stats_text += (
+            f"\nBest: {study.best_value:.4f} (trial {study.best_trial.number})"
+        )
 
-    ax.text(0.02, 0.98, stats_text,
-           transform=ax.transAxes,
-           fontsize=10,
-           verticalalignment='top',
-           bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    ax.text(
+        0.02,
+        0.98,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  Saved optimization history plot: {output_path}")
 
 
 def plot_param_importances(
-    study: 'optuna.Study',
-    output_path: Union[str, Path],
-    top_n: int = 10
+    study: "optuna.Study", output_path: Union[str, Path], top_n: int = 10
 ):
     """Plot parameter importance using fANOVA.
 
@@ -210,9 +279,13 @@ def plot_param_importances(
         return
 
     # Need at least 2 completed trials for importance calculation
-    completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    completed_trials = [
+        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
     if len(completed_trials) < 2:
-        print(f"WARNING: Need at least 2 completed trials for importance calculation (found {len(completed_trials)}), skipping plot")
+        print(
+            f"WARNING: Need at least 2 completed trials for importance calculation (found {len(completed_trials)}), skipping plot"
+        )
         return
 
     output_path = Path(output_path)
@@ -230,7 +303,9 @@ def plot_param_importances(
             return
 
         # Sort by importance and take top N
-        sorted_importances = sorted(importances.items(), key=lambda x: x[1], reverse=True)
+        sorted_importances = sorted(
+            importances.items(), key=lambda x: x[1], reverse=True
+        )
         if len(sorted_importances) > top_n:
             sorted_importances = sorted_importances[:top_n]
 
@@ -241,27 +316,33 @@ def plot_param_importances(
         fig, ax = plt.subplots(figsize=(10, max(6, len(param_names) * 0.4)))
 
         y_pos = np.arange(len(param_names))
-        bars = ax.barh(y_pos, importance_values, color='#3498db', alpha=0.7)
+        bars = ax.barh(y_pos, importance_values, color="#3498db", alpha=0.7)
 
         # Color the most important parameter differently
         if bars:
-            bars[0].set_color('#e74c3c')
+            bars[0].set_color("#e74c3c")
 
         ax.set_yticks(y_pos)
         ax.set_yticklabels(param_names)
         ax.invert_yaxis()  # Highest importance at top
-        ax.set_xlabel('Importance', fontsize=12)
-        ax.set_title('Hyperparameter Importances (fANOVA)', fontsize=14, fontweight='bold')
-        ax.grid(axis='x', alpha=0.3)
+        ax.set_xlabel("Importance", fontsize=12)
+        ax.set_title(
+            "Hyperparameter Importances (fANOVA)", fontsize=14, fontweight="bold"
+        )
+        ax.grid(axis="x", alpha=0.3)
 
         # Add value labels on bars
         for i, (bar, val) in enumerate(zip(bars, importance_values)):
-            ax.text(val, bar.get_y() + bar.get_height()/2,
-                   f' {val:.3f}',
-                   va='center', fontsize=9)
+            ax.text(
+                val,
+                bar.get_y() + bar.get_height() / 2,
+                f" {val:.3f}",
+                va="center",
+                fontsize=9,
+            )
 
         plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"  Saved parameter importances plot: {output_path}")
 
@@ -276,9 +357,7 @@ def plot_param_importances(
 
 
 def _plot_param_importances_fallback(
-    study: 'optuna.Study',
-    output_path: Path,
-    top_n: int = 10
+    study: "optuna.Study", output_path: Path, top_n: int = 10
 ):
     """Fallback method for parameter importance using simple variance analysis.
 
@@ -288,7 +367,9 @@ def _plot_param_importances_fallback(
         top_n: Number of top parameters to display
     """
     # Get completed trials
-    completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    completed_trials = [
+        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
 
     if len(completed_trials) < 2:
         print("WARNING: Need at least 2 completed trials, skipping plot")
@@ -318,7 +399,7 @@ def _plot_param_importances_fallback(
         # Calculate variance between groups
         if len(param_groups) > 1:
             group_means = [np.mean(vals) for vals in param_groups.values()]
-            overall_mean = np.mean([v for vals in param_groups.values() for v in vals])
+            np.mean([v for vals in param_groups.values() for v in vals])
             # Between-group variance
             variance = np.var(group_means)
             param_variances[param_name] = variance
@@ -337,7 +418,9 @@ def _plot_param_importances_fallback(
         param_importances = param_variances
 
     # Sort and take top N
-    sorted_importances = sorted(param_importances.items(), key=lambda x: x[1], reverse=True)
+    sorted_importances = sorted(
+        param_importances.items(), key=lambda x: x[1], reverse=True
+    )
     if len(sorted_importances) > top_n:
         sorted_importances = sorted_importances[:top_n]
 
@@ -348,44 +431,52 @@ def _plot_param_importances_fallback(
     fig, ax = plt.subplots(figsize=(10, max(6, len(param_names) * 0.4)))
 
     y_pos = np.arange(len(param_names))
-    bars = ax.barh(y_pos, importance_values, color='#3498db', alpha=0.7)
+    bars = ax.barh(y_pos, importance_values, color="#3498db", alpha=0.7)
 
     # Color the most important parameter differently
     if bars:
-        bars[0].set_color('#e74c3c')
+        bars[0].set_color("#e74c3c")
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(param_names)
     ax.invert_yaxis()  # Highest importance at top
-    ax.set_xlabel('Relative Importance', fontsize=12)
-    ax.set_title('Hyperparameter Importances (Variance-based)', fontsize=14, fontweight='bold')
-    ax.grid(axis='x', alpha=0.3)
+    ax.set_xlabel("Relative Importance", fontsize=12)
+    ax.set_title(
+        "Hyperparameter Importances (Variance-based)", fontsize=14, fontweight="bold"
+    )
+    ax.grid(axis="x", alpha=0.3)
 
     # Add value labels on bars
     for i, (bar, val) in enumerate(zip(bars, importance_values)):
-        ax.text(val, bar.get_y() + bar.get_height()/2,
-               f' {val:.3f}',
-               va='center', fontsize=9)
+        ax.text(
+            val,
+            bar.get_y() + bar.get_height() / 2,
+            f" {val:.3f}",
+            va="center",
+            fontsize=9,
+        )
 
     # Add note about method
-    ax.text(0.98, 0.02,
-           'Note: Using variance-based importance\n(fANOVA not available)',
-           transform=ax.transAxes,
-           fontsize=8,
-           verticalalignment='bottom',
-           horizontalalignment='right',
-           style='italic',
-           bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.3))
+    ax.text(
+        0.98,
+        0.02,
+        "Note: Using variance-based importance\n(fANOVA not available)",
+        transform=ax.transAxes,
+        fontsize=8,
+        verticalalignment="bottom",
+        horizontalalignment="right",
+        style="italic",
+        bbox=dict(boxstyle="round", facecolor="yellow", alpha=0.3),
+    )
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  Saved parameter importances plot (fallback): {output_path}")
 
 
 def plot_all_visualizations(
-    study: 'optuna.Study',
-    output_dir: Union[str, Path] = "hpo_plots"
+    study: "optuna.Study", output_dir: Union[str, Path] = "hpo_plots"
 ) -> Dict[str, Path]:
     """Create all HPO visualization plots.
 
@@ -425,12 +516,12 @@ def plot_all_visualizations(
     # Plot optimization history
     history_path = output_dir / "optimization_history.png"
     plot_optimization_history(study, history_path)
-    plots['optimization_history'] = history_path
+    plots["optimization_history"] = history_path
 
     # Plot parameter importances
     importances_path = output_dir / "param_importances.png"
     plot_param_importances(study, importances_path)
-    plots['param_importances'] = importances_path
+    plots["param_importances"] = importances_path
 
     print()
     print("=" * 80)
@@ -454,29 +545,24 @@ Examples:
 
   # Specify output directory
   python neuromanifold_gpt/hpo/visualize.py --storage sqlite:///hpo_study.db --name my-study --output plots
-        """
+        """,
     )
 
     parser.add_argument(
         "--storage",
         type=str,
         required=True,
-        help="Optuna storage URL (e.g., sqlite:///study.db)"
+        help="Optuna storage URL (e.g., sqlite:///study.db)",
     )
 
-    parser.add_argument(
-        "--name",
-        type=str,
-        required=True,
-        help="Study name"
-    )
+    parser.add_argument("--name", type=str, required=True, help="Study name")
 
     parser.add_argument(
         "--output",
         "-o",
         type=str,
         default="hpo_plots",
-        help="Output directory for plots (default: hpo_plots)"
+        help="Output directory for plots (default: hpo_plots)",
     )
 
     args = parser.parse_args()
@@ -493,10 +579,7 @@ Examples:
 
     try:
         # Load study from storage
-        study = optuna.load_study(
-            study_name=args.name,
-            storage=args.storage
-        )
+        study = optuna.load_study(study_name=args.name, storage=args.storage)
 
         print(f"Loaded study: {args.name}")
         print(f"Trials: {len(study.trials)}")
@@ -516,6 +599,7 @@ Examples:
     except Exception as e:
         print(f"\nERROR: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 

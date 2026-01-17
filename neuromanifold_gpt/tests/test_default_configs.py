@@ -1,6 +1,7 @@
 """Tests for default configuration files."""
 
 import os
+
 import pytest
 
 

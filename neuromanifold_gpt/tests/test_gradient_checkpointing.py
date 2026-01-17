@@ -2,9 +2,10 @@
 """Tests for gradient checkpointing in GPT models."""
 import pytest
 import torch
+
+from model import GPT, GPTConfig
 from neuromanifold_gpt.config import NeuroManifoldConfigNano
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
-from model import GPT, GPTConfig
 
 
 def test_neuromanifold_gpt_with_gradient_checkpointing():
@@ -32,7 +33,7 @@ def test_standard_gpt_with_gradient_checkpointing():
         n_embd=64,
         block_size=32,
         vocab_size=100,
-        gradient_checkpointing=True
+        gradient_checkpointing=True,
     )
     model = GPT(config)
     model.train()
@@ -210,7 +211,7 @@ def test_standard_gpt_gradient_flow():
         n_embd=64,
         block_size=32,
         vocab_size=100,
-        gradient_checkpointing=True
+        gradient_checkpointing=True,
     )
     model = GPT(config)
     model.train()

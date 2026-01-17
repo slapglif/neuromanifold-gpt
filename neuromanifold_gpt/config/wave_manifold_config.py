@@ -10,6 +10,7 @@ Unified configuration integrating:
 """
 
 from dataclasses import dataclass, field
+
 from neuromanifold_gpt.config.ralph_base import RalphBaseConfig
 from neuromanifold_gpt.model.continuous import ContinuousOutputConfig
 
@@ -36,6 +37,7 @@ class WaveManifoldConfig(RalphBaseConfig):
     mom_num_experts: int = 8
     mom_top_k: int = 2
     mom_load_balance_weight: float = 0.01
+    mom_state_dim: int = 16  # Added for alignment with train.py
 
     # Hybrid Stack (Disabled for Pure Wave Network)
     use_hybrid_stack: bool = False
@@ -49,12 +51,20 @@ class WaveManifoldConfig(RalphBaseConfig):
     # Topological Regularization
     use_topological_loss: bool = True
     topology_weight: float = 0.1
+    braid_dim: int = 64
 
     # Continuous Generation
     use_continuous_head: bool = True
+    use_sac_output: bool = False
     continuous_head_config: ContinuousOutputConfig = field(
         default_factory=lambda: ContinuousOutputConfig()
     )
+
+    # Hybrid Reasoning (System 1/2)
+    use_hybrid_reasoning: bool = False
+    n_thinking_layers: int = 2
+    thinking_threshold: float = 0.5
+    use_e7_prior: bool = False
 
     # Legacy compatibility overrides
     model_type: str = "wave_manifold"

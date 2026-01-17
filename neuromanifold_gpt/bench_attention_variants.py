@@ -9,16 +9,17 @@ Measures:
 - Parameter count
 """
 
+import math
 import time
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, einsum
-import math
+from einops import einsum, rearrange
 
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
-from neuromanifold_gpt.model.attention.parallel_scan import parallel_fhn_scan
 from neuromanifold_gpt.model.attention.mla import MultiHeadLatentAttention
+from neuromanifold_gpt.model.attention.parallel_scan import parallel_fhn_scan
 
 
 class StandardSoftmaxAttention(nn.Module):
@@ -165,8 +166,7 @@ class ParallelScanAttention(nn.Module):
         w_init = torch.zeros_like(out_flat[:, 0, :])
 
         u_out, _ = parallel_fhn_scan(
-            u_init, w_init, out_flat,
-            self.a, self.b, self.tau, self.dt
+            u_init, w_init, out_flat, self.a, self.b, self.tau, self.dt
         )
 
         out = rearrange(u_out, "(b h) t d -> b h t d", b=B, h=self.n_heads)
@@ -177,8 +177,11 @@ class ParallelScanAttention(nn.Module):
 
 
 def benchmark_layer(
-    layer: nn.Module, input_tensor: torch.Tensor, spectral_basis: torch.Tensor = None,
-    n_iters: int = 100, warmup: int = 10
+    layer: nn.Module,
+    input_tensor: torch.Tensor,
+    spectral_basis: torch.Tensor = None,
+    n_iters: int = 100,
+    warmup: int = 10,
 ):
     """Benchmark a single attention layer."""
     device = next(layer.parameters()).device
@@ -280,9 +283,9 @@ def main():
 
         # Initialize attention variants
         standard_attn = StandardSoftmaxAttention(embed_dim, n_heads).to(device)
-        fhn_attn = FHNAttention(
-            embed_dim, n_heads, use_imex=True, n_fhn_steps=2
-        ).to(device)
+        fhn_attn = FHNAttention(embed_dim, n_heads, use_imex=True, n_fhn_steps=2).to(
+            device
+        )
         parallel_scan_attn = ParallelScanAttention(embed_dim, n_heads).to(device)
         mla_attn = MultiHeadLatentAttention(
             embed_dim, n_heads, latent_dim=embed_dim // 8, rope_dim=8
@@ -294,11 +297,17 @@ def main():
         parallel_params = count_parameters(parallel_scan_attn)
         mla_params = count_parameters(mla_attn)
 
-        print(f"\nParameters:")
+        print("\nParameters:")
         print(f"  Standard Softmax:  {standard_params:,}")
-        print(f"  FHN IMEX:          {fhn_params:,} ({fhn_params / standard_params:.2f}x)")
-        print(f"  Parallel Scan:     {parallel_params:,} ({parallel_params / standard_params:.2f}x)")
-        print(f"  MLA:               {mla_params:,} ({mla_params / standard_params:.2f}x)")
+        print(
+            f"  FHN IMEX:          {fhn_params:,} ({fhn_params / standard_params:.2f}x)"
+        )
+        print(
+            f"  Parallel Scan:     {parallel_params:,} ({parallel_params / standard_params:.2f}x)"
+        )
+        print(
+            f"  MLA:               {mla_params:,} ({mla_params / standard_params:.2f}x)"
+        )
 
         # Benchmark each variant
         standard_fwd, standard_bwd = benchmark_layer(standard_attn, x, n_iters=100)
@@ -306,28 +315,38 @@ def main():
         parallel_fwd, parallel_bwd = benchmark_layer(parallel_scan_attn, x, n_iters=100)
         mla_fwd, mla_bwd = benchmark_layer(mla_attn, x, n_iters=100)
 
-        print(f"\nForward Pass (ms):")
+        print("\nForward Pass (ms):")
         print(f"  Standard Softmax:  {standard_fwd:.3f}")
         print(f"  FHN IMEX:          {fhn_fwd:.3f} ({fhn_fwd / standard_fwd:.2f}x)")
-        print(f"  Parallel Scan:     {parallel_fwd:.3f} ({parallel_fwd / standard_fwd:.2f}x)")
+        print(
+            f"  Parallel Scan:     {parallel_fwd:.3f} ({parallel_fwd / standard_fwd:.2f}x)"
+        )
         print(f"  MLA:               {mla_fwd:.3f} ({mla_fwd / standard_fwd:.2f}x)")
 
-        print(f"\nBackward Pass (ms):")
+        print("\nBackward Pass (ms):")
         print(f"  Standard Softmax:  {standard_bwd:.3f}")
         print(f"  FHN IMEX:          {fhn_bwd:.3f} ({fhn_bwd / standard_bwd:.2f}x)")
-        print(f"  Parallel Scan:     {parallel_bwd:.3f} ({parallel_bwd / standard_bwd:.2f}x)")
+        print(
+            f"  Parallel Scan:     {parallel_bwd:.3f} ({parallel_bwd / standard_bwd:.2f}x)"
+        )
         print(f"  MLA:               {mla_bwd:.3f} ({mla_bwd / standard_bwd:.2f}x)")
 
-        print(f"\nTotal Time (ms):")
+        print("\nTotal Time (ms):")
         standard_total = standard_fwd + standard_bwd
         fhn_total = fhn_fwd + fhn_bwd
         parallel_total = parallel_fwd + parallel_bwd
         mla_total = mla_fwd + mla_bwd
 
         print(f"  Standard Softmax:  {standard_total:.3f}")
-        print(f"  FHN IMEX:          {fhn_total:.3f} ({fhn_total / standard_total:.2f}x)")
-        print(f"  Parallel Scan:     {parallel_total:.3f} ({parallel_total / standard_total:.2f}x)")
-        print(f"  MLA:               {mla_total:.3f} ({mla_total / standard_total:.2f}x)")
+        print(
+            f"  FHN IMEX:          {fhn_total:.3f} ({fhn_total / standard_total:.2f}x)"
+        )
+        print(
+            f"  Parallel Scan:     {parallel_total:.3f} ({parallel_total / standard_total:.2f}x)"
+        )
+        print(
+            f"  MLA:               {mla_total:.3f} ({mla_total / standard_total:.2f}x)"
+        )
 
     print("\n" + "=" * 80)
     print("Benchmark complete!")

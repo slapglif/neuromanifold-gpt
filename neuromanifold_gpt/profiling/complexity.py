@@ -1,8 +1,9 @@
-import torch
-import torch.nn as nn
-from typing import Dict, List, Tuple
 import time
 from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
+import torch
+import torch.nn as nn
 
 
 @dataclass

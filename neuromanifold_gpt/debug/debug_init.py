@@ -1,5 +1,5 @@
 import time
-import torch
+
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 

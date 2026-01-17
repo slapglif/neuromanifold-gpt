@@ -1,9 +1,10 @@
 import pytest
 import torch
+
 from neuromanifold_gpt.model.ssm.mixture_of_mamba import (
-    ModalityRouter,
-    MixtureOfMambaBlock,
     AdaptiveMixtureOfMamba,
+    MixtureOfMambaBlock,
+    ModalityRouter,
 )
 
 
@@ -17,17 +18,18 @@ class TestModalityRouter:
         router = ModalityRouter(embed_dim=128, num_experts=8, top_k=2).to(device)
         x = torch.randn(2, 32, 128).to(device)
 
-        gates, indices, load = router(x)
+        gates, indices, load, logits = router(x)
 
         assert gates.shape == (2, 32, 2)
         assert indices.shape == (2, 32, 2)
         assert load.shape == (8,)
+        assert logits.shape == (2, 32, 2)
 
     def test_gating_properties(self, device):
         router = ModalityRouter(embed_dim=128, num_experts=8, top_k=2).to(device)
         x = torch.randn(2, 32, 128).to(device)
 
-        gates, indices, load = router(x)
+        gates, indices, load, logits = router(x)
 
         assert (gates >= 0).all()
         assert (gates <= 1).all()
@@ -39,7 +41,7 @@ class TestModalityRouter:
         router = ModalityRouter(embed_dim=128, num_experts=8, top_k=2).to(device)
         x = torch.randn(2, 32, 128).to(device)
 
-        gates, indices, load = router(x)
+        gates, indices, load, logits = router(x)
 
         assert load.sum() > 0
         assert (load >= 0).all()

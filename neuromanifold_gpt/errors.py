@@ -12,9 +12,9 @@ Example:
 """
 
 from typing import Optional
+
 from rich.console import Console
 from rich.panel import Panel
-
 
 console = Console(stderr=True)
 
@@ -97,6 +97,7 @@ class ConfigurationError(NeuroManifoldError):
             recovery="Use n_embd=128 (or any multiple of 8) with n_heads=8"
         )
     """
+
     pass
 
 
@@ -116,6 +117,7 @@ class ModelError(NeuroManifoldError):
             recovery="Specify a valid model type or use --init_from=scratch"
         )
     """
+
     pass
 
 
@@ -132,6 +134,7 @@ class ValidationError(NeuroManifoldError):
             recovery="Use either: python script.py config_name OR python script.py --flag=value"
         )
     """
+
     pass
 
 
@@ -148,6 +151,7 @@ class RuntimeError(NeuroManifoldError):
             recovery="Set use_imagination=True in config to enable this feature"
         )
     """
+
     pass
 
 
@@ -168,6 +172,7 @@ class CheckpointError(NeuroManifoldError):
             recovery="Verify the checkpoint path and ensure the file is valid"
         )
     """
+
     pass
 
 
@@ -188,6 +193,7 @@ class DataError(NeuroManifoldError):
             recovery="Regenerate the data file using prepare.py or verify the data source"
         )
     """
+
     pass
 
 
@@ -208,4 +214,5 @@ class MemoryError(NeuroManifoldError):
             recovery="Reduce batch_size to 32 or use gradient accumulation"
         )
     """
+
     pass

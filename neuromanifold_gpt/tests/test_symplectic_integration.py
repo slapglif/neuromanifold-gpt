@@ -1,12 +1,13 @@
 import pytest
 import torch
+
 from neuromanifold_gpt.model.physics.symplectic import (
-    StormerVerlet,
     Ruth4,
     SolitonSymplecticWrapper,
+    StormerVerlet,
 )
-from neuromanifold_gpt.model.soliton.sine_gordon import SineGordonSolver
 from neuromanifold_gpt.model.soliton.kdv import KdVSolver
+from neuromanifold_gpt.model.soliton.sine_gordon import SineGordonSolver
 
 
 @pytest.fixture
@@ -19,7 +20,9 @@ class TestSymplecticSolitonIntegration:
         def sine_gordon_H(q, p):
             c = 1.0
             kinetic = 0.5 * (p**2).sum(dim=-1)
-            potential = 0.5 * c**2 * (q**2).sum(dim=-1) + (1 - torch.cos(q)).sum(dim=-1)
+            potential = 0.5 * c**2 * (q**2).sum(dim=-1) + (1 - torch.cos(q)).sum(
+                dim=-1
+            )
             return kinetic + potential
 
         wrapper = SolitonSymplecticWrapper(

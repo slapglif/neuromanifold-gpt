@@ -44,16 +44,18 @@ Example:
     >>> print(f"Evolved through {result.metadata['n_generations']} generations")
 """
 
-import time
 import random
-from typing import Any, Optional, List, Dict, Tuple
-from dataclasses import dataclass, field
-from pathlib import Path
-import json
+import time
+from typing import Any, List, Optional, Tuple
+
 from loguru import logger
 
-from neuromanifold_gpt.nas.search_space import SearchSpace, ArchitectureConfig
-from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator, ComputeBudget, EvaluationResult
+from neuromanifold_gpt.nas.evaluator import (
+    ArchitectureEvaluator,
+    ComputeBudget,
+    EvaluationResult,
+)
+from neuromanifold_gpt.nas.search_space import ArchitectureConfig, SearchSpace
 from neuromanifold_gpt.nas.searcher import Searcher, SearchResult
 
 
@@ -188,7 +190,9 @@ class EvolutionarySearch(Searcher):
             logger.info(f"Budget: {self.budget.max_evaluations} max evaluations")
 
         # Initialize population with random architectures
-        logger.info(f"Initializing population with {self.population_size} random architectures")
+        logger.info(
+            f"Initializing population with {self.population_size} random architectures"
+        )
         self._initialize_population()
 
         # Evaluate initial population
@@ -205,7 +209,9 @@ class EvolutionarySearch(Searcher):
 
             # Check if we can evaluate at least one more offspring
             if self.budget is not None:
-                remaining = self.budget.max_evaluations - len(self.evaluated_architectures)
+                remaining = self.budget.max_evaluations - len(
+                    self.evaluated_architectures
+                )
                 if remaining <= 0:
                     logger.info("Budget exhausted")
                     break
@@ -236,11 +242,15 @@ class EvolutionarySearch(Searcher):
 
         best_architecture, best_result = best
 
-        logger.info(f"\n=== Evolutionary Search Complete ===")
+        logger.info("\n=== Evolutionary Search Complete ===")
         logger.info(f"Total generations: {self.generation}")
         logger.info(f"Total evaluations: {len(self.evaluation_results)}")
-        logger.info(f"Successful: {sum(1 for r in self.evaluation_results if r.success)}")
-        logger.info(f"Failed: {sum(1 for r in self.evaluation_results if not r.success)}")
+        logger.info(
+            f"Successful: {sum(1 for r in self.evaluation_results if r.success)}"
+        )
+        logger.info(
+            f"Failed: {sum(1 for r in self.evaluation_results if not r.success)}"
+        )
         logger.info(f"Search time: {search_time:.1f}s")
         logger.info(f"Best architecture: {best_architecture.architecture_id}")
         logger.info(f"  Perplexity: {best_result.perplexity:.2f}")
@@ -298,12 +308,14 @@ class EvolutionarySearch(Searcher):
             if self.budget is not None:
                 should_stop, reason = self.budget.should_stop()
                 if should_stop:
-                    logger.info(f"Budget exhausted during population evaluation")
+                    logger.info("Budget exhausted during population evaluation")
                     # Remove unevaluated architectures
                     self.population = self.population[:i]
                     break
 
-            logger.info(f"Evaluating {i+1}/{len(self.population)}: {architecture.architecture_id}")
+            logger.info(
+                f"Evaluating {i+1}/{len(self.population)}: {architecture.architecture_id}"
+            )
 
             # Evaluate architecture
             result = self.evaluator.evaluate(
@@ -334,7 +346,7 @@ class EvolutionarySearch(Searcher):
 
                 # Update budget even on failure
                 if self.budget is not None:
-                    self.budget.update(float('inf'))
+                    self.budget.update(float("inf"))
 
     def _create_offspring(self) -> List[ArchitectureConfig]:
         """Create offspring through selection, crossover, and mutation.
@@ -354,7 +366,9 @@ class EvolutionarySearch(Searcher):
         while len(offspring) < n_offspring:
             # Check budget
             if self.budget is not None:
-                remaining = self.budget.max_evaluations - len(self.evaluated_architectures)
+                remaining = self.budget.max_evaluations - len(
+                    self.evaluated_architectures
+                )
                 if remaining <= len(offspring):
                     # Can't evaluate more offspring
                     break
@@ -392,8 +406,7 @@ class EvolutionarySearch(Searcher):
         """
         # Filter successful evaluations
         successful_indices = [
-            i for i, res in enumerate(self.population_results)
-            if res.success
+            i for i, res in enumerate(self.population_results) if res.success
         ]
 
         if not successful_indices:
@@ -406,8 +419,7 @@ class EvolutionarySearch(Searcher):
 
         # Select best individual from tournament (lowest perplexity)
         best_idx = min(
-            tournament_indices,
-            key=lambda i: self.population_results[i].perplexity
+            tournament_indices, key=lambda i: self.population_results[i].perplexity
         )
 
         return self.population[best_idx]
@@ -434,16 +446,22 @@ class EvolutionarySearch(Searcher):
         child.n_embd = random.choice([parent1.n_embd, parent2.n_embd])
 
         # Ensure n_heads is compatible with n_embd
-        valid_n_heads = [h for h in [parent1.n_heads, parent2.n_heads] if child.n_embd % h == 0]
+        valid_n_heads = [
+            h for h in [parent1.n_heads, parent2.n_heads] if child.n_embd % h == 0
+        ]
         if valid_n_heads:
             child.n_heads = random.choice(valid_n_heads)
         else:
             # Fall back to valid choice from search space
-            valid_heads = [h for h in self.search_space.n_heads_choices if child.n_embd % h == 0]
+            valid_heads = [
+                h for h in self.search_space.n_heads_choices if child.n_embd % h == 0
+            ]
             child.n_heads = random.choice(valid_heads)
 
         # Attention configuration
-        child.attention_type = random.choice([parent1.attention_type, parent2.attention_type])
+        child.attention_type = random.choice(
+            [parent1.attention_type, parent2.attention_type]
+        )
         child.use_qk_norm = random.choice([parent1.use_qk_norm, parent2.use_qk_norm])
 
         # Component choices
@@ -454,17 +472,27 @@ class EvolutionarySearch(Searcher):
 
         # KAN configuration
         child.kan_type = random.choice([parent1.kan_type, parent2.kan_type])
-        child.kan_num_centers = random.choice([parent1.kan_num_centers, parent2.kan_num_centers])
+        child.kan_num_centers = random.choice(
+            [parent1.kan_num_centers, parent2.kan_num_centers]
+        )
 
         # FHN dynamics
-        child.fhn_threshold = random.choice([parent1.fhn_threshold, parent2.fhn_threshold])
+        child.fhn_threshold = random.choice(
+            [parent1.fhn_threshold, parent2.fhn_threshold]
+        )
         child.fhn_tau = random.choice([parent1.fhn_tau, parent2.fhn_tau])
-        child.use_fhn_parallel = random.choice([parent1.use_fhn_parallel, parent2.use_fhn_parallel])
+        child.use_fhn_parallel = random.choice(
+            [parent1.use_fhn_parallel, parent2.use_fhn_parallel]
+        )
 
         # Manifold projection
         child.manifold_dim = random.choice([parent1.manifold_dim, parent2.manifold_dim])
-        child.n_eigenvectors = random.choice([parent1.n_eigenvectors, parent2.n_eigenvectors])
-        child.use_multiscale_manifold = random.choice([parent1.use_multiscale_manifold, parent2.use_multiscale_manifold])
+        child.n_eigenvectors = random.choice(
+            [parent1.n_eigenvectors, parent2.n_eigenvectors]
+        )
+        child.use_multiscale_manifold = random.choice(
+            [parent1.use_multiscale_manifold, parent2.use_multiscale_manifold]
+        )
 
         # Regularization
         child.dropout = random.choice([parent1.dropout, parent2.dropout])
@@ -487,13 +515,29 @@ class EvolutionarySearch(Searcher):
 
         # Randomly select which parameter to mutate
         mutation_choices = [
-            "n_layer", "n_embd", "n_heads", "attention_type", "use_qk_norm",
-            "use_mhc", "use_mla", "use_moe", "use_kan",
-            "kan_type", "kan_num_centers",
-            "fhn_threshold", "fhn_tau", "use_fhn_parallel",
-            "manifold_dim", "n_eigenvectors", "use_multiscale_manifold",
+            "n_layer",
+            "n_embd",
+            "n_heads",
+            "attention_type",
+            "use_qk_norm",
+            "use_mhc",
+            "use_mla",
+            "use_moe",
+            "use_kan",
+            "kan_type",
+            "kan_num_centers",
+            "fhn_threshold",
+            "fhn_tau",
+            "use_fhn_parallel",
+            "manifold_dim",
+            "n_eigenvectors",
+            "use_multiscale_manifold",
             "dropout",
-            "use_sdr", "sdr_size", "sdr_sparsity", "engram_capacity", "engram_threshold"
+            "use_sdr",
+            "sdr_size",
+            "sdr_sparsity",
+            "engram_capacity",
+            "engram_threshold",
         ]
 
         # Mutate a random parameter
@@ -504,13 +548,19 @@ class EvolutionarySearch(Searcher):
         elif param_to_mutate == "n_embd":
             mutated.n_embd = random.choice(self.search_space.n_embd_choices)
             # Ensure n_heads is still valid
-            valid_heads = [h for h in self.search_space.n_heads_choices if mutated.n_embd % h == 0]
+            valid_heads = [
+                h for h in self.search_space.n_heads_choices if mutated.n_embd % h == 0
+            ]
             mutated.n_heads = random.choice(valid_heads)
         elif param_to_mutate == "n_heads":
-            valid_heads = [h for h in self.search_space.n_heads_choices if mutated.n_embd % h == 0]
+            valid_heads = [
+                h for h in self.search_space.n_heads_choices if mutated.n_embd % h == 0
+            ]
             mutated.n_heads = random.choice(valid_heads)
         elif param_to_mutate == "attention_type":
-            mutated.attention_type = random.choice(self.search_space.attention_type_choices)
+            mutated.attention_type = random.choice(
+                self.search_space.attention_type_choices
+            )
         elif param_to_mutate == "use_qk_norm":
             mutated.use_qk_norm = random.choice(self.search_space.use_qk_norm_choices)
         elif param_to_mutate == "use_mhc":
@@ -524,19 +574,29 @@ class EvolutionarySearch(Searcher):
         elif param_to_mutate == "kan_type":
             mutated.kan_type = random.choice(self.search_space.kan_type_choices)
         elif param_to_mutate == "kan_num_centers":
-            mutated.kan_num_centers = random.choice(self.search_space.kan_num_centers_choices)
+            mutated.kan_num_centers = random.choice(
+                self.search_space.kan_num_centers_choices
+            )
         elif param_to_mutate == "fhn_threshold":
-            mutated.fhn_threshold = random.uniform(*self.search_space.fhn_threshold_range)
+            mutated.fhn_threshold = random.uniform(
+                *self.search_space.fhn_threshold_range
+            )
         elif param_to_mutate == "fhn_tau":
             mutated.fhn_tau = random.choice(self.search_space.fhn_tau_choices)
         elif param_to_mutate == "use_fhn_parallel":
-            mutated.use_fhn_parallel = random.choice(self.search_space.use_fhn_parallel_choices)
+            mutated.use_fhn_parallel = random.choice(
+                self.search_space.use_fhn_parallel_choices
+            )
         elif param_to_mutate == "manifold_dim":
             mutated.manifold_dim = random.choice(self.search_space.manifold_dim_choices)
         elif param_to_mutate == "n_eigenvectors":
-            mutated.n_eigenvectors = random.choice(self.search_space.n_eigenvectors_choices)
+            mutated.n_eigenvectors = random.choice(
+                self.search_space.n_eigenvectors_choices
+            )
         elif param_to_mutate == "use_multiscale_manifold":
-            mutated.use_multiscale_manifold = random.choice(self.search_space.use_multiscale_manifold_choices)
+            mutated.use_multiscale_manifold = random.choice(
+                self.search_space.use_multiscale_manifold_choices
+            )
         elif param_to_mutate == "dropout":
             mutated.dropout = random.uniform(*self.search_space.dropout_range)
         elif param_to_mutate == "use_sdr":
@@ -546,13 +606,19 @@ class EvolutionarySearch(Searcher):
         elif param_to_mutate == "sdr_sparsity":
             mutated.sdr_sparsity = random.choice(self.search_space.sdr_sparsity_choices)
         elif param_to_mutate == "engram_capacity":
-            mutated.engram_capacity = random.choice(self.search_space.engram_capacity_choices)
+            mutated.engram_capacity = random.choice(
+                self.search_space.engram_capacity_choices
+            )
         elif param_to_mutate == "engram_threshold":
-            mutated.engram_threshold = random.choice(self.search_space.engram_threshold_choices)
+            mutated.engram_threshold = random.choice(
+                self.search_space.engram_threshold_choices
+            )
 
         return mutated
 
-    def _copy_architecture(self, architecture: ArchitectureConfig) -> ArchitectureConfig:
+    def _copy_architecture(
+        self, architecture: ArchitectureConfig
+    ) -> ArchitectureConfig:
         """Create a deep copy of an architecture.
 
         Args:
@@ -612,10 +678,12 @@ class EvolutionarySearch(Searcher):
             if self.budget is not None:
                 should_stop, reason = self.budget.should_stop()
                 if should_stop:
-                    logger.info(f"Budget exhausted during offspring evaluation")
+                    logger.info("Budget exhausted during offspring evaluation")
                     break
 
-            logger.info(f"Evaluating offspring {i+1}/{len(offspring)}: {architecture.architecture_id}")
+            logger.info(
+                f"Evaluating offspring {i+1}/{len(offspring)}: {architecture.architecture_id}"
+            )
 
             # Evaluate architecture
             result = self.evaluator.evaluate(
@@ -646,7 +714,7 @@ class EvolutionarySearch(Searcher):
 
                 # Update budget even on failure
                 if self.budget is not None:
-                    self.budget.update(float('inf'))
+                    self.budget.update(float("inf"))
 
         return offspring_results
 
@@ -661,14 +729,13 @@ class EvolutionarySearch(Searcher):
 
         # Separate current population and new offspring
         offspring = [
-            arch for arch in self.evaluated_architectures
+            arch
+            for arch in self.evaluated_architectures
             if arch.search_iteration == self.generation
         ]
         offspring_results = [
-            res for arch, res in zip(
-                self.evaluated_architectures,
-                self.evaluation_results
-            )
+            res
+            for arch, res in zip(self.evaluated_architectures, self.evaluation_results)
             if arch.search_iteration == self.generation
         ]
 
@@ -687,8 +754,12 @@ class EvolutionarySearch(Searcher):
         offspring_pairs = list(zip(offspring, offspring_results))
 
         # Sort offspring by fitness
-        successful_offspring = [(arch, res) for arch, res in offspring_pairs if res.success]
-        failed_offspring = [(arch, res) for arch, res in offspring_pairs if not res.success]
+        successful_offspring = [
+            (arch, res) for arch, res in offspring_pairs if res.success
+        ]
+        failed_offspring = [
+            (arch, res) for arch, res in offspring_pairs if not res.success
+        ]
         successful_offspring.sort(key=lambda x: x[1].perplexity)
 
         # Combine non-elite candidates
@@ -697,9 +768,7 @@ class EvolutionarySearch(Searcher):
         # Select remaining individuals with diversity consideration
         n_remaining = self.population_size - len(elite_pairs)
         selected_pairs = self._select_diverse_individuals(
-            candidate_pairs,
-            elite_pairs,
-            n_remaining
+            candidate_pairs, elite_pairs, n_remaining
         )
 
         # Update population with elite + diverse selected
@@ -736,19 +805,18 @@ class EvolutionarySearch(Searcher):
 
             # Calculate diversity score for each candidate
             best_candidate_idx = 0
-            best_score = float('-inf')
+            best_score = float("-inf")
 
             for i, (cand_arch, cand_res) in enumerate(remaining):
                 # Fitness score (lower perplexity is better, use negative)
                 if cand_res.success:
                     fitness_score = -cand_res.perplexity
                 else:
-                    fitness_score = float('-inf')
+                    fitness_score = float("-inf")
 
                 # Diversity score (distance from already selected)
                 diversity_score = self._calculate_diversity_score(
-                    cand_arch,
-                    [arch for arch, _ in elite + selected]
+                    cand_arch, [arch for arch, _ in elite + selected]
                 )
 
                 # Combined score (weighted sum)
@@ -785,8 +853,7 @@ class EvolutionarySearch(Searcher):
 
         # Calculate minimum distance to any individual in population
         distances = [
-            self._architecture_distance(architecture, other)
-            for other in population
+            self._architecture_distance(architecture, other) for other in population
         ]
 
         # Return minimum distance (most similar individual)
@@ -814,22 +881,25 @@ class EvolutionarySearch(Searcher):
 
         # Discrete parameters (use Hamming distance)
         discrete_params = [
-            ('n_layer', self.search_space.n_layer_choices),
-            ('n_embd', self.search_space.n_embd_choices),
-            ('n_heads', self.search_space.n_heads_choices),
-            ('attention_type', self.search_space.attention_type_choices),
-            ('use_qk_norm', self.search_space.use_qk_norm_choices),
-            ('use_mhc', self.search_space.use_mhc_choices),
-            ('use_mla', self.search_space.use_mla_choices),
-            ('use_moe', self.search_space.use_moe_choices),
-            ('use_kan', self.search_space.use_kan_choices),
-            ('kan_type', self.search_space.kan_type_choices),
-            ('kan_num_centers', self.search_space.kan_num_centers_choices),
-            ('fhn_tau', self.search_space.fhn_tau_choices),
-            ('use_fhn_parallel', self.search_space.use_fhn_parallel_choices),
-            ('manifold_dim', self.search_space.manifold_dim_choices),
-            ('n_eigenvectors', self.search_space.n_eigenvectors_choices),
-            ('use_multiscale_manifold', self.search_space.use_multiscale_manifold_choices),
+            ("n_layer", self.search_space.n_layer_choices),
+            ("n_embd", self.search_space.n_embd_choices),
+            ("n_heads", self.search_space.n_heads_choices),
+            ("attention_type", self.search_space.attention_type_choices),
+            ("use_qk_norm", self.search_space.use_qk_norm_choices),
+            ("use_mhc", self.search_space.use_mhc_choices),
+            ("use_mla", self.search_space.use_mla_choices),
+            ("use_moe", self.search_space.use_moe_choices),
+            ("use_kan", self.search_space.use_kan_choices),
+            ("kan_type", self.search_space.kan_type_choices),
+            ("kan_num_centers", self.search_space.kan_num_centers_choices),
+            ("fhn_tau", self.search_space.fhn_tau_choices),
+            ("use_fhn_parallel", self.search_space.use_fhn_parallel_choices),
+            ("manifold_dim", self.search_space.manifold_dim_choices),
+            ("n_eigenvectors", self.search_space.n_eigenvectors_choices),
+            (
+                "use_multiscale_manifold",
+                self.search_space.use_multiscale_manifold_choices,
+            ),
         ]
 
         for param_name, _ in discrete_params:
@@ -841,8 +911,8 @@ class EvolutionarySearch(Searcher):
 
         # Continuous parameters (use normalized absolute difference)
         continuous_params = [
-            ('fhn_threshold', self.search_space.fhn_threshold_range),
-            ('dropout', self.search_space.dropout_range),
+            ("fhn_threshold", self.search_space.fhn_threshold_range),
+            ("dropout", self.search_space.dropout_range),
         ]
 
         for param_name, value_range in continuous_params:
@@ -874,8 +944,7 @@ class EvolutionarySearch(Searcher):
         for i in range(len(self.population)):
             for j in range(i + 1, len(self.population)):
                 total_distance += self._architecture_distance(
-                    self.population[i],
-                    self.population[j]
+                    self.population[i], self.population[j]
                 )
                 n_pairs += 1
 
@@ -888,7 +957,9 @@ class EvolutionarySearch(Searcher):
 
         if successful_results:
             best_ppl = min(res.perplexity for res in successful_results)
-            avg_ppl = sum(res.perplexity for res in successful_results) / len(successful_results)
+            avg_ppl = sum(res.perplexity for res in successful_results) / len(
+                successful_results
+            )
 
             # Calculate population diversity
             diversity = self._calculate_population_diversity()
@@ -897,7 +968,9 @@ class EvolutionarySearch(Searcher):
             logger.info(f"  Best perplexity: {best_ppl:.2f}")
             logger.info(f"  Average perplexity: {avg_ppl:.2f}")
             logger.info(f"  Population diversity: {diversity:.3f}")
-            logger.info(f"  Successful evaluations: {len(successful_results)}/{len(self.population_results)}")
+            logger.info(
+                f"  Successful evaluations: {len(successful_results)}/{len(self.population_results)}"
+            )
         else:
             logger.warning(f"Generation {self.generation}: No successful evaluations")
 

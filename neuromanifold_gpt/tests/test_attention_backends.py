@@ -6,9 +6,11 @@ when specific backends are unavailable.
 """
 import pytest
 import torch
+
+from neuromanifold_gpt.config.base import AttentionBackend, NeuroManifoldConfig
 from neuromanifold_gpt.model.attention import (
-    StandardAttention,
     FHNAttention,
+    StandardAttention,
     get_attention_class,
 )
 from neuromanifold_gpt.utils.gpu_detection import (
@@ -16,7 +18,6 @@ from neuromanifold_gpt.utils.gpu_detection import (
     get_optimal_attention_backend,
     supports_flash_attention,
 )
-from neuromanifold_gpt.config.base import NeuroManifoldConfig, AttentionBackend
 
 
 def test_gpu_detection_returns_valid_info():
@@ -304,6 +305,7 @@ def test_attention_type_aliases():
 
     # Test sdr alias for knot
     from neuromanifold_gpt.model.attention.knot import KnotAttention
+
     attn_cls = get_attention_class("sdr")
     assert attn_cls == KnotAttention
 
@@ -343,10 +345,14 @@ def test_standard_attention_deterministic_with_seed():
 def test_fhn_attention_deterministic_with_seed():
     """FHNAttention should be deterministic with fixed seed."""
     torch.manual_seed(42)
-    attn1 = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn1 = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     torch.manual_seed(42)
-    attn2 = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn2 = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     # Use same input
     torch.manual_seed(100)

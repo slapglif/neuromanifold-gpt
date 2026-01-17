@@ -17,13 +17,13 @@ from torch.utils.checkpoint import checkpoint
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
-from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
-from neuromanifold_gpt.model.block import NeuroManifoldBlock
-from neuromanifold_gpt.model.memory.engram import SDREngramMemory
-from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
-from neuromanifold_gpt.model.mhc_utils import get_expand_reduce_stream_functions
-from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
 from neuromanifold_gpt.model.attention.mla import RMSNorm  # ~15% faster than LayerNorm
+from neuromanifold_gpt.model.block import NeuroManifoldBlock
+from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
+from neuromanifold_gpt.model.kan.faster import replace_linear_with_fasterkan
+from neuromanifold_gpt.model.memory.engram import SDREngramMemory
+from neuromanifold_gpt.model.mhc_utils import get_expand_reduce_stream_functions
+from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 from neuromanifold_gpt.model.system_two_mixin import SystemTwoReasoningMixin
 
 
@@ -50,9 +50,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
         # Override SDR size if SDR is disabled (Block compatibility)
         if not config.use_sdr:
-            block_sdr_size = config.n_embd
+            pass
         else:
-            block_sdr_size = config.sdr_size
+            pass
 
         # Token Embedding (SDR or Standard)
         self.use_sdr = config.use_sdr
@@ -96,6 +96,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 block_cfg.sdr_size = config.n_embd
 
             return NeuroManifoldBlock(config=block_cfg)
+
         self.blocks = nn.ModuleList([make_block(i) for i in range(config.n_layer)])
 
         # mHC stream expansion/reduction (for multi-stream mHC)
@@ -111,7 +112,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
         # Language model head
         # FP32 for numerical stability with large vocab (MiniMax/DeepSeek recipe)
-        self.lm_head_fp32 = getattr(config, 'lm_head_fp32', True)
+        self.lm_head_fp32 = getattr(config, "lm_head_fp32", True)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         if self.lm_head_fp32:
             # Keep lm_head in FP32 even during mixed precision training
@@ -120,25 +121,29 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         # Multi-Token Prediction (MTP) heads - DeepSeek/Meta style
         # Each head predicts token at position t+k (k=2,3,...,n_predict)
         # Head 1 (t+1) is the main lm_head, auxiliary heads predict further ahead
-        self.use_mtp = getattr(config, 'use_mtp', False)
-        self.mtp_n_predict = getattr(config, 'mtp_n_predict', 4)
-        self.mtp_loss_weight = getattr(config, 'mtp_loss_weight', 0.1)
+        self.use_mtp = getattr(config, "use_mtp", False)
+        self.mtp_n_predict = getattr(config, "mtp_n_predict", 4)
+        self.mtp_loss_weight = getattr(config, "mtp_loss_weight", 0.1)
 
         # Configurable auxiliary loss weights (allows reducing auxiliary impact)
-        self.ortho_loss_weight = getattr(config, 'ortho_loss_weight', 1.0)
-        self.discrimination_loss_weight = getattr(config, 'discrimination_loss_weight', 0.5)
-        self.contrastive_loss_weight = getattr(config, 'contrastive_loss_weight', 1.0)
+        self.ortho_loss_weight = getattr(config, "ortho_loss_weight", 1.0)
+        self.discrimination_loss_weight = getattr(
+            config, "discrimination_loss_weight", 0.5
+        )
+        self.contrastive_loss_weight = getattr(config, "contrastive_loss_weight", 1.0)
 
         if self.use_mtp and self.mtp_n_predict > 1:
             # Auxiliary prediction heads for t+2, t+3, ..., t+n_predict
             # Each head has a small projection to adapt representations
-            self.mtp_projs = nn.ModuleList([
-                nn.Sequential(
-                    nn.Linear(config.n_embd, config.n_embd),
-                    nn.SiLU(),
-                )
-                for _ in range(self.mtp_n_predict - 1)
-            ])
+            self.mtp_projs = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(config.n_embd, config.n_embd),
+                        nn.SiLU(),
+                    )
+                    for _ in range(self.mtp_n_predict - 1)
+                ]
+            )
             # Share lm_head weights for efficiency (all heads predict from vocab)
             # The projection adapts the representation, shared head does vocab projection
 
@@ -159,9 +164,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         self._init_system_two_components(config)
 
         # Memory Active Retrieval configuration
-        self.memory_active_retrieval = getattr(config, 'memory_active_retrieval', False)
-        self.memory_retrieval_top_k = getattr(config, 'memory_retrieval_top_k', 3)
-        self.memory_retrieval_weight = getattr(config, 'memory_retrieval_weight', 0.1)
+        self.memory_active_retrieval = getattr(config, "memory_active_retrieval", False)
+        self.memory_retrieval_top_k = getattr(config, "memory_retrieval_top_k", 3)
+        self.memory_retrieval_weight = getattr(config, "memory_retrieval_weight", 0.1)
 
         # Projection to combine retrieved memory with input (only if retrieval enabled)
         if self.memory_active_retrieval:
@@ -192,12 +197,12 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         import math
 
         # Get initialization strategy from config
-        init_strategy = getattr(self.config, 'init_strategy', 'deepseek')
+        init_strategy = getattr(self.config, "init_strategy", "deepseek")
 
         # muP-specific implementation
-        if init_strategy == 'mup':
+        if init_strategy == "mup":
             # Get base width for muP scaling
-            base_width = getattr(self.config, 'mup_base_width', 128)
+            base_width = getattr(self.config, "mup_base_width", 128)
             d_model = self.config.n_embd
 
             if isinstance(module, nn.Linear):
@@ -210,14 +215,14 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
                 # Output head (lm_head): std = 1 / sqrt(d_model)
                 # No width scaling for output to maintain feature learning
-                if module_name and 'lm_head' in module_name:
+                if module_name and "lm_head" in module_name:
                     std = 1.0 / math.sqrt(d_model)
 
                 # Residual projections: std = (1 / d_model) * sqrt(base_width / d_model)
                 # These include attention output and MLP output projections
                 elif module_name and any(
                     module_name.endswith(suffix)
-                    for suffix in ['out_proj', 'c_proj', 'w_down', 'proj_out']
+                    for suffix in ["out_proj", "c_proj", "w_down", "proj_out"]
                 ):
                     std = (1.0 / d_model) * math.sqrt(base_width / d_model)
 
@@ -240,19 +245,19 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
         # Non-muP strategies
         # Determine base std based on strategy
-        if init_strategy == 'deepseek':
-            base_std = getattr(self.config, 'init_std', 0.006)
-        elif init_strategy in ['gpt2', 'gpt2_scaled']:
+        if init_strategy == "deepseek":
+            base_std = getattr(self.config, "init_std", 0.006)
+        elif init_strategy in ["gpt2", "gpt2_scaled"]:
             base_std = 0.02
         else:
             # Fallback to deepseek for unknown strategies
-            base_std = getattr(self.config, 'init_std', 0.006)
+            base_std = getattr(self.config, "init_std", 0.006)
 
         # Apply initialization
         if isinstance(module, nn.Linear):
             # Check if this is a residual projection layer for gpt2_scaled
             std = base_std
-            if init_strategy == 'gpt2_scaled':
+            if init_strategy == "gpt2_scaled":
                 # Identify residual projections by name pattern
                 # These are the output projections that add back to the residual stream
                 module_name = None
@@ -265,7 +270,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 # Pattern: ends with 'out_proj', 'c_proj', 'w_down', or 'proj_out'
                 if module_name and any(
                     module_name.endswith(suffix)
-                    for suffix in ['out_proj', 'c_proj', 'w_down', 'proj_out']
+                    for suffix in ["out_proj", "c_proj", "w_down", "proj_out"]
                 ):
                     # Scale down by 1/sqrt(2*n_layer) for gradient stability
                     std = base_std / math.sqrt(2 * self.config.n_layer)
@@ -283,7 +288,11 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             True if memory has content, False otherwise
         """
         if self.use_hierarchical_memory:
-            total_count = len(self.hierarchical_memory.l1) + len(self.hierarchical_memory.l2) + len(self.hierarchical_memory.l3)
+            total_count = (
+                len(self.hierarchical_memory.l1)
+                + len(self.hierarchical_memory.l2)
+                + len(self.hierarchical_memory.l3)
+            )
             return total_count > 0
         else:
             return self.memory.count.item() > 0
@@ -338,9 +347,13 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         contrastive_loss = torch.tensor(0.0, device=device)
         if self.use_sdr:
             # Semantic folding to SDR with topographic and discrimination losses
-            sdr, sdr_scores, topographic_loss, discrimination_loss, contrastive_loss = self.encoder(
-                tokens
-            )
+            (
+                sdr,
+                sdr_scores,
+                topographic_loss,
+                discrimination_loss,
+                contrastive_loss,
+            ) = self.encoder(tokens)
             x = None  # Initial x comes from first block processing SDR
         else:
             # Standard embedding
@@ -363,7 +376,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         # NOTE: Memory retrieval requires SDR representations for similarity matching.
         # In non-SDR mode, retrieval is disabled since there are no SDR patterns to query with.
         memory_retrieval_info = {"retrieved_count": 0, "avg_similarity": 0.0}
-        pending_memory_retrieval = None  # Local variable (not instance var) for thread safety
+        pending_memory_retrieval = (
+            None  # Local variable (not instance var) for thread safety
+        )
 
         if self.memory_active_retrieval and self.use_sdr:
             if self._check_memory_has_content():
@@ -393,7 +408,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                         contents, sims = retrieval_result
 
                     # Aggregate retrieved content weighted by similarity
-                    aggregated = self._aggregate_retrieved_content(contents, sims, device)
+                    aggregated = self._aggregate_retrieved_content(
+                        contents, sims, device
+                    )
                     retrieved_contents_list.append(aggregated)
 
                     # Track statistics
@@ -405,8 +422,12 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 retrieved_contents = torch.stack(retrieved_contents_list, dim=0)
 
                 # Project and expand to sequence length: (B, n_embd) -> (B, T, n_embd)
-                retrieved_proj = self.memory_retrieval_proj(retrieved_contents)  # (B, n_embd)
-                retrieved_expanded = retrieved_proj.unsqueeze(1).expand(-1, T, -1)  # (B, T, n_embd)
+                retrieved_proj = self.memory_retrieval_proj(
+                    retrieved_contents
+                )  # (B, n_embd)
+                retrieved_expanded = retrieved_proj.unsqueeze(1).expand(
+                    -1, T, -1
+                )  # (B, T, n_embd)
 
                 # Mix with input representations
                 # For SDR mode, we'll add to the first block's output later
@@ -454,10 +475,16 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                         # Handle mHC multi-stream case: expand retrieval to match
                         if self.mhc_enabled:
                             # x is (B*S, T, n_embd), need to expand retrieval
-                            retrieval_expanded = self.expand_stream(pending_memory_retrieval)
+                            retrieval_expanded = self.expand_stream(
+                                pending_memory_retrieval
+                            )
                             x = x + self.memory_retrieval_weight * retrieval_expanded
                         else:
-                            x = x + self.memory_retrieval_weight * pending_memory_retrieval
+                            x = (
+                                x
+                                + self.memory_retrieval_weight
+                                * pending_memory_retrieval
+                            )
                         # Local variable - no need to clear, goes out of scope naturally
                 else:
                     # Block already applies internal residuals
@@ -483,7 +510,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 total_ortho_loss = total_ortho_loss + info["ortho_loss"]
             # Accumulate FHN Lyapunov stability loss (from theory2 proof)
             if "fhn_lyapunov_loss" in info:
-                total_fhn_lyapunov_loss = total_fhn_lyapunov_loss + info["fhn_lyapunov_loss"]
+                total_fhn_lyapunov_loss = (
+                    total_fhn_lyapunov_loss + info["fhn_lyapunov_loss"]
+                )
 
         # Reduce multi-stream mHC back to single stream
         if self.mhc_enabled:
@@ -511,7 +540,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         # Use FP32 computation for lm_head if enabled (MiniMax/DeepSeek recipe)
         if self.lm_head_fp32:
             # Cast input to FP32 and disable autocast for numerical stability
-            with torch.amp.autocast(device_type='cuda', enabled=False):
+            with torch.amp.autocast(device_type="cuda", enabled=False):
                 logits = self.lm_head(x.float())
         else:
             logits = self.lm_head(x)
@@ -521,14 +550,14 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
         mtp_loss = torch.tensor(0.0, device=device)
         if targets is not None:
             # Get label smoothing from config (critical for large vocab like 151K Qwen3)
-            label_smoothing = getattr(self.config, 'label_smoothing', 0.0)
+            label_smoothing = getattr(self.config, "label_smoothing", 0.0)
 
             if loss_weights is not None:
                 # Soft curriculum: weighted CE loss (per-token weights)
                 per_token_loss = F.cross_entropy(
                     logits.view(-1, logits.size(-1)),
                     targets.view(-1),
-                    reduction='none',  # Per-token loss
+                    reduction="none",  # Per-token loss
                     label_smoothing=label_smoothing,
                 )
                 # Apply weights and compute weighted mean
@@ -545,7 +574,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
             # Multi-Token Prediction (MTP) auxiliary losses
             # Predict tokens at t+2, t+3, ..., t+n_predict
-            if self.use_mtp and self.mtp_n_predict > 1 and hasattr(self, 'mtp_projs'):
+            if self.use_mtp and self.mtp_n_predict > 1 and hasattr(self, "mtp_projs"):
                 B, T, _ = x.shape
                 for k, proj in enumerate(self.mtp_projs, start=2):
                     # k=2 means predicting t+2 (2 tokens ahead)
@@ -554,7 +583,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                         x_proj = proj(x[:, :-k, :])  # (B, T-k, D)
                         # Get logits using shared lm_head (FP32 if enabled)
                         if self.lm_head_fp32:
-                            with torch.amp.autocast(device_type='cuda', enabled=False):
+                            with torch.amp.autocast(device_type="cuda", enabled=False):
                                 mtp_logits = self.lm_head(x_proj.float())  # (B, T-k, V)
                         else:
                             mtp_logits = self.lm_head(x_proj)  # (B, T-k, V)
@@ -582,9 +611,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             # - fhn_lyapunov_loss: FHN stability loss (penalize energy increase)
             #
             # Get topographic weight from model attribute (set by trainer)
-            topo_weight = getattr(self, '_topo_weight', 0.0)
+            topo_weight = getattr(self, "_topo_weight", 0.0)
             # FHN Lyapunov weight (small, for regularization)
-            fhn_lyapunov_weight = getattr(self, '_fhn_lyapunov_weight', 0.001)
+            fhn_lyapunov_weight = getattr(self, "_fhn_lyapunov_weight", 0.001)
 
             loss = (
                 ce_loss
@@ -610,7 +639,12 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             "sdr": sdr,
             "sdr_scores": sdr_scores,
             "block_infos": block_infos,
-            "memory_size": memory_stats.get("memory_size", memory_stats.get("l1_count", 0) + memory_stats.get("l2_count", 0) + memory_stats.get("l3_count", 0)),
+            "memory_size": memory_stats.get(
+                "memory_size",
+                memory_stats.get("l1_count", 0)
+                + memory_stats.get("l2_count", 0)
+                + memory_stats.get("l3_count", 0),
+            ),
             "memory_stats": memory_stats,
             "memory_retrieval": memory_retrieval_info,  # Active retrieval stats
             "ortho_loss": total_ortho_loss,
@@ -619,7 +653,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
             "contrastive_loss": contrastive_loss,  # wav2vec-style contrastive embedding loss
             "mtp_loss": mtp_loss,
             "fhn_lyapunov_loss": total_fhn_lyapunov_loss,
-            "ce_loss": ce_loss if targets is not None else torch.tensor(0.0, device=device),
+            "ce_loss": ce_loss
+            if targets is not None
+            else torch.tensor(0.0, device=device),
             "hybrid_reasoning": hybrid_info,
             "dag_planner": dag_info,
         }
@@ -676,7 +712,9 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
 
                 # Create a mask for tokens that appear in the sequence (B, vocab_size)
                 # scatter_ sets True for any token that appears in idx
-                token_mask = torch.zeros(batch_size, vocab_size, device=idx.device, dtype=torch.bool)
+                token_mask = torch.zeros(
+                    batch_size, vocab_size, device=idx.device, dtype=torch.bool
+                )
                 token_mask.scatter_(1, idx, True)
 
                 # Apply penalty: divide if logit > 0 (decrease probability),
@@ -685,7 +723,7 @@ class NeuroManifoldGPT(SystemTwoReasoningMixin, nn.Module):
                 penalty_factor = torch.where(
                     logits > 0,
                     torch.full_like(logits, 1.0 / repetition_penalty),
-                    torch.full_like(logits, repetition_penalty)
+                    torch.full_like(logits, repetition_penalty),
                 )
 
                 # Apply penalty only to tokens that appeared in sequence

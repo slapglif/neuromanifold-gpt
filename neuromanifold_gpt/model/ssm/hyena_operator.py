@@ -6,11 +6,10 @@ Implements the Hyena hierarchy for sub-quadratic long-range dependency modeling.
 """
 
 import math
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
-from typing import Optional, Tuple
 
 # Optional: Replace torchvision dependency if needed, but we installed it.
 # Fallback is necessary for environments where torchvision might be missing or minimal.
@@ -31,7 +30,9 @@ except ImportError:
                 shape = [x.shape[0]] + [1] * (x.ndim - 1)
             else:
                 shape = [1] * x.ndim
-            mask = torch.empty(shape, dtype=x.dtype, device=x.device).bernoulli_(1 - self.p)
+            mask = torch.empty(shape, dtype=x.dtype, device=x.device).bernoulli_(
+                1 - self.p
+            )
             return x * mask / (1 - self.p)
 
 
@@ -76,7 +77,11 @@ class Sin(nn.Module):
 
     def __init__(self, dim, w=10, train_freq=True):
         super().__init__()
-        self.freq = nn.Parameter(w * torch.ones(1, dim)) if train_freq else w * torch.ones(1, dim)
+        self.freq = (
+            nn.Parameter(w * torch.ones(1, dim))
+            if train_freq
+            else w * torch.ones(1, dim)
+        )
 
     def forward(self, x):
         return torch.sin(self.freq * x)
@@ -216,7 +221,9 @@ class HyenaOperator(nn.Module):
         self.in_proj = nn.Linear(d_model, inner_width)
         self.out_proj = nn.Linear(d_model, d_model)
 
-        self.short_filter = nn.Conv1d(inner_width, inner_width, 3, padding=2, groups=inner_width)
+        self.short_filter = nn.Conv1d(
+            inner_width, inner_width, 3, padding=2, groups=inner_width
+        )
         self.filter_fn = HyenaFilter(
             d_model * (order - 1),
             order=filter_order,

@@ -1,7 +1,9 @@
 """Tests for Rotary Position Embedding (RoPE)."""
+import math
+
 import pytest
 import torch
-import math
+
 from neuromanifold_gpt.model.embeddings.rotary import RotaryPositionalEmbedding
 
 
@@ -190,9 +192,9 @@ def test_rope_frequency_scaling():
     rope = RotaryPositionalEmbedding(64, head_dim, base=base)
 
     # Check inv_freq buffer
-    expected_inv_freq = torch.tensor([
-        1.0 / (base ** (2 * i / head_dim)) for i in range(head_dim // 2)
-    ])
+    expected_inv_freq = torch.tensor(
+        [1.0 / (base ** (2 * i / head_dim)) for i in range(head_dim // 2)]
+    )
 
     assert torch.allclose(rope.inv_freq, expected_inv_freq, rtol=1e-5)
 

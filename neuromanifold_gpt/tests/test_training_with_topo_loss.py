@@ -1,8 +1,9 @@
 """Standalone test for training with topographic loss."""
 
 import torch
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+
 from neuromanifold_gpt.config import NeuroManifoldConfig
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 
 def train_mini_batch():

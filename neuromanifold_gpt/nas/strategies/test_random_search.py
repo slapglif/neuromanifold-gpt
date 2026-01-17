@@ -7,14 +7,16 @@ Tests cover:
 - Result accumulation
 """
 
-import pytest
-import os
 import json
-import tempfile
+import os
 import shutil
-from neuromanifold_gpt.nas.strategies.random_search import SearchResults
-from neuromanifold_gpt.nas.search_space import ArchitectureConfig
+import tempfile
+
+import pytest
+
 from neuromanifold_gpt.nas.evaluator import EvaluationResult
+from neuromanifold_gpt.nas.search_space import ArchitectureConfig
+from neuromanifold_gpt.nas.strategies.random_search import SearchResults
 
 
 @pytest.fixture
@@ -63,8 +65,7 @@ class TestSearchResultsInitialization:
     def test_initialization_with_data(self, sample_architectures, sample_results):
         """Test SearchResults initializes with data."""
         results = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
         assert len(results.architectures) == 4
         assert len(results.results) == 4
@@ -104,8 +105,7 @@ class TestTopKSelection:
     def test_get_top_k_by_perplexity(self, sample_architectures, sample_results):
         """Test selecting top-K architectures by perplexity."""
         results = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         # Get top 2 by perplexity (lower is better)
@@ -122,8 +122,7 @@ class TestTopKSelection:
     def test_get_top_k_by_loss(self, sample_architectures, sample_results):
         """Test selecting top-K by loss."""
         results = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         # Get top 3 by loss (lower is better)
@@ -138,8 +137,7 @@ class TestTopKSelection:
     def test_get_top_k_by_params(self, sample_architectures, sample_results):
         """Test selecting top-K by parameter count."""
         results = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         # Get top 2 by params (fewer is better)
@@ -153,8 +151,7 @@ class TestTopKSelection:
     def test_get_top_k_more_than_available(self, sample_architectures, sample_results):
         """Test requesting more than available results."""
         results = SearchResults(
-            architectures=sample_architectures[:2],
-            results=sample_results[:2]
+            architectures=sample_architectures[:2], results=sample_results[:2]
         )
 
         # Request 5 but only 2 available
@@ -167,14 +164,17 @@ class TestTopKSelection:
     def test_get_top_k_with_failures(self):
         """Test top-K selection with some failed evaluations."""
         architectures = [
-            ArchitectureConfig(architecture_id=f"arch{i}")
-            for i in range(5)
+            ArchitectureConfig(architecture_id=f"arch{i}") for i in range(5)
         ]
         results_list = [
             EvaluationResult(True, 2.0, 7.39, 10_000_000, 60.0, 500.0, "arch0", None),
-            EvaluationResult(False, None, None, None, 0.0, None, "arch1", "OOM"),  # Failed
+            EvaluationResult(
+                False, None, None, None, 0.0, None, "arch1", "OOM"
+            ),  # Failed
             EvaluationResult(True, 1.8, 6.05, 15_000_000, 90.0, 400.0, "arch2", None),
-            EvaluationResult(False, None, None, None, 0.0, None, "arch3", "Error"),  # Failed
+            EvaluationResult(
+                False, None, None, None, 0.0, None, "arch3", "Error"
+            ),  # Failed
             EvaluationResult(True, 1.6, 4.95, 25_000_000, 150.0, 300.0, "arch4", None),
         ]
 
@@ -193,28 +193,26 @@ class TestSearchStatistics:
     def test_get_statistics(self, sample_architectures, sample_results):
         """Test statistics generation."""
         results = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         stats = results.get_statistics()
 
-        assert 'total_evaluated' in stats
-        assert 'successful' in stats
-        assert 'failed' in stats
-        assert 'best_perplexity' in stats
-        assert 'best_loss' in stats
+        assert "total_evaluated" in stats
+        assert "successful" in stats
+        assert "failed" in stats
+        assert "best_perplexity" in stats
+        assert "best_loss" in stats
 
-        assert stats['total_evaluated'] == 4
-        assert stats['successful'] == 4
-        assert stats['failed'] == 0
-        assert stats['best_perplexity'] == 4.95  # arch3
+        assert stats["total_evaluated"] == 4
+        assert stats["successful"] == 4
+        assert stats["failed"] == 0
+        assert stats["best_perplexity"] == 4.95  # arch3
 
     def test_get_statistics_with_failures(self):
         """Test statistics with failed evaluations."""
         architectures = [
-            ArchitectureConfig(architecture_id=f"arch{i}")
-            for i in range(3)
+            ArchitectureConfig(architecture_id=f"arch{i}") for i in range(3)
         ]
         results_list = [
             EvaluationResult(True, 2.0, 7.39, 10_000_000, 60.0, 500.0, "arch0", None),
@@ -225,17 +223,17 @@ class TestSearchStatistics:
         results = SearchResults(architectures=architectures, results=results_list)
         stats = results.get_statistics()
 
-        assert stats['total_evaluated'] == 3
-        assert stats['successful'] == 2
-        assert stats['failed'] == 1
+        assert stats["total_evaluated"] == 3
+        assert stats["successful"] == 2
+        assert stats["failed"] == 1
 
     def test_get_statistics_empty(self):
         """Test statistics on empty results."""
         results = SearchResults()
         stats = results.get_statistics()
 
-        assert stats['total_evaluated'] == 0
-        assert stats['successful'] == 0
+        assert stats["total_evaluated"] == 0
+        assert stats["successful"] == 0
 
 
 class TestCheckpointSaveLoad:
@@ -244,8 +242,7 @@ class TestCheckpointSaveLoad:
     def test_save_checkpoint(self, temp_dir, sample_architectures, sample_results):
         """Test saving checkpoint to file."""
         results = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
@@ -257,8 +254,7 @@ class TestCheckpointSaveLoad:
         """Test loading checkpoint from file."""
         # Save checkpoint
         results_orig = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
@@ -270,11 +266,12 @@ class TestCheckpointSaveLoad:
         assert len(results_loaded.architectures) == len(results_orig.architectures)
         assert len(results_loaded.results) == len(results_orig.results)
 
-    def test_checkpoint_preserves_data(self, temp_dir, sample_architectures, sample_results):
+    def test_checkpoint_preserves_data(
+        self, temp_dir, sample_architectures, sample_results
+    ):
         """Test that save/load preserves all data."""
         results_orig = SearchResults(
-            architectures=sample_architectures,
-            results=sample_results
+            architectures=sample_architectures, results=sample_results
         )
 
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
@@ -282,7 +279,9 @@ class TestCheckpointSaveLoad:
         results_loaded = SearchResults.load_checkpoint(checkpoint_path)
 
         # Check architectures
-        for orig, loaded in zip(results_orig.architectures, results_loaded.architectures):
+        for orig, loaded in zip(
+            results_orig.architectures, results_loaded.architectures
+        ):
             assert orig.architecture_id == loaded.architecture_id
             assert orig.n_layer == loaded.n_layer
             assert orig.n_embd == loaded.n_embd
@@ -293,23 +292,24 @@ class TestCheckpointSaveLoad:
             assert orig.perplexity == loaded.perplexity
             assert orig.n_params == loaded.n_params
 
-    def test_checkpoint_json_format(self, temp_dir, sample_architectures, sample_results):
+    def test_checkpoint_json_format(
+        self, temp_dir, sample_architectures, sample_results
+    ):
         """Test that checkpoint is valid JSON."""
         results = SearchResults(
-            architectures=sample_architectures[:1],
-            results=sample_results[:1]
+            architectures=sample_architectures[:1], results=sample_results[:1]
         )
 
         checkpoint_path = os.path.join(temp_dir, "checkpoint.json")
         results.save_checkpoint(checkpoint_path)
 
         # Verify it's valid JSON
-        with open(checkpoint_path, 'r') as f:
+        with open(checkpoint_path, "r") as f:
             data = json.load(f)
 
-        assert 'architectures' in data
-        assert 'results' in data
-        assert len(data['architectures']) == 1
+        assert "architectures" in data
+        assert "results" in data
+        assert len(data["architectures"]) == 1
 
 
 class TestSearchResultsEdgeCases:
@@ -325,12 +325,14 @@ class TestSearchResultsEdgeCases:
 
         # get_statistics on empty
         stats = results.get_statistics()
-        assert stats['total_evaluated'] == 0
+        assert stats["total_evaluated"] == 0
 
     def test_single_result(self):
         """Test with single result."""
         arch = ArchitectureConfig(architecture_id="single")
-        result = EvaluationResult(True, 2.0, 7.39, 10_000_000, 60.0, 500.0, "single", None)
+        result = EvaluationResult(
+            True, 2.0, 7.39, 10_000_000, 60.0, 500.0, "single", None
+        )
 
         results = SearchResults(architectures=[arch], results=[result])
 
@@ -341,8 +343,7 @@ class TestSearchResultsEdgeCases:
     def test_all_failed_results(self):
         """Test when all evaluations failed."""
         architectures = [
-            ArchitectureConfig(architecture_id=f"arch{i}")
-            for i in range(3)
+            ArchitectureConfig(architecture_id=f"arch{i}") for i in range(3)
         ]
         results_list = [
             EvaluationResult(False, None, None, None, 0.0, None, f"arch{i}", "Error")
@@ -357,5 +358,5 @@ class TestSearchResultsEdgeCases:
 
         # Statistics should reflect failures
         stats = results.get_statistics()
-        assert stats['failed'] == 3
-        assert stats['successful'] == 0
+        assert stats["failed"] == 3
+        assert stats["successful"] == 0

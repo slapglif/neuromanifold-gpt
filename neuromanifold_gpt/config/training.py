@@ -194,8 +194,8 @@ class SamplingConfig:
     """
 
     # Model loading
-    init_from: str = 'resume'
-    out_dir: str = 'out'
+    init_from: str = "resume"
+    out_dir: str = "out"
 
     # Generation
     start: str = "\n"
@@ -206,8 +206,8 @@ class SamplingConfig:
     seed: int = 1337
 
     # Hardware
-    device: str = 'cuda'
-    dtype: str = 'bfloat16'
+    device: str = "cuda"
+    dtype: str = "bfloat16"
     compile: bool = False
 
 
@@ -235,15 +235,15 @@ class EvalConfig:
     """
 
     # Checkpoint loading
-    out_dir: str = 'out'
+    out_dir: str = "out"
 
     # Benchmark
-    benchmark: str = 'lambada'
+    benchmark: str = "lambada"
     eval_iters: Optional[int] = None
 
     # Hardware
-    device: str = 'cuda'
-    dtype: str = 'bfloat16'
+    device: str = "cuda"
+    dtype: str = "bfloat16"
 
     # Reproducibility
     seed: int = 1337
@@ -251,7 +251,7 @@ class EvalConfig:
 
     # Logging
     wandb_log: bool = False
-    wandb_project: str = 'neuromanifold-eval'
+    wandb_project: str = "neuromanifold-eval"
     wandb_run_name: Optional[str] = None
 
 
@@ -298,7 +298,7 @@ class BenchConfig:
     batch_size: int = 12
     block_size: int = 1024
     real_data: bool = True
-    dataset: str = 'openwebtext'
+    dataset: str = "openwebtext"
 
     # Model
     n_layer: int = 12
@@ -314,8 +314,8 @@ class BenchConfig:
     beta2: float = 0.95
 
     # Hardware
-    device: str = 'cuda'
-    dtype: str = 'bfloat16'
+    device: str = "cuda"
+    dtype: str = "bfloat16"
     compile: bool = True
 
     # Profiling

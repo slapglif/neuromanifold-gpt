@@ -17,9 +17,10 @@ Tests at different sequence lengths: 512, 1024, 2048, 4096, 8192
 """
 
 import argparse
+from contextlib import nullcontext
+
 import torch
 import torch.nn as nn
-from contextlib import nullcontext
 
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
 
@@ -120,7 +121,9 @@ def analyze_memory_reduction(results, device):
     print("\n" + "=" * 80)
     print("Memory Reduction Analysis")
     print("=" * 80)
-    print(f"\n{'SeqLen':<10} {'Flash (MB)':<15} {'NonChunk (MB)':<15} {'Chunked (MB)':<15} {'Reduction':<12} {'vs Flash':<12}")
+    print(
+        f"\n{'SeqLen':<10} {'Flash (MB)':<15} {'NonChunk (MB)':<15} {'Chunked (MB)':<15} {'Reduction':<12} {'vs Flash':<12}"
+    )
     print("-" * 90)
 
     for r in results:
@@ -141,7 +144,9 @@ def analyze_memory_reduction(results, device):
         else:
             vs_flash_pct = 0.0
 
-        print(f"{seq_len:<10} {flash_mem:<15.1f} {non_chunked_mem:<15.1f} {chunked_mem:<15.1f} {reduction_pct:>10.1f}% {vs_flash_pct:>10.1f}%")
+        print(
+            f"{seq_len:<10} {flash_mem:<15.1f} {non_chunked_mem:<15.1f} {chunked_mem:<15.1f} {reduction_pct:>10.1f}% {vs_flash_pct:>10.1f}%"
+        )
 
     print("\nNotes:")
     print("  - 'Reduction': Memory saved by chunking vs non-chunked FHN")
@@ -159,7 +164,9 @@ def benchmark_chunked_memory(quick_test: bool = False):
     print(f"Device: {device}")
 
     if device.type != "cuda":
-        print("WARNING: Memory benchmarking requires CUDA. Running on CPU will not measure GPU memory.")
+        print(
+            "WARNING: Memory benchmarking requires CUDA. Running on CPU will not measure GPU memory."
+        )
 
     print("=" * 80)
 
@@ -167,10 +174,22 @@ def benchmark_chunked_memory(quick_test: bool = False):
     results = []
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    dtype = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
+    device_type = "cuda" if "cuda" in str(device) else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    )
 
     # Test configurations
     if quick_test:
@@ -241,41 +260,59 @@ def benchmark_chunked_memory(quick_test: bool = False):
             torch.cuda.empty_cache()
 
         # Store results
-        results.append({
-            "seq_len": seq_len,
-            "flash_total": flash_total_mem,
-            "non_chunked_total": non_chunked_total_mem,
-            "chunked_total": chunked_total_mem,
-        })
+        results.append(
+            {
+                "seq_len": seq_len,
+                "flash_total": flash_total_mem,
+                "non_chunked_total": non_chunked_total_mem,
+                "chunked_total": chunked_total_mem,
+            }
+        )
 
         # Print results for this sequence length
         if device.type == "cuda":
             print(f"\n{'Results for seq_len=' + str(seq_len):}")
             print("-" * 80)
 
-            print(f"\nForward Pass Peak Memory (MB):")
+            print("\nForward Pass Peak Memory (MB):")
             print(f"  Flash-only:    {flash_fwd_mem:>8.1f}")
-            print(f"  Non-chunked:   {non_chunked_fwd_mem:>8.1f} ({non_chunked_fwd_mem / flash_fwd_mem:.2f}x vs Flash)")
-            print(f"  Chunked:       {chunked_fwd_mem:>8.1f} ({chunked_fwd_mem / flash_fwd_mem:.2f}x vs Flash)")
+            print(
+                f"  Non-chunked:   {non_chunked_fwd_mem:>8.1f} ({non_chunked_fwd_mem / flash_fwd_mem:.2f}x vs Flash)"
+            )
+            print(
+                f"  Chunked:       {chunked_fwd_mem:>8.1f} ({chunked_fwd_mem / flash_fwd_mem:.2f}x vs Flash)"
+            )
 
-            print(f"\nBackward Pass Peak Memory (MB):")
+            print("\nBackward Pass Peak Memory (MB):")
             print(f"  Flash-only:    {flash_bwd_mem:>8.1f}")
-            print(f"  Non-chunked:   {non_chunked_bwd_mem:>8.1f} ({non_chunked_bwd_mem / flash_bwd_mem:.2f}x vs Flash)")
-            print(f"  Chunked:       {chunked_bwd_mem:>8.1f} ({chunked_bwd_mem / flash_bwd_mem:.2f}x vs Flash)")
+            print(
+                f"  Non-chunked:   {non_chunked_bwd_mem:>8.1f} ({non_chunked_bwd_mem / flash_bwd_mem:.2f}x vs Flash)"
+            )
+            print(
+                f"  Chunked:       {chunked_bwd_mem:>8.1f} ({chunked_bwd_mem / flash_bwd_mem:.2f}x vs Flash)"
+            )
 
-            print(f"\nTotal Peak Memory (MB):")
+            print("\nTotal Peak Memory (MB):")
             print(f"  Flash-only:    {flash_total_mem:>8.1f}")
-            print(f"  Non-chunked:   {non_chunked_total_mem:>8.1f} ({non_chunked_total_mem / flash_total_mem:.2f}x vs Flash)")
-            print(f"  Chunked:       {chunked_total_mem:>8.1f} ({chunked_total_mem / flash_total_mem:.2f}x vs Flash)")
+            print(
+                f"  Non-chunked:   {non_chunked_total_mem:>8.1f} ({non_chunked_total_mem / flash_total_mem:.2f}x vs Flash)"
+            )
+            print(
+                f"  Chunked:       {chunked_total_mem:>8.1f} ({chunked_total_mem / flash_total_mem:.2f}x vs Flash)"
+            )
 
             # Calculate and show reduction
             if non_chunked_total_mem > 0:
-                reduction_pct = ((non_chunked_total_mem - chunked_total_mem) / non_chunked_total_mem) * 100
-                print(f"\n  Memory Reduction: {reduction_pct:.1f}% (chunked vs non-chunked)")
+                reduction_pct = (
+                    (non_chunked_total_mem - chunked_total_mem) / non_chunked_total_mem
+                ) * 100
+                print(
+                    f"\n  Memory Reduction: {reduction_pct:.1f}% (chunked vs non-chunked)"
+                )
 
             # Memory per token analysis
             tokens = batch_size * seq_len
-            print(f"\nMemory per Token (KB):")
+            print("\nMemory per Token (KB):")
             print(f"  Flash-only:    {(flash_total_mem * 1024) / tokens:>8.2f}")
             print(f"  Non-chunked:   {(non_chunked_total_mem * 1024) / tokens:>8.2f}")
             print(f"  Chunked:       {(chunked_total_mem * 1024) / tokens:>8.2f}")
@@ -298,7 +335,7 @@ def main():
     parser.add_argument(
         "--quick-test",
         action="store_true",
-        help="Run quick test with reduced iterations"
+        help="Run quick test with reduced iterations",
     )
     args = parser.parse_args()
 

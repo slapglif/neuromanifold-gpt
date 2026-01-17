@@ -50,10 +50,10 @@ Usage:
 
 # Braid group representations
 from neuromanifold_gpt.model.topology.braid import (
-    BraidGroup,
-    BraidEncoder,
-    BraidCrossing,
     BraidConfig,
+    BraidCrossing,
+    BraidEncoder,
+    BraidGroup,
     TemperleyLiebAlgebra,
 )
 

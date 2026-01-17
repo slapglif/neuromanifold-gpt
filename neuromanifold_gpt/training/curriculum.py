@@ -1,8 +1,9 @@
-import torch
-import torch.nn as nn
-from typing import Dict, Callable, Optional
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, Optional
+
+import torch
+import torch.nn as nn
 
 
 class GenerationMode(Enum):

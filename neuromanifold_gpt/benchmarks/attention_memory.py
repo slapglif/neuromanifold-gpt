@@ -13,12 +13,13 @@ Tests at different sequence lengths: 128, 256, 512, 1024
 """
 
 import argparse
-import torch
-import torch.nn as nn
 from contextlib import nullcontext
 
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+import torch
+import torch.nn as nn
+
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 
 def benchmark_model_memory(
@@ -124,7 +125,9 @@ def analyze_memory_scaling(results, device):
         seq_results.sort(key=lambda x: x["batch_size"])
 
         print(f"\nBatch size scaling at sequence length {seq_len}:")
-        print(f"  {'Batch':<8} {'Std (MB)':<12} {'NM (MB)':<12} {'Std/tok (KB)':<15} {'NM/tok (KB)':<15}")
+        print(
+            f"  {'Batch':<8} {'Std (MB)':<12} {'NM (MB)':<12} {'Std/tok (KB)':<15} {'NM/tok (KB)':<15}"
+        )
         print("  " + "-" * 70)
 
         for r in seq_results:
@@ -138,7 +141,9 @@ def analyze_memory_scaling(results, device):
             std_per_tok = (std_mem * 1024) / tokens  # Convert MB to KB per token
             nm_per_tok = (nm_mem * 1024) / tokens
 
-            print(f"  {batch_size:<8} {std_mem:<12.1f} {nm_mem:<12.1f} {std_per_tok:<15.2f} {nm_per_tok:<15.2f}")
+            print(
+                f"  {batch_size:<8} {std_mem:<12.1f} {nm_mem:<12.1f} {std_per_tok:<15.2f} {nm_per_tok:<15.2f}"
+            )
 
     # Group by batch size for sequence length scaling
     batch_sizes = sorted(set(r["batch_size"] for r in results))
@@ -151,7 +156,9 @@ def analyze_memory_scaling(results, device):
         batch_results.sort(key=lambda x: x["seq_len"])
 
         print(f"\nSequence length scaling at batch size {batch_size}:")
-        print(f"  {'SeqLen':<8} {'Std (MB)':<12} {'NM (MB)':<12} {'Std/tok (KB)':<15} {'NM/tok (KB)':<15}")
+        print(
+            f"  {'SeqLen':<8} {'Std (MB)':<12} {'NM (MB)':<12} {'Std/tok (KB)':<15} {'NM/tok (KB)':<15}"
+        )
         print("  " + "-" * 70)
 
         for r in batch_results:
@@ -165,7 +172,9 @@ def analyze_memory_scaling(results, device):
             std_per_tok = (std_mem * 1024) / tokens
             nm_per_tok = (nm_mem * 1024) / tokens
 
-            print(f"  {seq_len_val:<8} {std_mem:<12.1f} {nm_mem:<12.1f} {std_per_tok:<15.2f} {nm_per_tok:<15.2f}")
+            print(
+                f"  {seq_len_val:<8} {std_mem:<12.1f} {nm_mem:<12.1f} {std_per_tok:<15.2f} {nm_per_tok:<15.2f}"
+            )
 
 
 def benchmark_memory(quick_test: bool = False):
@@ -178,7 +187,9 @@ def benchmark_memory(quick_test: bool = False):
     print(f"Device: {device}")
 
     if device.type != "cuda":
-        print("WARNING: Memory benchmarking requires CUDA. Running on CPU will not measure GPU memory.")
+        print(
+            "WARNING: Memory benchmarking requires CUDA. Running on CPU will not measure GPU memory."
+        )
 
     print("=" * 80)
 
@@ -186,10 +197,22 @@ def benchmark_memory(quick_test: bool = False):
     results = []
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    dtype = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
+    device_type = "cuda" if "cuda" in str(device) else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    )
 
     # Test configurations
     if quick_test:
@@ -299,25 +322,41 @@ def benchmark_memory(quick_test: bool = False):
         neuromanifold_model = NeuroManifoldGPT(neuromanifold_config)
 
         # Count parameters
-        standard_params = sum(p.numel() for p in standard_model.parameters() if p.requires_grad)
-        neuromanifold_params = sum(p.numel() for p in neuromanifold_model.parameters() if p.requires_grad)
+        standard_params = sum(
+            p.numel() for p in standard_model.parameters() if p.requires_grad
+        )
+        neuromanifold_params = sum(
+            p.numel() for p in neuromanifold_model.parameters() if p.requires_grad
+        )
 
-        print(f"\nParameters:")
+        print("\nParameters:")
         print(f"  Standard:      {standard_params:,}")
-        print(f"  NeuroManifold: {neuromanifold_params:,} ({neuromanifold_params / standard_params:.2f}x)")
+        print(
+            f"  NeuroManifold: {neuromanifold_params:,} ({neuromanifold_params / standard_params:.2f}x)"
+        )
 
         # Benchmark standard attention
         print("\nBenchmarking standard attention memory...")
         standard_fwd_mem, standard_bwd_mem = benchmark_model_memory(
-            standard_model, batch_size, seq_len, base_config["vocab_size"],
-            device, ctx, n_iters
+            standard_model,
+            batch_size,
+            seq_len,
+            base_config["vocab_size"],
+            device,
+            ctx,
+            n_iters,
         )
 
         # Benchmark NeuroManifold attention
         print("Benchmarking NeuroManifold attention memory...")
         neuromanifold_fwd_mem, neuromanifold_bwd_mem = benchmark_model_memory(
-            neuromanifold_model, batch_size, seq_len, base_config["vocab_size"],
-            device, ctx, n_iters
+            neuromanifold_model,
+            batch_size,
+            seq_len,
+            base_config["vocab_size"],
+            device,
+            ctx,
+            n_iters,
         )
 
         # Calculate totals
@@ -325,26 +364,34 @@ def benchmark_memory(quick_test: bool = False):
         neuromanifold_total_mem = neuromanifold_fwd_mem + neuromanifold_bwd_mem
 
         # Store results for scaling analysis
-        results.append({
-            "seq_len": seq_len,
-            "batch_size": batch_size,
-            "standard_total": standard_total_mem,
-            "neuromanifold_total": neuromanifold_total_mem,
-        })
+        results.append(
+            {
+                "seq_len": seq_len,
+                "batch_size": batch_size,
+                "standard_total": standard_total_mem,
+                "neuromanifold_total": neuromanifold_total_mem,
+            }
+        )
 
         # Print results
         if device.type == "cuda":
-            print(f"\nForward Pass Peak Memory (MB):")
+            print("\nForward Pass Peak Memory (MB):")
             print(f"  Standard:      {standard_fwd_mem:.1f}")
-            print(f"  NeuroManifold: {neuromanifold_fwd_mem:.1f} ({neuromanifold_fwd_mem / standard_fwd_mem:.2f}x)")
+            print(
+                f"  NeuroManifold: {neuromanifold_fwd_mem:.1f} ({neuromanifold_fwd_mem / standard_fwd_mem:.2f}x)"
+            )
 
-            print(f"\nBackward Pass Peak Memory (MB):")
+            print("\nBackward Pass Peak Memory (MB):")
             print(f"  Standard:      {standard_bwd_mem:.1f}")
-            print(f"  NeuroManifold: {neuromanifold_bwd_mem:.1f} ({neuromanifold_bwd_mem / standard_bwd_mem:.2f}x)")
+            print(
+                f"  NeuroManifold: {neuromanifold_bwd_mem:.1f} ({neuromanifold_bwd_mem / standard_bwd_mem:.2f}x)"
+            )
 
-            print(f"\nTotal Peak Memory (MB):")
+            print("\nTotal Peak Memory (MB):")
             print(f"  Standard:      {standard_total_mem:.1f}")
-            print(f"  NeuroManifold: {neuromanifold_total_mem:.1f} ({neuromanifold_total_mem / standard_total_mem:.2f}x)")
+            print(
+                f"  NeuroManifold: {neuromanifold_total_mem:.1f} ({neuromanifold_total_mem / standard_total_mem:.2f}x)"
+            )
         else:
             print("\n(Memory metrics not available on CPU)")
 
@@ -366,7 +413,7 @@ def main():
     parser.add_argument(
         "--quick-test",
         action="store_true",
-        help="Run quick test with reduced iterations"
+        help="Run quick test with reduced iterations",
     )
     args = parser.parse_args()
 

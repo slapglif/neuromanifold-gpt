@@ -2,6 +2,7 @@
 """Tests for chunked FHN attention implementation with memory efficiency."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
 
 
@@ -31,7 +32,7 @@ def _non_chunked_fhn_attention(
 
     # Compute full attention weights
     attn_weights = torch.einsum("b h t d, b h s d -> b h t s", q, k)
-    attn_weights = attn_weights / (D ** 0.5)
+    attn_weights = attn_weights / (D**0.5)
 
     # Causal mask
     causal_mask = torch.triu(
@@ -87,12 +88,15 @@ class TestChunkedFHNAttention:
 
         # Compute both versions
         with torch.no_grad():
-            chunked_output, chunked_fhn = attn._chunked_fhn_attention(q, k, v, chunk_size=256)
+            chunked_output, chunked_fhn = attn._chunked_fhn_attention(
+                q, k, v, chunk_size=256
+            )
             reference_output, reference_fhn = _non_chunked_fhn_attention(attn, q, k, v)
 
         # Should be numerically equivalent
-        assert torch.allclose(chunked_output, reference_output, atol=1e-5, rtol=1e-5), \
-            f"Max diff: {(chunked_output - reference_output).abs().max()}"
+        assert torch.allclose(
+            chunked_output, reference_output, atol=1e-5, rtol=1e-5
+        ), f"Max diff: {(chunked_output - reference_output).abs().max()}"
 
     def test_numerical_equivalence_chunk512(self):
         """Chunked (chunk_size=512) should match non-chunked output."""
@@ -113,12 +117,15 @@ class TestChunkedFHNAttention:
 
         # Compute both versions
         with torch.no_grad():
-            chunked_output, chunked_fhn = attn._chunked_fhn_attention(q, k, v, chunk_size=512)
+            chunked_output, chunked_fhn = attn._chunked_fhn_attention(
+                q, k, v, chunk_size=512
+            )
             reference_output, reference_fhn = _non_chunked_fhn_attention(attn, q, k, v)
 
         # Should be numerically equivalent
-        assert torch.allclose(chunked_output, reference_output, atol=1e-5, rtol=1e-5), \
-            f"Max diff: {(chunked_output - reference_output).abs().max()}"
+        assert torch.allclose(
+            chunked_output, reference_output, atol=1e-5, rtol=1e-5
+        ), f"Max diff: {(chunked_output - reference_output).abs().max()}"
 
     def test_numerical_equivalence_chunk1024(self):
         """Chunked (chunk_size=1024) should match non-chunked output."""
@@ -139,12 +146,15 @@ class TestChunkedFHNAttention:
 
         # Compute both versions
         with torch.no_grad():
-            chunked_output, chunked_fhn = attn._chunked_fhn_attention(q, k, v, chunk_size=1024)
+            chunked_output, chunked_fhn = attn._chunked_fhn_attention(
+                q, k, v, chunk_size=1024
+            )
             reference_output, reference_fhn = _non_chunked_fhn_attention(attn, q, k, v)
 
         # Should be numerically equivalent
-        assert torch.allclose(chunked_output, reference_output, atol=1e-5, rtol=1e-5), \
-            f"Max diff: {(chunked_output - reference_output).abs().max()}"
+        assert torch.allclose(
+            chunked_output, reference_output, atol=1e-5, rtol=1e-5
+        ), f"Max diff: {(chunked_output - reference_output).abs().max()}"
 
     def test_edge_case_t_not_divisible_255(self):
         """Test edge case where T=255 is not divisible by chunk_size=256."""
@@ -165,12 +175,15 @@ class TestChunkedFHNAttention:
 
         # Compute both versions
         with torch.no_grad():
-            chunked_output, chunked_fhn = attn._chunked_fhn_attention(q, k, v, chunk_size=256)
+            chunked_output, chunked_fhn = attn._chunked_fhn_attention(
+                q, k, v, chunk_size=256
+            )
             reference_output, reference_fhn = _non_chunked_fhn_attention(attn, q, k, v)
 
         # Should be numerically equivalent
-        assert torch.allclose(chunked_output, reference_output, atol=1e-5, rtol=1e-5), \
-            f"Max diff: {(chunked_output - reference_output).abs().max()}"
+        assert torch.allclose(
+            chunked_output, reference_output, atol=1e-5, rtol=1e-5
+        ), f"Max diff: {(chunked_output - reference_output).abs().max()}"
 
     def test_edge_case_t_not_divisible_513(self):
         """Test edge case where T=513 is not divisible by chunk_size=256."""
@@ -191,12 +204,15 @@ class TestChunkedFHNAttention:
 
         # Compute both versions
         with torch.no_grad():
-            chunked_output, chunked_fhn = attn._chunked_fhn_attention(q, k, v, chunk_size=256)
+            chunked_output, chunked_fhn = attn._chunked_fhn_attention(
+                q, k, v, chunk_size=256
+            )
             reference_output, reference_fhn = _non_chunked_fhn_attention(attn, q, k, v)
 
         # Should be numerically equivalent
-        assert torch.allclose(chunked_output, reference_output, atol=1e-5, rtol=1e-5), \
-            f"Max diff: {(chunked_output - reference_output).abs().max()}"
+        assert torch.allclose(
+            chunked_output, reference_output, atol=1e-5, rtol=1e-5
+        ), f"Max diff: {(chunked_output - reference_output).abs().max()}"
 
     def test_edge_case_single_timestep(self):
         """Test edge case with T=1."""
@@ -216,12 +232,15 @@ class TestChunkedFHNAttention:
 
         # Compute both versions
         with torch.no_grad():
-            chunked_output, chunked_fhn = attn._chunked_fhn_attention(q, k, v, chunk_size=256)
+            chunked_output, chunked_fhn = attn._chunked_fhn_attention(
+                q, k, v, chunk_size=256
+            )
             reference_output, reference_fhn = _non_chunked_fhn_attention(attn, q, k, v)
 
         # Should be numerically equivalent
-        assert torch.allclose(chunked_output, reference_output, atol=1e-5, rtol=1e-5), \
-            f"Max diff: {(chunked_output - reference_output).abs().max()}"
+        assert torch.allclose(
+            chunked_output, reference_output, atol=1e-5, rtol=1e-5
+        ), f"Max diff: {(chunked_output - reference_output).abs().max()}"
 
     def test_causality_preserved(self):
         """Verify causal property: output at time t only depends on times <= t."""
@@ -246,17 +265,20 @@ class TestChunkedFHNAttention:
         # Test at chunk boundaries and within chunks
         for t in [0, 127, 255, 256, 383, 511]:
             # Truncate inputs at time t
-            q_trunc = q[:, :, :t+1, :]
-            k_trunc = k[:, :, :t+1, :]
-            v_trunc = v[:, :, :t+1, :]
+            q_trunc = q[:, :, : t + 1, :]
+            k_trunc = k[:, :, : t + 1, :]
+            v_trunc = v[:, :, : t + 1, :]
 
             # Compute output with truncated inputs
             with torch.no_grad():
-                trunc_output, _ = attn._chunked_fhn_attention(q_trunc, k_trunc, v_trunc, chunk_size=256)
+                trunc_output, _ = attn._chunked_fhn_attention(
+                    q_trunc, k_trunc, v_trunc, chunk_size=256
+                )
 
             # Output at time t should match
-            assert torch.allclose(full_output[:, :, t, :], trunc_output[:, :, t, :], atol=1e-5, rtol=1e-5), \
-                f"Causality violated at t={t}, max diff: {(full_output[:, :, t, :] - trunc_output[:, :, t, :]).abs().max()}"
+            assert torch.allclose(
+                full_output[:, :, t, :], trunc_output[:, :, t, :], atol=1e-5, rtol=1e-5
+            ), f"Causality violated at t={t}, max diff: {(full_output[:, :, t, :] - trunc_output[:, :, t, :]).abs().max()}"
 
     def test_full_forward_pass_equivalence(self):
         """Test that full forward pass produces consistent outputs."""
@@ -292,8 +314,9 @@ class TestChunkedFHNAttention:
             out_large, info_large = attn_large_chunk(x, spectral_basis)
 
         # Outputs should be numerically equivalent
-        assert torch.allclose(out_small, out_large, atol=1e-4, rtol=1e-4), \
-            f"Forward pass outputs differ, max diff: {(out_small - out_large).abs().max()}"
+        assert torch.allclose(
+            out_small, out_large, atol=1e-4, rtol=1e-4
+        ), f"Forward pass outputs differ, max diff: {(out_small - out_large).abs().max()}"
 
     def test_gradient_flow_chunked(self):
         """Gradients should flow through chunked implementation."""
@@ -336,8 +359,8 @@ class TestChunkedFHNAttention:
             out, info = attn(x, spectral_basis)
 
             assert out.shape == (B, T, C)
-            assert 'fhn_state' in info
-            assert 'pulse_widths' in info
+            assert "fhn_state" in info
+            assert "pulse_widths" in info
 
     def test_various_sequence_lengths(self):
         """Chunked path should handle various sequence lengths."""
@@ -413,8 +436,8 @@ class TestChunkedFHNAttention:
         _, info = attn(x, spectral_basis)
 
         # FHN state should be non-zero
-        assert info['fhn_state'] is not None
-        assert info['fhn_state'] != 0.0
+        assert info["fhn_state"] is not None
+        assert info["fhn_state"] != 0.0
 
     def test_no_fhn_steps_uses_flash_path(self):
         """When n_fhn_steps=0, should use Flash Attention fast path."""
@@ -434,9 +457,9 @@ class TestChunkedFHNAttention:
         _, info = attn(x, spectral_basis)
 
         # FHN state should be zero
-        assert float(info['fhn_state']) == 0.0
+        assert float(info["fhn_state"]) == 0.0
         # Attention probs not computed in flash path
-        assert info['attn_probs'] is None
+        assert info["attn_probs"] is None
 
     def test_chunked_path_triggered_for_long_sequences(self):
         """Chunked path should be used when T > chunk_size."""
@@ -469,6 +492,7 @@ class TestChunkedFHNAttention:
 
     def test_deterministic_with_fixed_seed(self):
         """Chunked path should be deterministic with fixed seed."""
+
         def run_with_seed(seed=42):
             torch.manual_seed(seed)
             attn = FHNAttention(
@@ -491,8 +515,9 @@ class TestChunkedFHNAttention:
         out1 = run_with_seed(42)
         out2 = run_with_seed(42)
 
-        assert torch.allclose(out1, out2, atol=1e-6), \
-            "Outputs should be identical with same seed"
+        assert torch.allclose(
+            out1, out2, atol=1e-6
+        ), "Outputs should be identical with same seed"
 
     def test_fhn_steps_zero_vs_nonzero(self):
         """Test behavior difference between n_fhn_steps=0 and n_fhn_steps>0."""
@@ -524,12 +549,13 @@ class TestChunkedFHNAttention:
             out_with_fhn, info_with_fhn = attn_with_fhn(x, spectral_basis)
 
         # Outputs should differ (FHN modulation changes attention)
-        assert not torch.allclose(out_no_fhn, out_with_fhn, atol=1e-3), \
-            "Outputs should differ when FHN modulation is applied"
+        assert not torch.allclose(
+            out_no_fhn, out_with_fhn, atol=1e-3
+        ), "Outputs should differ when FHN modulation is applied"
 
         # FHN state should be zero vs non-zero
-        assert float(info_no_fhn['fhn_state']) == 0.0
-        assert float(info_with_fhn['fhn_state']) != 0.0
+        assert float(info_no_fhn["fhn_state"]) == 0.0
+        assert float(info_with_fhn["fhn_state"]) != 0.0
 
     def test_extreme_sequence_length_4096(self):
         """Test chunked attention with very long sequence (T=4096)."""
@@ -580,5 +606,6 @@ class TestChunkedFHNAttention:
             out_512, _ = attn_512(x, spectral_basis)
 
         # Outputs should be similar (within numerical tolerance)
-        assert torch.allclose(out_256, out_512, atol=1e-4, rtol=1e-4), \
-            f"Outputs with different chunk sizes differ, max diff: {(out_256 - out_512).abs().max()}"
+        assert torch.allclose(
+            out_256, out_512, atol=1e-4, rtol=1e-4
+        ), f"Outputs with different chunk sizes differ, max diff: {(out_256 - out_512).abs().max()}"

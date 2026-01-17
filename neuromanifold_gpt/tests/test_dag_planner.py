@@ -2,6 +2,7 @@
 """Tests for ForcedDAGPlanner - DAG-based task decomposition."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.planning.dag_planner import ForcedDAGPlanner
 
 
@@ -159,9 +160,7 @@ def test_dag_planner_surface_area_calculation():
 
 def test_dag_planner_execution_order():
     """Execution order should follow topological sort."""
-    planner = ForcedDAGPlanner(
-        embed_dim=384, manifold_dim=64, max_nodes=8, min_nodes=3
-    )
+    planner = ForcedDAGPlanner(embed_dim=384, manifold_dim=64, max_nodes=8, min_nodes=3)
     x = torch.randn(1, 10, 384)
 
     result = planner(x, deterministic=True)
@@ -184,9 +183,7 @@ def test_dag_planner_execution_order():
 
 def test_dag_planner_execution_order_respects_dependencies():
     """Execution order should respect dependency edges."""
-    planner = ForcedDAGPlanner(
-        embed_dim=384, manifold_dim=64, max_nodes=8, min_nodes=3
-    )
+    planner = ForcedDAGPlanner(embed_dim=384, manifold_dim=64, max_nodes=8, min_nodes=3)
     x = torch.randn(1, 10, 384)
 
     result = planner(x, deterministic=True)
@@ -237,22 +234,32 @@ def test_dag_planner_batch_independence():
     result_batched = planner(x_batched, deterministic=True)
 
     # First batch item should match individual processing (with small numerical tolerance)
-    assert torch.allclose(result_batched["node_embeddings"][0], result1["node_embeddings"][0], rtol=1e-4, atol=1e-6)
-    assert torch.allclose(result_batched["node_embeddings"][1], result2["node_embeddings"][0], rtol=1e-4, atol=1e-6)
+    assert torch.allclose(
+        result_batched["node_embeddings"][0],
+        result1["node_embeddings"][0],
+        rtol=1e-4,
+        atol=1e-6,
+    )
+    assert torch.allclose(
+        result_batched["node_embeddings"][1],
+        result2["node_embeddings"][0],
+        rtol=1e-4,
+        atol=1e-6,
+    )
 
 
 def test_dag_planner_empty_adjacency():
     """Planner should handle DAGs with no edges."""
-    planner = ForcedDAGPlanner(
-        embed_dim=384, manifold_dim=64, max_nodes=8, min_nodes=3
-    )
+    planner = ForcedDAGPlanner(embed_dim=384, manifold_dim=64, max_nodes=8, min_nodes=3)
 
     # Create a scenario that might produce empty adjacency
     x = torch.randn(1, 10, 384)
     result = planner(x, deterministic=True)
 
     # Even with no edges, execution order should work
-    execution_order = planner.get_execution_order(result["adj_matrix"], result["node_mask"])
+    execution_order = planner.get_execution_order(
+        result["adj_matrix"], result["node_mask"]
+    )
 
     assert execution_order.shape == (1, 8)
     # Should still have valid node indices for active nodes
@@ -269,8 +276,8 @@ def test_dag_planner_training_vs_eval_mode():
 
     # Training mode (non-deterministic)
     planner.train()
-    result_train1 = planner(x, deterministic=False)
-    result_train2 = planner(x, deterministic=False)
+    planner(x, deterministic=False)
+    planner(x, deterministic=False)
 
     # Results may differ due to sampling
     # (not guaranteed to differ, but we test the mode difference exists)

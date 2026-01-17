@@ -11,10 +11,10 @@ Key properties:
 Reference: https://www.nbi.ku.dk/membranes/Kaufmann/publications.html
 """
 
-import warnings
 import torch
 import torch.nn as nn
-from einops import rearrange, einsum
+from einops import einsum, rearrange
+
 from .partitioning import SpectralPartitioner
 
 
@@ -60,7 +60,7 @@ def fhn_update_step(
         denom = 1.0 + alpha * b
 
         w_step = alpha * (v + a)
-        w_new = (w + w_step) / denom
+        (w + w_step) / denom
 
         # Update v
         # v_new = v + dt * dv_explicit
@@ -300,7 +300,7 @@ class FHNAttention(nn.Module):
             # Define chunk boundaries
             chunk_start = chunk_idx * chunk_size
             chunk_end = min(chunk_start + chunk_size, T)
-            chunk_len = chunk_end - chunk_start
+            chunk_end - chunk_start
 
             # Extract query chunk
             q_chunk = q[:, :, chunk_start:chunk_end, :]  # (B, H, chunk_len, D)
@@ -313,13 +313,19 @@ class FHNAttention(nn.Module):
             # Compute attention scores for this chunk
             # (B, H, chunk_len, D) @ (B, H, D, chunk_end) -> (B, H, chunk_len, chunk_end)
             attn_weights = einsum(q_chunk, k_causal, "b h t d, b h s d -> b h t s")
-            attn_weights = attn_weights / (D ** 0.5)
+            attn_weights = attn_weights / (D**0.5)
 
             # Create causal mask for this chunk
             # Query at absolute position (chunk_start + i) should only attend to keys at positions 0..(chunk_start + i)
             # Shape: query_positions (chunk_len, 1), key_positions (1, chunk_end)
-            query_positions = torch.arange(chunk_start, chunk_end, device=q.device).unsqueeze(1)  # (chunk_len, 1)
-            key_positions = torch.arange(0, chunk_end, device=q.device).unsqueeze(0)  # (1, chunk_end)
+            query_positions = torch.arange(
+                chunk_start, chunk_end, device=q.device
+            ).unsqueeze(
+                1
+            )  # (chunk_len, 1)
+            key_positions = torch.arange(0, chunk_end, device=q.device).unsqueeze(
+                0
+            )  # (1, chunk_end)
 
             # causal_mask[i, j] = True if query at (chunk_start + i) should NOT attend to key at j
             # This happens when j > (chunk_start + i), i.e., when key_positions > query_positions
@@ -327,8 +333,10 @@ class FHNAttention(nn.Module):
 
             # Apply causal mask: set future positions to -inf
             attn_weights = attn_weights.masked_fill(
-                causal_mask.unsqueeze(0).unsqueeze(0),  # Broadcast to (1, 1, chunk_len, chunk_end) -> (B, H, chunk_len, chunk_end)
-                float("-inf")
+                causal_mask.unsqueeze(0).unsqueeze(
+                    0
+                ),  # Broadcast to (1, 1, chunk_len, chunk_end) -> (B, H, chunk_len, chunk_end)
+                float("-inf"),
             )
 
             # Apply softmax (masked positions will have probability ~0)
@@ -345,7 +353,9 @@ class FHNAttention(nn.Module):
                     attn_energy.unsqueeze(-1).expand(-1, -1, -1, D),
                     n_steps=self.n_fhn_steps,
                 )
-                fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(-1)  # (B, H, chunk_len, 1)
+                fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(
+                    -1
+                )  # (B, H, chunk_len, 1)
 
                 # Modulate attention with FHN response
                 attn_probs = attn_probs * (0.5 + 0.5 * fhn_gate)
@@ -381,19 +391,21 @@ class FHNAttention(nn.Module):
         B, T, D = x.shape
 
         # Lazy initialization of position embeddings (only when first used)
-        if self.pos_emb_type == 'rotary' and self.rope is None:
+        if self.pos_emb_type == "rotary" and self.rope is None:
             from neuromanifold_gpt.model.embeddings import RotaryPositionalEmbedding
+
             self.rope = RotaryPositionalEmbedding(
                 embed_dim=self.embed_dim,
                 head_dim=self.head_dim,
-                max_seq_len=self.max_seq_len
+                max_seq_len=self.max_seq_len,
             )
-        elif self.pos_emb_type == 'alibi' and self.alibi is None:
+        elif self.pos_emb_type == "alibi" and self.alibi is None:
             from neuromanifold_gpt.model.embeddings import ALiBiPositionalBias
+
             self.alibi = ALiBiPositionalBias(
                 n_heads=self.n_heads,
                 embed_dim=self.embed_dim,
-                max_seq_len=self.max_seq_len
+                max_seq_len=self.max_seq_len,
             )
 
         # QKV projection
@@ -416,7 +428,9 @@ class FHNAttention(nn.Module):
             # Use PyTorch's optimized scaled_dot_product_attention (Flash Attention)
             # This is MUCH faster than manual einsum implementation
             out = torch.nn.functional.scaled_dot_product_attention(
-                q, key, v,
+                q,
+                key,
+                v,
                 attn_mask=None,  # Use is_causal=True instead
                 dropout_p=self.dropout.p if self.training else 0.0,
                 is_causal=True,
@@ -442,7 +456,9 @@ class FHNAttention(nn.Module):
                 if self.alibi is not None:
                     alibi_bias = self.alibi(T)  # Shape: (1, n_heads, T, T)
                     # Expand to batch size and add to attention scores
-                    attn_weights = attn_weights + alibi_bias.squeeze(0)  # Now shape: (B, nh, T, T)
+                    attn_weights = attn_weights + alibi_bias.squeeze(
+                        0
+                    )  # Now shape: (B, nh, T, T)
 
                 # Causal mask: prevent attending to future positions
                 causal_mask = torch.triu(
@@ -457,12 +473,16 @@ class FHNAttention(nn.Module):
                 attn_probs = self.dropout(attn_probs)
 
                 # Apply FHN dynamics to modulate attention patterns along query dimension
-                attn_energy = attn_probs.sum(dim=-1)  # (B, H, T) - attention "energy" per query
+                attn_energy = attn_probs.sum(
+                    dim=-1
+                )  # (B, H, T) - attention "energy" per query
                 fhn_out, fhn_state = self.fhn(
                     attn_energy.unsqueeze(-1).expand(-1, -1, -1, self.head_dim),
                     n_steps=self.n_fhn_steps,
                 )
-                fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(-1)  # (B, H, T, 1)
+                fhn_gate = torch.sigmoid(fhn_out.mean(dim=-1)).unsqueeze(
+                    -1
+                )  # (B, H, T, 1)
 
                 # Modulate attention with FHN response (0.5 baseline + 0.5 * gate for stability)
                 attn_probs = attn_probs * (0.5 + 0.5 * fhn_gate)

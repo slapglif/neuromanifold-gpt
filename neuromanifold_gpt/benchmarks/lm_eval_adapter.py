@@ -28,21 +28,21 @@ References:
 """
 
 import os
-from typing import List, Dict, Tuple, Union, Optional, Any, Protocol
+from typing import Any, List, Optional, Protocol, Tuple
+
+import tiktoken
 import torch
 import torch.nn.functional as F
-import tiktoken
 
 try:
-    from lm_eval.api.model import LM
     from lm_eval.api.instance import Instance
+    from lm_eval.api.model import LM
 except ImportError:
     # Graceful degradation if lm-eval is not installed
     LM = object
     Instance = Any
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
-from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
 
 class Tokenizer(Protocol):
@@ -81,7 +81,7 @@ class NeuroManifoldLM(LM):
         self,
         model: NeuroManifoldGPT,
         tokenizer: Tokenizer,
-        device: str = 'cuda',
+        device: str = "cuda",
         batch_size: int = 1,
         max_length: Optional[int] = None,
     ):
@@ -97,17 +97,17 @@ class NeuroManifoldLM(LM):
         self.model.eval()
 
         # Determine vocab size
-        if hasattr(tokenizer, 'n_vocab'):
+        if hasattr(tokenizer, "n_vocab"):
             self.vocab_size = tokenizer.n_vocab
-        elif hasattr(tokenizer, 'vocab_size'):
+        elif hasattr(tokenizer, "vocab_size"):
             self.vocab_size = tokenizer.vocab_size
         else:
             self.vocab_size = model.config.vocab_size
 
         # Determine EOT token
-        if hasattr(tokenizer, 'eot_token'):
+        if hasattr(tokenizer, "eot_token"):
             self.eot_token_id = tokenizer.eot_token
-        elif hasattr(tokenizer, 'encode_ordinary'):
+        elif hasattr(tokenizer, "encode_ordinary"):
             # tiktoken tokenizer
             self.eot_token_id = tokenizer.encode_ordinary("<|endoftext|>")[0]
         else:
@@ -117,10 +117,10 @@ class NeuroManifoldLM(LM):
     def from_checkpoint(
         cls,
         checkpoint_path: str,
-        device: str = 'cuda',
+        device: str = "cuda",
         batch_size: int = 1,
         max_length: Optional[int] = None,
-    ) -> 'NeuroManifoldLM':
+    ) -> "NeuroManifoldLM":
         """
         Load model from checkpoint and create adapter.
 
@@ -137,29 +137,33 @@ class NeuroManifoldLM(LM):
             >>> lm = NeuroManifoldLM.from_checkpoint('out/ckpt.pt', device='cuda')
         """
         # Load checkpoint
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        checkpoint = torch.load(
+            checkpoint_path, map_location=device, weights_only=False
+        )
 
         # Extract config and create model
-        config = checkpoint['config']
+        config = checkpoint["config"]
         model = NeuroManifoldGPT(config)
 
         # Load state dict
-        state_dict = checkpoint['model']
-        unwanted_prefix = '_orig_mod.'
+        state_dict = checkpoint["model"]
+        unwanted_prefix = "_orig_mod."
         for k, v in list(state_dict.items()):
             if k.startswith(unwanted_prefix):
-                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
         model.load_state_dict(state_dict)
 
         # Setup tokenizer
         # Try to load meta.pkl from dataset if available
         tokenizer = None
-        if hasattr(config, 'dataset') and config.dataset:
-            meta_path = os.path.join('data', config.dataset, 'meta.pkl')
+        if hasattr(config, "dataset") and config.dataset:
+            meta_path = os.path.join("data", config.dataset, "meta.pkl")
             if os.path.exists(meta_path):
                 import pickle
-                with open(meta_path, 'rb') as f:
+
+                with open(meta_path, "rb") as f:
                     meta = pickle.load(f)
+
                 # Create custom tokenizer from meta
                 class CustomTokenizer:
                     def __init__(self, stoi, itos):
@@ -172,9 +176,9 @@ class NeuroManifoldLM(LM):
                         return [self.stoi.get(c, 0) for c in text]
 
                     def decode(self, tokens):
-                        return ''.join([self.itos.get(t, '') for t in tokens])
+                        return "".join([self.itos.get(t, "") for t in tokens])
 
-                tokenizer = CustomTokenizer(meta['stoi'], meta['itos'])
+                tokenizer = CustomTokenizer(meta["stoi"], meta["itos"])
 
         # Fallback to GPT-2 tokenizer
         if tokenizer is None:
@@ -212,12 +216,14 @@ class NeuroManifoldLM(LM):
         Returns:
             List of token IDs
         """
-        if hasattr(self.tokenizer, 'encode'):
+        if hasattr(self.tokenizer, "encode"):
             return self.tokenizer.encode(text)
-        elif hasattr(self.tokenizer, 'encode_ordinary'):
+        elif hasattr(self.tokenizer, "encode_ordinary"):
             return self.tokenizer.encode_ordinary(text)  # type: ignore[no-any-return]
         else:
-            raise NotImplementedError("Tokenizer must have encode or encode_ordinary method")
+            raise NotImplementedError(
+                "Tokenizer must have encode or encode_ordinary method"
+            )
 
     def tok_decode(self, tokens: List[int]) -> str:
         """
@@ -229,7 +235,7 @@ class NeuroManifoldLM(LM):
         Returns:
             Decoded text
         """
-        if hasattr(self.tokenizer, 'decode'):
+        if hasattr(self.tokenizer, "decode"):
             return self.tokenizer.decode(tokens)
         else:
             raise NotImplementedError("Tokenizer must have decode method")
@@ -306,7 +312,7 @@ class NeuroManifoldLM(LM):
 
         # Process in batches
         for i in range(0, len(requests), self._batch_size):
-            batch = requests[i:i + self._batch_size]
+            batch = requests[i : i + self._batch_size]
 
             # Extract context and continuation pairs
             inputs = [(req.args[0], req.args[1]) for req in batch]
@@ -329,7 +335,7 @@ class NeuroManifoldLM(LM):
 
                 # Get logits for positions just before each continuation token
                 # Logits at position t predict token at position t+1
-                cont_logits = logits[j, cont_start-1:seq_len-1, :]
+                cont_logits = logits[j, cont_start - 1 : seq_len - 1, :]
 
                 # Compute log probabilities
                 log_probs = F.log_softmax(cont_logits, dim=-1)
@@ -350,7 +356,9 @@ class NeuroManifoldLM(LM):
 
         return results
 
-    def loglikelihood_rolling(self, requests: List[Instance]) -> List[Tuple[float, bool]]:
+    def loglikelihood_rolling(
+        self, requests: List[Instance]
+    ) -> List[Tuple[float, bool]]:
         """
         Compute rolling log-likelihood for perplexity evaluation.
 
@@ -372,10 +380,12 @@ class NeuroManifoldLM(LM):
 
             # Truncate if too long
             if len(tokens) > self._max_length:
-                tokens = tokens[:self._max_length]
+                tokens = tokens[: self._max_length]
 
             # Convert to tensor
-            input_tokens = torch.tensor([tokens[:-1]], dtype=torch.long, device=self._device)
+            input_tokens = torch.tensor(
+                [tokens[:-1]], dtype=torch.long, device=self._device
+            )
             target_tokens = tokens[1:]
 
             # Get logits
@@ -421,15 +431,15 @@ class NeuroManifoldLM(LM):
             gen_kwargs = req.args[1] if len(req.args) > 1 else {}
 
             # Parse generation parameters
-            max_gen_toks = gen_kwargs.get('max_gen_toks', 256)
-            until = gen_kwargs.get('until', [])
-            temperature = gen_kwargs.get('temperature', 0.8)
-            top_k = gen_kwargs.get('top_k', 200)
+            max_gen_toks = gen_kwargs.get("max_gen_toks", 256)
+            until = gen_kwargs.get("until", [])
+            temperature = gen_kwargs.get("temperature", 0.8)
+            top_k = gen_kwargs.get("top_k", 200)
 
             # Tokenize prompt
             tokens = self.tok_encode(context)
             if len(tokens) > self._max_length - max_gen_toks:
-                tokens = tokens[-(self._max_length - max_gen_toks):]
+                tokens = tokens[-(self._max_length - max_gen_toks) :]
 
             # Convert to tensor
             x = torch.tensor([tokens], dtype=torch.long, device=self._device)
@@ -438,7 +448,9 @@ class NeuroManifoldLM(LM):
             generated: List[int] = []
             for _ in range(max_gen_toks):
                 # Crop to block size if needed
-                x_cond = x if x.size(1) <= self._max_length else x[:, -self._max_length:]
+                x_cond = (
+                    x if x.size(1) <= self._max_length else x[:, -self._max_length :]
+                )
 
                 # Get logits
                 logits = self._model_call(x_cond)
@@ -447,7 +459,7 @@ class NeuroManifoldLM(LM):
                 # Top-k sampling
                 if top_k is not None:
                     v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                    logits[logits < v[:, [-1]]] = -float('Inf')
+                    logits[logits < v[:, [-1]]] = -float("Inf")
 
                 # Sample
                 probs = F.softmax(logits, dim=-1)
@@ -468,7 +480,7 @@ class NeuroManifoldLM(LM):
             # Truncate at stopping sequences
             for stop_seq in until:
                 if stop_seq in generated_text:
-                    generated_text = generated_text[:generated_text.index(stop_seq)]
+                    generated_text = generated_text[: generated_text.index(stop_seq)]
 
             results.append(generated_text)
 

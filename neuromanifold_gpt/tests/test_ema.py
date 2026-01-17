@@ -10,12 +10,8 @@ These tests verify:
 import pytest
 import torch
 import torch.nn as nn
-from neuromanifold_gpt.model.kan.ema import (
-    ema_fft,
-    DampedEMA,
-    MultiHeadDampedEMA,
-    CEMA
-)
+
+from neuromanifold_gpt.model.kan.ema import CEMA, DampedEMA, MultiHeadDampedEMA, ema_fft
 
 
 def ema_naive(x: torch.Tensor, alpha: float) -> torch.Tensor:
@@ -38,7 +34,7 @@ def ema_naive(x: torch.Tensor, alpha: float) -> torch.Tensor:
         for d in range(D):
             h[b, 0, d] = alpha * x[b, 0, d]
             for t in range(1, T):
-                h[b, t, d] = alpha * x[b, t, d] + (1 - alpha) * h[b, t-1, d]
+                h[b, t, d] = alpha * x[b, t, d] + (1 - alpha) * h[b, t - 1, d]
 
     return h
 
@@ -101,16 +97,16 @@ class TestEmaFFT:
 
         # Verify each channel independently
         for d in range(4):
-            h_channel = ema_fft(x[..., d:d+1], alpha[d].item())
+            h_channel = ema_fft(x[..., d : d + 1], alpha[d].item())
             assert torch.allclose(h[..., d], h_channel[..., 0], rtol=1e-4, atol=1e-5)
 
     def test_ema_fft_shape_preservation(self):
         """Various input shapes should be preserved."""
         shapes = [
-            (2, 10, 8),      # Standard (B, T, D)
-            (1, 5, 16),      # Single batch
-            (4, 100, 32),    # Long sequence
-            (2, 10, 4, 8),   # Multi-head (B, T, H, D)
+            (2, 10, 8),  # Standard (B, T, D)
+            (1, 5, 16),  # Single batch
+            (4, 100, 32),  # Long sequence
+            (2, 10, 4, 8),  # Multi-head (B, T, H, D)
         ]
 
         for shape in shapes:
@@ -173,11 +169,11 @@ class TestDampedEMA:
 
     def test_damped_ema_learnable_alpha(self):
         """Learnable alpha should be trainable parameter."""
-        ema = DampedEMA(alpha='learnable')
+        ema = DampedEMA(alpha="learnable")
         x = torch.randn(2, 10, 8)
 
         # Check parameter exists
-        assert hasattr(ema, 'alpha_logit')
+        assert hasattr(ema, "alpha_logit")
         assert isinstance(ema.alpha_logit, nn.Parameter)
 
         # Forward pass
@@ -201,7 +197,7 @@ class TestDampedEMA:
 
     def test_damped_ema_gradient_flow(self):
         """Gradients should flow through learnable alpha."""
-        ema = DampedEMA(alpha='learnable')
+        ema = DampedEMA(alpha="learnable")
         x = torch.randn(2, 10, 8)
 
         h = ema(x)
@@ -214,13 +210,13 @@ class TestDampedEMA:
     def test_damped_ema_extra_repr(self):
         """String representation should be informative."""
         ema_fixed = DampedEMA(alpha=0.9)
-        ema_learnable = DampedEMA(alpha='learnable')
+        ema_learnable = DampedEMA(alpha="learnable")
 
         repr_fixed = ema_fixed.extra_repr()
         repr_learnable = ema_learnable.extra_repr()
 
-        assert 'alpha=0.9' in repr_fixed
-        assert 'learnable' in repr_learnable
+        assert "alpha=0.9" in repr_fixed
+        assert "learnable" in repr_learnable
 
 
 class TestMultiHeadDampedEMA:
@@ -249,11 +245,11 @@ class TestMultiHeadDampedEMA:
 
     def test_multi_head_ema_learnable_alpha(self):
         """Learnable alpha should work for multi-head."""
-        ema = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha='learnable')
+        ema = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha="learnable")
         x = torch.randn(2, 10, 64)
 
         # Check parameter exists
-        assert hasattr(ema, 'alpha_logit')
+        assert hasattr(ema, "alpha_logit")
         assert isinstance(ema.alpha_logit, nn.Parameter)
 
         # Forward pass
@@ -326,9 +322,9 @@ class TestMultiHeadDampedEMA:
         ema = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha=0.9)
         repr_str = ema.extra_repr()
 
-        assert 'num_heads=4' in repr_str
-        assert 'head_dim=16' in repr_str
-        assert 'alpha=' in repr_str
+        assert "num_heads=4" in repr_str
+        assert "head_dim=16" in repr_str
+        assert "alpha=" in repr_str
 
 
 class TestCEMA:
@@ -355,11 +351,11 @@ class TestCEMA:
 
     def test_cema_learnable_alpha(self):
         """Learnable alpha should work for CEMA."""
-        cema = CEMA(dim=64, alpha='learnable')
+        cema = CEMA(dim=64, alpha="learnable")
         x = torch.randn(2, 10, 64)
 
         # Check parameter exists (delegated to DampedEMA)
-        assert hasattr(cema.ema, 'alpha_logit')
+        assert hasattr(cema.ema, "alpha_logit")
         assert isinstance(cema.ema.alpha_logit, nn.Parameter)
 
         # Forward pass
@@ -393,8 +389,8 @@ class TestCEMA:
         cema = CEMA(dim=64, alpha=0.9)
         repr_str = cema.extra_repr()
 
-        assert 'dim=64' in repr_str
-        assert 'alpha=' in repr_str
+        assert "dim=64" in repr_str
+        assert "alpha=" in repr_str
 
 
 class TestEMANumericalStability:
@@ -465,7 +461,7 @@ class TestGradientFlow:
         assert x_fft.grad.abs().sum() > 0
 
         # Test DampedEMA with learnable alpha
-        ema_damped = DampedEMA(alpha='learnable')
+        ema_damped = DampedEMA(alpha="learnable")
         x_damped = torch.randn(2, 10, 8, requires_grad=True)
         h_damped = ema_damped(x_damped)
         loss_damped = h_damped.sum()
@@ -476,7 +472,7 @@ class TestGradientFlow:
         assert ema_damped.alpha_logit.grad.abs() > 0
 
         # Test MultiHeadDampedEMA with learnable alpha
-        ema_multi = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha='learnable')
+        ema_multi = MultiHeadDampedEMA(num_heads=4, head_dim=16, alpha="learnable")
         x_multi = torch.randn(2, 10, 64, requires_grad=True)
         h_multi = ema_multi(x_multi)
         loss_multi = h_multi.sum()
@@ -487,7 +483,7 @@ class TestGradientFlow:
         assert ema_multi.alpha_logit.grad.abs() > 0
 
         # Test CEMA with learnable alpha
-        cema = CEMA(dim=64, alpha='learnable')
+        cema = CEMA(dim=64, alpha="learnable")
         x_cema = torch.randn(2, 10, 64, requires_grad=True)
         h_cema = cema(x_cema)
         loss_cema = h_cema.sum()
@@ -534,4 +530,6 @@ class TestEMAComplexity:
             # O(T log T): expect ratio_2 ≈ ratio_1 * (log(2)/log(4)) ≈ 0.72 * ratio_1
             # O(T²): expect ratio_2 ≈ 4.0 if ratio_1 ≈ 4.0
             # We check ratio_2 < ratio_1 * 1.5 (generous bound)
-            assert ratio_2 < ratio_1 * 1.5, f"Scaling suggests O(T²): {ratio_1:.2f} -> {ratio_2:.2f}"
+            assert (
+                ratio_2 < ratio_1 * 1.5
+            ), f"Scaling suggests O(T²): {ratio_1:.2f} -> {ratio_2:.2f}"

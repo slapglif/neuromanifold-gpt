@@ -1,9 +1,10 @@
 import pytest
 import torch
+
 from neuromanifold_gpt.model.physics.symplectic import (
-    StormerVerlet,
     Ruth4,
     SolitonSymplecticWrapper,
+    StormerVerlet,
 )
 
 

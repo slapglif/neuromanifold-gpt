@@ -9,7 +9,6 @@ Usage:
     python neuromanifold_gpt/sample_nanogpt.py --num_samples=5 --max_new_tokens=500
 """
 import os
-import sys
 import pickle
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -23,10 +22,12 @@ from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.utils.checkpoints import select_checkpoint
 from neuromanifold_gpt.utils.progress import checkpoint_progress
 
+
 # -----------------------------------------------------------------------------
 @dataclass
 class SamplingConfig:
     """Configuration for sampling from trained NeuroManifoldGPT model."""
+
     out_dir: str = "out-neuromanifold"
     prompt: str = "\n"  # Start token or custom prompt
     num_samples: int = 1
@@ -35,8 +36,13 @@ class SamplingConfig:
     top_k: int = 200
     seed: int = 1337
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype: str = "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
+    dtype: str = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
     compile_model: bool = False
+
 
 # Load config with CLI overrides
 config = load_config(SamplingConfig, show_help=True)
@@ -48,8 +54,16 @@ torch.cuda.manual_seed(config.seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 device_type = "cuda" if "cuda" in config.device else "cpu"
-ptdtype = {"float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}[config.dtype]
-ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+ptdtype = {
+    "float32": torch.float32,
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+}[config.dtype]
+ctx = (
+    nullcontext()
+    if device_type == "cpu"
+    else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+)
 
 # -----------------------------------------------------------------------------
 # Load model
@@ -91,20 +105,32 @@ print(f"Trained for {checkpoint['iter_num']} iterations")
 # -----------------------------------------------------------------------------
 # Encoder/decoder setup
 # Try to load dataset-specific encoder, fall back to tiktoken
-data_dir = os.path.join("data", checkpoint.get("config", {}).get("dataset", "openwebtext"))
+data_dir = os.path.join(
+    "data", checkpoint.get("config", {}).get("dataset", "openwebtext")
+)
 meta_path = os.path.join(data_dir, "meta.pkl")
 if os.path.exists(meta_path):
     print(f"Loading tokenizer from {meta_path}...")
     with open(meta_path, "rb") as f:
         meta = pickle.load(f)
     stoi, itos = meta["stoi"], meta["itos"]
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: "".join([itos[i] for i in l])
+
+    def encode(s):
+        return [stoi[c] for c in s]
+
+    def decode(l):
+        return "".join([itos[i] for i in l])
+
 else:
     print("Using tiktoken gpt2 encoding...")
     enc = tiktoken.get_encoding("gpt2")
-    encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
-    decode = lambda l: enc.decode(l)
+
+    def encode(s):
+        return enc.encode(s, allowed_special={"<|endoftext|>"})
+
+    def decode(l):
+        return enc.decode(l)
+
 
 # -----------------------------------------------------------------------------
 # Encode prompt
@@ -113,14 +139,21 @@ x = torch.tensor(start_ids, dtype=torch.long, device=config.device)[None, ...]
 
 # -----------------------------------------------------------------------------
 # Generate
-print(f"\nGenerating {config.num_samples} sample(s) with {config.max_new_tokens} tokens each...")
+print(
+    f"\nGenerating {config.num_samples} sample(s) with {config.max_new_tokens} tokens each..."
+)
 print(f"Temperature: {config.temperature}, Top-k: {config.top_k}")
 print("-" * 50)
 
 with torch.no_grad():
     with ctx:
         for k in range(config.num_samples):
-            y = model.generate(x, config.max_new_tokens, temperature=config.temperature, top_k=config.top_k)
+            y = model.generate(
+                x,
+                config.max_new_tokens,
+                temperature=config.temperature,
+                top_k=config.top_k,
+            )
             print(f"\n--- Sample {k + 1} ---")
             print(decode(y[0].tolist()))
             print("-" * 50)

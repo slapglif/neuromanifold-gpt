@@ -10,11 +10,13 @@ Measures:
 """
 
 import time
+
 import torch
 import torch.nn as nn
+
+from neuromanifold_gpt.model.block import SwiGLU
 from neuromanifold_gpt.model.kan.cheby import ChebyKANFFN
 from neuromanifold_gpt.model.kan.wave import WaveKANFFN
-from neuromanifold_gpt.model.block import SwiGLU
 
 
 def benchmark_layer(
@@ -95,37 +97,47 @@ def main():
         swiglu = SwiGLU(embed_dim, int(hidden_dim * 2 / 3)).to(device)
         chebykan_deg3 = ChebyKANFFN(embed_dim, hidden_dim, degree=3).to(device)
         chebykan_deg4 = ChebyKANFFN(embed_dim, hidden_dim, degree=4).to(device)
-        
+
         # WaveKAN variants
-        wavekan_mexican = WaveKANFFN(embed_dim, hidden_dim, wavelet_type="mexican_hat").to(device)
-        wavekan_morlet = WaveKANFFN(embed_dim, hidden_dim, wavelet_type="morlet").to(device)
+        wavekan_mexican = WaveKANFFN(
+            embed_dim, hidden_dim, wavelet_type="mexican_hat"
+        ).to(device)
+        wavekan_morlet = WaveKANFFN(embed_dim, hidden_dim, wavelet_type="morlet").to(
+            device
+        )
         wavekan_dog = WaveKANFFN(embed_dim, hidden_dim, wavelet_type="dog").to(device)
 
         swiglu_params = count_parameters(swiglu)
         kan3_params = count_parameters(chebykan_deg3)
         kan4_params = count_parameters(chebykan_deg4)
-        
+
         wave_mex_params = count_parameters(wavekan_mexican)
         wave_mor_params = count_parameters(wavekan_morlet)
         wave_dog_params = count_parameters(wavekan_dog)
 
-        print(f"\nParameters:")
+        print("\nParameters:")
         print(f"  SwiGLU:       {swiglu_params:,}")
         print(f"  ChebyKAN d=3: {kan3_params:,} ({kan3_params / swiglu_params:.2f}x)")
         print(f"  ChebyKAN d=4: {kan4_params:,} ({kan4_params / swiglu_params:.2f}x)")
-        print(f"  WaveKAN (Mex):{wave_mex_params:,} ({wave_mex_params / swiglu_params:.2f}x)")
-        print(f"  WaveKAN (Mor):{wave_mor_params:,} ({wave_mor_params / swiglu_params:.2f}x)")
-        print(f"  WaveKAN (DoG):{wave_dog_params:,} ({wave_dog_params / swiglu_params:.2f}x)")
+        print(
+            f"  WaveKAN (Mex):{wave_mex_params:,} ({wave_mex_params / swiglu_params:.2f}x)"
+        )
+        print(
+            f"  WaveKAN (Mor):{wave_mor_params:,} ({wave_mor_params / swiglu_params:.2f}x)"
+        )
+        print(
+            f"  WaveKAN (DoG):{wave_dog_params:,} ({wave_dog_params / swiglu_params:.2f}x)"
+        )
 
         swiglu_fwd, swiglu_bwd = benchmark_layer(swiglu, x, n_iters=100)
         kan3_fwd, kan3_bwd = benchmark_layer(chebykan_deg3, x, n_iters=100)
         kan4_fwd, kan4_bwd = benchmark_layer(chebykan_deg4, x, n_iters=100)
-        
+
         wave_mex_fwd, wave_mex_bwd = benchmark_layer(wavekan_mexican, x, n_iters=100)
         wave_mor_fwd, wave_mor_bwd = benchmark_layer(wavekan_morlet, x, n_iters=100)
         wave_dog_fwd, wave_dog_bwd = benchmark_layer(wavekan_dog, x, n_iters=100)
 
-        print(f"\nForward Pass (ms):")
+        print("\nForward Pass (ms):")
         print(f"  SwiGLU:       {swiglu_fwd:.3f}")
         print(f"  ChebyKAN d=3: {kan3_fwd:.3f} ({kan3_fwd / swiglu_fwd:.2f}x)")
         print(f"  ChebyKAN d=4: {kan4_fwd:.3f} ({kan4_fwd / swiglu_fwd:.2f}x)")
@@ -133,7 +145,7 @@ def main():
         print(f"  WaveKAN (Mor):{wave_mor_fwd:.3f} ({wave_mor_fwd / swiglu_fwd:.2f}x)")
         print(f"  WaveKAN (DoG):{wave_dog_fwd:.3f} ({wave_dog_fwd / swiglu_fwd:.2f}x)")
 
-        print(f"\nBackward Pass (ms):")
+        print("\nBackward Pass (ms):")
         print(f"  SwiGLU:       {swiglu_bwd:.3f}")
         print(f"  ChebyKAN d=3: {kan3_bwd:.3f} ({kan3_bwd / swiglu_bwd:.2f}x)")
         print(f"  ChebyKAN d=4: {kan4_bwd:.3f} ({kan4_bwd / swiglu_bwd:.2f}x)")
@@ -141,20 +153,26 @@ def main():
         print(f"  WaveKAN (Mor):{wave_mor_bwd:.3f} ({wave_mor_bwd / swiglu_bwd:.2f}x)")
         print(f"  WaveKAN (DoG):{wave_dog_bwd:.3f} ({wave_dog_bwd / swiglu_bwd:.2f}x)")
 
-        print(f"\nTotal Time (ms):")
+        print("\nTotal Time (ms):")
         swiglu_total = swiglu_fwd + swiglu_bwd
         kan3_total = kan3_fwd + kan3_bwd
         kan4_total = kan4_fwd + kan4_bwd
         wave_mex_total = wave_mex_fwd + wave_mex_bwd
         wave_mor_total = wave_mor_fwd + wave_mor_bwd
         wave_dog_total = wave_dog_fwd + wave_dog_bwd
-        
+
         print(f"  SwiGLU:       {swiglu_total:.3f}")
         print(f"  ChebyKAN d=3: {kan3_total:.3f} ({kan3_total / swiglu_total:.2f}x)")
         print(f"  ChebyKAN d=4: {kan4_total:.3f} ({kan4_total / swiglu_total:.2f}x)")
-        print(f"  WaveKAN (Mex):{wave_mex_total:.3f} ({wave_mex_total / swiglu_total:.2f}x)")
-        print(f"  WaveKAN (Mor):{wave_mor_total:.3f} ({wave_mor_total / swiglu_total:.2f}x)")
-        print(f"  WaveKAN (DoG):{wave_dog_total:.3f} ({wave_dog_total / swiglu_total:.2f}x)")
+        print(
+            f"  WaveKAN (Mex):{wave_mex_total:.3f} ({wave_mex_total / swiglu_total:.2f}x)"
+        )
+        print(
+            f"  WaveKAN (Mor):{wave_mor_total:.3f} ({wave_mor_total / swiglu_total:.2f}x)"
+        )
+        print(
+            f"  WaveKAN (DoG):{wave_dog_total:.3f} ({wave_dog_total / swiglu_total:.2f}x)"
+        )
 
     print("\n" + "=" * 80)
     print("Benchmark complete!")

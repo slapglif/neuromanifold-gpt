@@ -38,13 +38,13 @@ class RSWAFBasis(nn.Module):
         if learnable_grid:
             self.grid = nn.Parameter(grid)
         else:
-            self.register_buffer('grid', grid)
+            self.register_buffer("grid", grid)
 
         # Bandwidth parameter
         if learnable_h:
             self.h = nn.Parameter(torch.tensor(h))
         else:
-            self.register_buffer('h', torch.tensor(h))
+            self.register_buffer("h", torch.tensor(h))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply RSWAF basis functions.
@@ -65,6 +65,6 @@ class RSWAFBasis(nn.Module):
 
         # RSWAF: 1 - tanh(diff)^2
         tanh_diff = torch.tanh(diff)
-        basis = 1.0 - tanh_diff ** 2
+        basis = 1.0 - tanh_diff**2
 
         return basis

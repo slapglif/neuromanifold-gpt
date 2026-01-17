@@ -6,24 +6,26 @@ Profiles each component separately with reduced iterations for quick results.
 """
 
 import torch
-import torch.nn as nn
 from rich.console import Console
 from rich.table import Table
-
-# Import profiling utilities
-from neuromanifold_gpt.utils.profiling import profile_component, profile_forward_backward
 
 # Import model components
 from neuromanifold_gpt.config import NeuroManifoldConfig
 from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
-from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
-from neuromanifold_gpt.model.manifold import ManifoldProjection
-from neuromanifold_gpt.model.spectral import SpectralDecomposition
 from neuromanifold_gpt.model.attention.fhn import FHNAttention, FHNDynamics
 from neuromanifold_gpt.model.block import NeuroManifoldBlock, SwiGLU
-from neuromanifold_gpt.model.kan.wave import WaveKANFFN
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.model.kan.cheby import ChebyKANFFN
+from neuromanifold_gpt.model.kan.wave import WaveKANFFN
+from neuromanifold_gpt.model.manifold import ManifoldProjection
+from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
+from neuromanifold_gpt.model.spectral import SpectralDecomposition
+
+# Import profiling utilities
+from neuromanifold_gpt.utils.profiling import (
+    profile_component,
+    profile_forward_backward,
+)
 
 console = Console()
 
@@ -36,7 +38,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def main():
-    console.print(f"\n[bold cyan]NeuroManifoldGPT Profiler (FAST)[/bold cyan]")
+    console.print("\n[bold cyan]NeuroManifoldGPT Profiler (FAST)[/bold cyan]")
     console.print(f"Device: {DEVICE}")
     console.print(f"Batch Size: {BATCH_SIZE}, Seq Len: {SEQ_LEN}")
     console.print(f"Warmup: {N_WARMUP}, Iterations: {N_ITERS}\n")
@@ -73,9 +75,18 @@ def main():
     )
 
     def encoder_input():
-        return (torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE),)
+        return (
+            torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE),
+        )
 
-    result = profile_component("SemanticFoldingEncoder", encoder, encoder_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "SemanticFoldingEncoder",
+        encoder,
+        encoder_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -92,7 +103,14 @@ def main():
         sdr = torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE)
         return (sdr,)
 
-    result = profile_component("ManifoldProjection", manifold, manifold_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "ManifoldProjection",
+        manifold,
+        manifold_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -107,12 +125,22 @@ def main():
 
     def spectral_input():
         coords = torch.randn(BATCH_SIZE, SEQ_LEN, config.manifold_dim, device=DEVICE)
-        metric = torch.eye(config.manifold_dim, device=DEVICE).unsqueeze(0).unsqueeze(0).expand(
-            BATCH_SIZE, SEQ_LEN, -1, -1
+        metric = (
+            torch.eye(config.manifold_dim, device=DEVICE)
+            .unsqueeze(0)
+            .unsqueeze(0)
+            .expand(BATCH_SIZE, SEQ_LEN, -1, -1)
         )
         return (coords, metric)
 
-    result = profile_component("SpectralDecomposition", spectral, spectral_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "SpectralDecomposition",
+        spectral,
+        spectral_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -131,12 +159,18 @@ def main():
     def fhn_input():
         # Reduced size for profiling
         stimulus = torch.randn(
-            BATCH_SIZE, config.n_heads, config.n_eigenvectors, head_dim,
-            device=DEVICE
+            BATCH_SIZE, config.n_heads, config.n_eigenvectors, head_dim, device=DEVICE
         )
         return (stimulus, config.n_fhn_steps)
 
-    result = profile_component("FHNDynamics", fhn_dynamics, fhn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "FHNDynamics",
+        fhn_dynamics,
+        fhn_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -156,10 +190,19 @@ def main():
 
     def fhn_attn_input():
         x = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE)
-        spectral_basis = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_eigenvectors, device=DEVICE)
+        spectral_basis = torch.randn(
+            BATCH_SIZE, SEQ_LEN, config.n_eigenvectors, device=DEVICE
+        )
         return (x, spectral_basis)
 
-    result = profile_component("FHNAttention", fhn_attn, fhn_attn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "FHNAttention",
+        fhn_attn,
+        fhn_attn_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -179,7 +222,14 @@ def main():
         x = torch.randn(BATCH_SIZE, SEQ_LEN, config.n_embd, device=DEVICE)
         return (x,)
 
-    result = profile_component("WaveKAN_FFN", wavekan_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "WaveKAN_FFN",
+        wavekan_ffn,
+        ffn_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -193,7 +243,14 @@ def main():
         hidden_dim=swiglu_hidden,
     )
 
-    result = profile_component("SwiGLU_FFN", swiglu_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "SwiGLU_FFN",
+        swiglu_ffn,
+        ffn_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -207,7 +264,14 @@ def main():
         degree=config.kan_degree,
     )
 
-    result = profile_component("ChebyKAN_FFN", chebykan_ffn, ffn_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "ChebyKAN_FFN",
+        chebykan_ffn,
+        ffn_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -222,7 +286,14 @@ def main():
         sdr = torch.randn(BATCH_SIZE, SEQ_LEN, config.sdr_size, device=DEVICE)
         return (sdr,)
 
-    result = profile_component("NeuroManifoldBlock", block, block_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "NeuroManifoldBlock",
+        block,
+        block_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -233,10 +304,19 @@ def main():
     model = NeuroManifoldGPT(config)
 
     def model_input():
-        tokens = torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE)
+        tokens = torch.randint(
+            0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE
+        )
         return (tokens,)
 
-    result = profile_component("FullModel_Forward", model, model_input, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_component(
+        "FullModel_Forward",
+        model,
+        model_input,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -247,15 +327,27 @@ def main():
     model = NeuroManifoldGPT(config)
 
     def model_input_train():
-        tokens = torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE)
-        targets = torch.randint(0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE)
+        tokens = torch.randint(
+            0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE
+        )
+        targets = torch.randint(
+            0, config.vocab_size, (BATCH_SIZE, SEQ_LEN), device=DEVICE
+        )
         return (tokens, targets)
 
     def loss_fn_model(output):
         logits, loss, info = output
         return loss
 
-    result = profile_forward_backward("FullModel_FwdBwd", model, model_input_train, loss_fn_model, n_warmup=N_WARMUP, n_iters=N_ITERS, device=DEVICE)
+    result = profile_forward_backward(
+        "FullModel_FwdBwd",
+        model,
+        model_input_train,
+        loss_fn_model,
+        n_warmup=N_WARMUP,
+        n_iters=N_ITERS,
+        device=DEVICE,
+    )
     results.append(result)
     console.print(f"{result['mean_ms']:.2f} ms")
 
@@ -271,10 +363,16 @@ def main():
     table.add_column("% of Block", justify="right")
 
     # Calculate percentage of block time
-    block_time = next(r["mean_ms"] for r in results if r["name"] == "NeuroManifoldBlock")
+    block_time = next(
+        r["mean_ms"] for r in results if r["name"] == "NeuroManifoldBlock"
+    )
 
     for r in results:
-        pct = (r["mean_ms"] / block_time * 100) if r["name"] != "NeuroManifoldBlock" else 100.0
+        pct = (
+            (r["mean_ms"] / block_time * 100)
+            if r["name"] != "NeuroManifoldBlock"
+            else 100.0
+        )
         if r["name"] in ["FullModel_Forward", "FullModel_FwdBwd"]:
             pct_str = "-"
         else:
@@ -296,16 +394,27 @@ def main():
     console.print("\n[bold yellow]===== PERFORMANCE ANALYSIS =====[/bold yellow]")
 
     # Find the bottleneck
-    component_results = [r for r in results if r["name"] not in ["FullModel_Forward", "FullModel_FwdBwd", "NeuroManifoldBlock"]]
+    component_results = [
+        r
+        for r in results
+        if r["name"]
+        not in ["FullModel_Forward", "FullModel_FwdBwd", "NeuroManifoldBlock"]
+    ]
     bottleneck = max(component_results, key=lambda x: x["mean_ms"])
 
     console.print(f"\n[bold red]#1 BOTTLENECK: {bottleneck['name']}[/bold red]")
-    console.print(f"   Time: {bottleneck['mean_ms']:.2f} ms ({bottleneck['mean_ms']/block_time*100:.1f}% of block)")
+    console.print(
+        f"   Time: {bottleneck['mean_ms']:.2f} ms ({bottleneck['mean_ms']/block_time*100:.1f}% of block)"
+    )
 
     # Calculate time per 1000 iterations
-    fwd_bwd_time = next(r["mean_ms"] for r in results if r["name"] == "FullModel_FwdBwd")
+    fwd_bwd_time = next(
+        r["mean_ms"] for r in results if r["name"] == "FullModel_FwdBwd"
+    )
     time_per_1000_iter = fwd_bwd_time  # ms per iteration -> seconds for 1000
-    console.print(f"\n[bold]Current time per 1000 iterations:[/bold] {time_per_1000_iter:.1f} seconds")
+    console.print(
+        f"\n[bold]Current time per 1000 iterations:[/bold] {time_per_1000_iter:.1f} seconds"
+    )
 
     # Target: <120s for 1000 iters
     target_time = 120.0
@@ -314,11 +423,16 @@ def main():
         speedup_needed = current_time / target_time
         console.print(f"[bold]Speedup needed for <120s:[/bold] {speedup_needed:.2f}x")
     else:
-        console.print(f"[bold green]Already under 120s target![/bold green]")
+        console.print("[bold green]Already under 120s target![/bold green]")
 
     # Component breakdown for block
     console.print("\n[bold]Block Component Breakdown:[/bold]")
-    block_components = ["ManifoldProjection", "SpectralDecomposition", "FHNAttention", "WaveKAN_FFN"]
+    block_components = [
+        "ManifoldProjection",
+        "SpectralDecomposition",
+        "FHNAttention",
+        "WaveKAN_FFN",
+    ]
     total_accounted = 0.0
     for name in block_components:
         r = next((x for x in results if x["name"] == name), None)
@@ -331,7 +445,9 @@ def main():
     overhead = block_time - total_accounted
     pct = overhead / block_time * 100
     bar = "#" * int(pct / 5)
-    console.print(f"   {'Other (SDR proj, etc)':24s}: {overhead:7.2f} ms ({pct:5.1f}%) {bar}")
+    console.print(
+        f"   {'Other (SDR proj, etc)':24s}: {overhead:7.2f} ms ({pct:5.1f}%) {bar}"
+    )
 
     # FFN comparison
     console.print("\n[bold]FFN Comparison:[/bold]")
@@ -340,12 +456,18 @@ def main():
     chebykan = next(r for r in results if r["name"] == "ChebyKAN_FFN")
 
     console.print(f"   SwiGLU:   {swiglu['mean_ms']:6.2f} ms (1.00x baseline)")
-    console.print(f"   WaveKAN:  {wavekan['mean_ms']:6.2f} ms ({wavekan['mean_ms']/swiglu['mean_ms']:.2f}x)")
-    console.print(f"   ChebyKAN: {chebykan['mean_ms']:6.2f} ms ({chebykan['mean_ms']/swiglu['mean_ms']:.2f}x)")
+    console.print(
+        f"   WaveKAN:  {wavekan['mean_ms']:6.2f} ms ({wavekan['mean_ms']/swiglu['mean_ms']:.2f}x)"
+    )
+    console.print(
+        f"   ChebyKAN: {chebykan['mean_ms']:6.2f} ms ({chebykan['mean_ms']/swiglu['mean_ms']:.2f}x)"
+    )
 
     # Per-layer cost
-    console.print(f"\n[bold]Per-Layer Analysis (6 layers):[/bold]")
-    encoder_time = next(r["mean_ms"] for r in results if r["name"] == "SemanticFoldingEncoder")
+    console.print("\n[bold]Per-Layer Analysis (6 layers):[/bold]")
+    encoder_time = next(
+        r["mean_ms"] for r in results if r["name"] == "SemanticFoldingEncoder"
+    )
     full_fwd = next(r["mean_ms"] for r in results if r["name"] == "FullModel_Forward")
 
     layers_time = block_time * 6
@@ -358,15 +480,22 @@ def main():
     console.print("\n[bold]OPTIMIZATION TARGETS:[/bold]")
     if current_time > target_time:
         speedup = current_time / target_time
-        for name in ["SemanticFoldingEncoder", "ManifoldProjection", "FHNAttention", "WaveKAN_FFN"]:
+        for name in [
+            "SemanticFoldingEncoder",
+            "ManifoldProjection",
+            "FHNAttention",
+            "WaveKAN_FFN",
+        ]:
             r = next((x for x in results if x["name"] == name), None)
             if r:
                 target_ms = r["mean_ms"] / speedup
-                console.print(f"   {name:24s}: {r['mean_ms']:.2f} ms -> {target_ms:.2f} ms ({speedup:.2f}x needed)")
+                console.print(
+                    f"   {name:24s}: {r['mean_ms']:.2f} ms -> {target_ms:.2f} ms ({speedup:.2f}x needed)"
+                )
 
     # Memory
     if DEVICE == "cuda":
-        console.print(f"\n[bold]GPU Memory:[/bold]")
+        console.print("\n[bold]GPU Memory:[/bold]")
         console.print(f"   Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
         console.print(f"   Reserved:  {torch.cuda.memory_reserved() / 1e9:.2f} GB")
 

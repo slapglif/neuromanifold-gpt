@@ -12,16 +12,20 @@ Measures:
 Tests different backends at sequence lengths: 128, 256, 512, 1024
 """
 
-import time
 import argparse
-import torch
-import torch.nn as nn
+import time
 from contextlib import nullcontext
 from typing import Dict, Optional
 
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+import torch
+import torch.nn as nn
+
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
-from neuromanifold_gpt.utils.gpu_detection import detect_gpu_capability, get_optimal_attention_backend
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.utils.gpu_detection import (
+    detect_gpu_capability,
+    get_optimal_attention_backend,
+)
 
 
 def get_memory_allocated(device: torch.device) -> float:
@@ -130,10 +134,14 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
     print("-" * 80)
     if gpu_info["available"]:
         print(f"Device: {gpu_info['name']}")
-        print(f"Compute Capability: {gpu_info['compute_capability'][0]}.{gpu_info['compute_capability'][1]}")
+        print(
+            f"Compute Capability: {gpu_info['compute_capability'][0]}.{gpu_info['compute_capability'][1]}"
+        )
         print(f"CUDA Version: {gpu_info['cuda_version']}")
-        print(f"\nBackend Support:")
-        print(f"  Flash Attention: {'✓' if gpu_info['supports_flash_attention'] else '✗'}")
+        print("\nBackend Support:")
+        print(
+            f"  Flash Attention: {'✓' if gpu_info['supports_flash_attention'] else '✗'}"
+        )
         print(f"  xformers:        {'✓' if gpu_info['supports_xformers'] else '✗'}")
         print(f"  Triton:          {'✓' if gpu_info['supports_triton'] else '✗'}")
         print(f"\nOptimal Backend: {get_optimal_attention_backend()}")
@@ -143,7 +151,7 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
         print("  Flash Attention: ✗ (requires CUDA)")
         print("  xformers:        ✗ (requires CUDA)")
         print("  Triton:          ✗ (requires CUDA)")
-        print(f"\nOptimal Backend: manual")
+        print("\nOptimal Backend: manual")
     print("=" * 80)
 
     # Clear GPU memory before starting
@@ -152,10 +160,22 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
         torch.cuda.reset_peak_memory_stats()
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    dtype = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
+    device_type = "cuda" if "cuda" in str(device) else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    )
 
     # Test configurations
     if quick_test:
@@ -198,6 +218,7 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
             # Check if xformers is actually installed
             try:
                 import xformers  # noqa: F401
+
                 backends_to_test.append("xformers")
             except ImportError:
                 pass
@@ -205,6 +226,7 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
             # Check if triton is actually installed
             try:
                 import triton  # noqa: F401
+
                 backends_to_test.append("triton")
             except ImportError:
                 pass
@@ -268,8 +290,14 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
                 # Benchmark
                 print(f"Benchmarking {backend_name}...")
                 results = benchmark_model(
-                    model, batch_size, seq_len, base_config["vocab_size"],
-                    device, ctx, n_iters, warmup
+                    model,
+                    batch_size,
+                    seq_len,
+                    base_config["vocab_size"],
+                    device,
+                    ctx,
+                    n_iters,
+                    warmup,
                 )
 
                 # Calculate totals
@@ -286,7 +314,7 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
                 }
 
                 # Print results
-                print(f"\nResults:")
+                print("\nResults:")
                 print(f"  Forward:    {results['forward_time']:.3f} ms")
                 print(f"  Backward:   {results['backward_time']:.3f} ms")
                 print(f"  Total:      {total_time:.3f} ms")
@@ -313,7 +341,11 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
             print("=" * 80)
 
             # Find baseline (pytorch or first successful backend)
-            baseline_name = "pytorch" if "pytorch" in config_results and config_results["pytorch"] else None
+            baseline_name = (
+                "pytorch"
+                if "pytorch" in config_results and config_results["pytorch"]
+                else None
+            )
             if not baseline_name:
                 for name, result in config_results.items():
                     if result is not None:
@@ -323,25 +355,56 @@ def benchmark_backends(quick_test: bool = False, backend: Optional[str] = None):
             if baseline_name:
                 baseline = config_results[baseline_name]
 
-                print(f"\n{'Backend':<12} {'Forward (ms)':<14} {'Backward (ms)':<15} {'Total (ms)':<13} {'Throughput':<18} {'Memory (MB)':<12}")
+                print(
+                    f"\n{'Backend':<12} {'Forward (ms)':<14} {'Backward (ms)':<15} {'Total (ms)':<13} {'Throughput':<18} {'Memory (MB)':<12}"
+                )
                 print("-" * 80)
 
                 for backend_name in backends_to_test:
-                    if backend_name not in config_results or config_results[backend_name] is None:
-                        print(f"{backend_name:<12} {'N/A':<14} {'N/A':<15} {'N/A':<13} {'N/A':<18} {'N/A':<12}")
+                    if (
+                        backend_name not in config_results
+                        or config_results[backend_name] is None
+                    ):
+                        print(
+                            f"{backend_name:<12} {'N/A':<14} {'N/A':<15} {'N/A':<13} {'N/A':<18} {'N/A':<12}"
+                        )
                         continue
 
                     result = config_results[backend_name]
-                    fwd_speedup = baseline["forward"] / result["forward"] if result["forward"] > 0 else 0
-                    bwd_speedup = baseline["backward"] / result["backward"] if result["backward"] > 0 else 0
-                    total_speedup = baseline["total"] / result["total"] if result["total"] > 0 else 0
-                    throughput_speedup = result["throughput"] / baseline["throughput"] if baseline["throughput"] > 0 else 0
-                    mem_ratio = result["memory"] / baseline["memory"] if baseline["memory"] > 0 else 1.0
+                    fwd_speedup = (
+                        baseline["forward"] / result["forward"]
+                        if result["forward"] > 0
+                        else 0
+                    )
+                    bwd_speedup = (
+                        baseline["backward"] / result["backward"]
+                        if result["backward"] > 0
+                        else 0
+                    )
+                    total_speedup = (
+                        baseline["total"] / result["total"]
+                        if result["total"] > 0
+                        else 0
+                    )
+                    throughput_speedup = (
+                        result["throughput"] / baseline["throughput"]
+                        if baseline["throughput"] > 0
+                        else 0
+                    )
+                    mem_ratio = (
+                        result["memory"] / baseline["memory"]
+                        if baseline["memory"] > 0
+                        else 1.0
+                    )
 
                     if backend_name == baseline_name:
-                        print(f"{backend_name:<12} {result['forward']:>7.2f}        {result['backward']:>7.2f}         {result['total']:>7.2f}       {result['throughput']:>8.1f}          {result['memory']:>7.1f}")
+                        print(
+                            f"{backend_name:<12} {result['forward']:>7.2f}        {result['backward']:>7.2f}         {result['total']:>7.2f}       {result['throughput']:>8.1f}          {result['memory']:>7.1f}"
+                        )
                     else:
-                        print(f"{backend_name:<12} {result['forward']:>7.2f} ({fwd_speedup:>4.2f}x) {result['backward']:>7.2f} ({bwd_speedup:>4.2f}x)  {result['total']:>7.2f} ({total_speedup:>4.2f}x) {result['throughput']:>8.1f} ({throughput_speedup:>4.2f}x) {result['memory']:>7.1f} ({mem_ratio:>4.2f}x)")
+                        print(
+                            f"{backend_name:<12} {result['forward']:>7.2f} ({fwd_speedup:>4.2f}x) {result['backward']:>7.2f} ({bwd_speedup:>4.2f}x)  {result['total']:>7.2f} ({total_speedup:>4.2f}x) {result['throughput']:>8.1f} ({throughput_speedup:>4.2f}x) {result['memory']:>7.1f} ({mem_ratio:>4.2f}x)"
+                        )
 
     print("\n" + "=" * 80)
     print("Benchmark complete!")
@@ -354,16 +417,14 @@ def main():
         description="Benchmark attention backends (Flash, xformers, Triton, PyTorch)"
     )
     parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="Run quick test with reduced iterations"
+        "--quick", action="store_true", help="Run quick test with reduced iterations"
     )
     parser.add_argument(
         "--backend",
         type=str,
         choices=["auto", "flash", "xformers", "triton", "pytorch"],
         default=None,
-        help="Test only a specific backend"
+        help="Test only a specific backend",
     )
     args = parser.parse_args()
 

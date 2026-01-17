@@ -12,10 +12,12 @@ Key innovations:
 4. Adaptive dt parameters per modality type
 """
 
+from typing import Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple, Dict
+
 from neuromanifold_gpt.model.ssm.mamba import MambaBlock
 
 
@@ -45,7 +47,7 @@ class ModalityRouter(nn.Module):
 
     def forward(
         self, x: torch.Tensor, modality_ids: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
             x: Input tokens [batch, seq_len, embed_dim]
@@ -56,6 +58,7 @@ class ModalityRouter(nn.Module):
             gates: Top-k gate weights [batch, seq_len, top_k]
             indices: Top-k expert indices [batch, seq_len, top_k]
             load: Expert load distribution [num_experts]
+            logits: Raw routing logits (for entropy computation)
         """
         batch, seq_len, _ = x.shape
 
@@ -72,7 +75,7 @@ class ModalityRouter(nn.Module):
         for k in range(self.top_k):
             load.scatter_add_(0, top_indices[..., k].flatten(), gates[..., k].flatten())
 
-        return gates, top_indices, load
+        return gates, top_indices, load, top_logits
 
 
 class MixtureOfMambaBlock(nn.Module):
@@ -134,7 +137,7 @@ class MixtureOfMambaBlock(nn.Module):
         """
         batch, seq_len, embed_dim = x.shape
 
-        gates, indices, load = self.router(x, modality_ids)
+        gates, indices, load, logits = self.router(x, modality_ids)
 
         output = torch.zeros_like(x)
 
@@ -160,9 +163,10 @@ class MixtureOfMambaBlock(nn.Module):
 
         load_balance_loss = self._compute_load_balance_loss(load, gates)
 
-        routing_entropy = -torch.sum(
-            F.softmax(gates, dim=-1) * F.log_softmax(gates, dim=-1), dim=-1
-        ).mean()
+        # Compute entropy on raw logits for numerical stability
+        probs = F.softmax(logits, dim=-1)
+        log_probs = F.log_softmax(logits, dim=-1)
+        routing_entropy = -torch.sum(probs * log_probs, dim=-1).mean()
 
         info = {
             "load_balance_loss": load_balance_loss,
@@ -184,8 +188,12 @@ class MixtureOfMambaBlock(nn.Module):
         num_tokens = gates.shape[0] * gates.shape[1]
         target_load = num_tokens * self.top_k / self.num_experts
 
-        load_normalized = load / (target_load + 1e-6)
-        cv = load_normalized.std() / (load_normalized.mean() + 1e-6)
+        load_normalized = load / (target_load + 1e-8)
+
+        # Clamp to prevent numerical instability
+        mean = load_normalized.mean().clamp(min=1e-8)
+        std = load_normalized.std().clamp(min=0.0)
+        cv = std / mean
 
         return cv * self.load_balance_weight * self.num_experts
 

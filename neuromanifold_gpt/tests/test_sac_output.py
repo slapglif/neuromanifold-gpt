@@ -1,9 +1,10 @@
 import pytest
 import torch
+
 from neuromanifold_gpt.model.rl.sac_output import (
     GaussianActor,
-    TwinQNetwork,
     SACOutputHead,
+    TwinQNetwork,
 )
 
 

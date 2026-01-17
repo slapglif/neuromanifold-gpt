@@ -5,8 +5,8 @@ Provides automatic VRAM detection and batch size recommendation for
 training on consumer GPUs (RTX 3090/4090, 8-24GB VRAM).
 """
 
+
 import torch
-from typing import Optional
 
 
 def detect_gpu_memory() -> float:
@@ -64,8 +64,10 @@ def estimate_model_memory(
     # For transformers: activation_memory ~= batch * seq * hidden_dim * n_layers * factor
     # Approximation: hidden_dim * n_layers ~= sqrt(n_params) * 6
     # Factor of ~12 accounts for attention, FFN intermediates, residuals, layer norms
-    estimated_hidden_layers = (n_params ** 0.5) * 6
-    activation_memory = batch_size * seq_len * estimated_hidden_layers * 12 * dtype_bytes
+    estimated_hidden_layers = (n_params**0.5) * 6
+    activation_memory = (
+        batch_size * seq_len * estimated_hidden_layers * 12 * dtype_bytes
+    )
 
     # Total with 20% overhead for PyTorch internals, fragmentation, etc.
     total_bytes = (model_memory + optimizer_memory + activation_memory) * 1.2
@@ -110,7 +112,9 @@ def recommend_batch_size(
 
     while min_batch <= max_batch:
         mid_batch = (min_batch + max_batch) // 2
-        estimated_memory = estimate_model_memory(n_params, mid_batch, seq_len, dtype_bytes)
+        estimated_memory = estimate_model_memory(
+            n_params, mid_batch, seq_len, dtype_bytes
+        )
 
         if estimated_memory <= available_memory:
             best_batch = mid_batch

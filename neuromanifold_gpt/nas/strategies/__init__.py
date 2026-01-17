@@ -9,7 +9,7 @@ This package contains various NAS search strategies:
 Each strategy implements the Searcher interface defined in searcher.py.
 """
 
-from neuromanifold_gpt.nas.strategies.random_search import RandomSearch
 from neuromanifold_gpt.nas.strategies.evolutionary import EvolutionarySearch
+from neuromanifold_gpt.nas.strategies.random_search import RandomSearch
 
 __all__ = ["RandomSearch", "EvolutionarySearch"]

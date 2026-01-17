@@ -13,10 +13,8 @@ clear guidance for resolving issues.
 """
 
 import sys
-import warnings
-from importlib.metadata import version, PackageNotFoundError
-from typing import Tuple, List, Optional
-
+from importlib.metadata import PackageNotFoundError, version
+from typing import List, Optional, Tuple
 
 # Minimum required versions from pyproject.toml
 REQUIRED_VERSIONS = {
@@ -101,7 +99,10 @@ def _check_cuda_availability() -> Tuple[bool, Optional[str]]:
         # Check CUDA version compatibility
         cuda_version = torch.version.cuda
         if cuda_version:
-            return True, f"CUDA {cuda_version} is available with {torch.cuda.device_count()} GPU(s)"
+            return (
+                True,
+                f"CUDA {cuda_version} is available with {torch.cuda.device_count()} GPU(s)",
+            )
         else:
             return False, "PyTorch reports CUDA available but version unknown"
 
@@ -119,6 +120,7 @@ def _check_known_incompatibilities() -> List[str]:
 
     try:
         import torch
+
         torch_version = _parse_version(torch.__version__)
 
         # Check PyTorch 2.0 specific issues
@@ -162,7 +164,9 @@ def validate_dependencies(verbose: bool = True) -> bool:
 
     # Check each required package
     for package, min_version in REQUIRED_VERSIONS.items():
-        is_valid, installed_ver, error_msg = _check_package_version(package, min_version)
+        is_valid, installed_ver, error_msg = _check_package_version(
+            package, min_version
+        )
 
         if not is_valid:
             all_valid = False

@@ -271,7 +271,9 @@ class NeuroManifoldBlockConfig:
     moe: MoEConfig = field(default_factory=MoEConfig)
 
     @classmethod
-    def from_model_config(cls, config: "NeuroManifoldConfig", layer_idx: int) -> "NeuroManifoldBlockConfig":
+    def from_model_config(
+        cls, config: "NeuroManifoldConfig", layer_idx: int
+    ) -> "NeuroManifoldBlockConfig":
         """Create NeuroManifoldBlockConfig from NeuroManifoldConfig.
 
         This helper method extracts block-level configuration from the model-level
@@ -323,7 +325,9 @@ class NeuroManifoldBlockConfig:
             mhc_residual_weight=config.mhc_residual_weight,
             mhc_sinkhorn_iters=config.mhc_sinkhorn_iters,
             mhc_sinkhorn_tau=config.mhc_sinkhorn_tau,
-            mhc_sinkhorn_convergence_tol=getattr(config, 'mhc_sinkhorn_convergence_tol', 1e-6),
+            mhc_sinkhorn_convergence_tol=getattr(
+                config, "mhc_sinkhorn_convergence_tol", 1e-6
+            ),
         )
 
         # Create MLA sub-config from model config
@@ -344,13 +348,13 @@ class NeuroManifoldBlockConfig:
 
         # Map boolean flags to attention_type string (backward compatibility)
         # Boolean flags take precedence for backward compatibility
-        if hasattr(config, 'use_kaufmann_attention') and config.use_kaufmann_attention:
+        if hasattr(config, "use_kaufmann_attention") and config.use_kaufmann_attention:
             attention_type = "kaufmann"
-        elif hasattr(config, 'use_knot_attention') and config.use_knot_attention:
+        elif hasattr(config, "use_knot_attention") and config.use_knot_attention:
             attention_type = "knot"
         else:
             # Use attention_type from config (defaults to "fhn" if not set)
-            attention_type = getattr(config, 'attention_type', 'fhn')
+            attention_type = getattr(config, "attention_type", "fhn")
 
         # Create and return the block config with all sub-configs
         return cls(
@@ -364,7 +368,7 @@ class NeuroManifoldBlockConfig:
             bias=config.bias,
             block_size=config.block_size,
             skip_manifold_spectral=config.skip_manifold_spectral,
-            use_mhc_fused=getattr(config, 'use_mhc_fused', False),
+            use_mhc_fused=getattr(config, "use_mhc_fused", False),
             attention_type=attention_type,
             fhn=fhn_cfg,
             kan=kan_cfg,

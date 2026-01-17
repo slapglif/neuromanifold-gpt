@@ -1,8 +1,10 @@
 """Unit tests for Optuna pruning callback."""
 
-import pytest
 from unittest.mock import Mock
+
 import optuna
+import pytest
+
 from neuromanifold_gpt.hpo.pruning import OptunaPruningCallback
 
 

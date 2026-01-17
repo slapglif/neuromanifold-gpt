@@ -51,7 +51,7 @@ def replace_linear_with_fasterkan(
                 child.in_features,
                 child.out_features,
                 bias=child.bias is not None,
-                num_centers=num_centers
+                num_centers=num_centers,
             )
             setattr(module, name, kan_linear)
         else:

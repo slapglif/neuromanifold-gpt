@@ -13,7 +13,7 @@ The search space covers key architectural decisions including:
 - Manifold and spectral decomposition parameters
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 
@@ -135,17 +135,26 @@ class ArchitectureConfig:
         """
         # Check n_embd divisibility by n_heads
         if self.n_embd % self.n_heads != 0:
-            return False, f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
+            return (
+                False,
+                f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})",
+            )
 
         # Validate attention_type
         valid_attention_types = ["fhn", "kaufmann", "knot"]
         if self.attention_type not in valid_attention_types:
-            return False, f"attention_type must be one of {valid_attention_types}, got {self.attention_type}"
+            return (
+                False,
+                f"attention_type must be one of {valid_attention_types}, got {self.attention_type}",
+            )
 
         # Validate kan_type
         valid_kan_types = ["faster", "wave", "cheby"]
         if self.kan_type not in valid_kan_types:
-            return False, f"kan_type must be one of {valid_kan_types}, got {self.kan_type}"
+            return (
+                False,
+                f"kan_type must be one of {valid_kan_types}, got {self.kan_type}",
+            )
 
         # Validate numerical ranges
         if self.n_layer < 1:
@@ -186,7 +195,10 @@ class ArchitectureConfig:
             return False, f"engram_capacity must be >= 1, got {self.engram_capacity}"
 
         if not (0.0 <= self.engram_threshold <= 1.0):
-            return False, f"engram_threshold must be in [0, 1], got {self.engram_threshold}"
+            return (
+                False,
+                f"engram_threshold must be in [0, 1], got {self.engram_threshold}",
+            )
 
         return True, None
 
@@ -240,10 +252,7 @@ class ArchitectureConfig:
         return cls(**config_dict)
 
     def to_config(
-        self,
-        vocab_size: int,
-        block_size: int = 1024,
-        **kwargs: Any
+        self, vocab_size: int, block_size: int = 1024, **kwargs: Any
     ) -> "NeuroManifoldConfig":
         """Convert ArchitectureConfig to NeuroManifoldConfig for training.
 
@@ -270,39 +279,31 @@ class ArchitectureConfig:
             # Vocabulary and sequence
             "vocab_size": vocab_size,
             "block_size": block_size,
-
             # Model architecture (from ArchitectureConfig)
             "n_layer": self.n_layer,
             "n_embd": self.n_embd,
             "n_heads": self.n_heads,
-
             # Attention configuration (from ArchitectureConfig)
             "attention_type": self.attention_type,
             "use_qk_norm": self.use_qk_norm,
-
             # Component choices (from ArchitectureConfig)
             "use_mhc": self.use_mhc,
             "use_mla": self.use_mla,
             "use_moe": self.use_moe,
             "use_kan": self.use_kan,
-
             # KAN configuration (from ArchitectureConfig)
             "kan_type": self.kan_type,
             "kan_num_centers": self.kan_num_centers,
-
             # FHN dynamics (from ArchitectureConfig)
             "fhn_threshold": self.fhn_threshold,
             "fhn_tau": self.fhn_tau,
             "use_fhn_parallel": self.use_fhn_parallel,
-
             # Manifold projection (from ArchitectureConfig)
             "manifold_dim": self.manifold_dim,
             "n_eigenvectors": self.n_eigenvectors,
             "use_multiscale_manifold": self.use_multiscale_manifold,
-
             # Regularization (from ArchitectureConfig)
             "dropout": self.dropout,
-
             # Memory/SDR configuration (from ArchitectureConfig)
             "use_sdr": self.use_sdr,
             "sdr_size": self.sdr_size,

@@ -3,8 +3,8 @@
 # launch as: python train.py config/defaults/gpt2_124m_single_gpu.py
 
 wandb_log = True
-wandb_project = 'gpt2'
-wandb_run_name = 'gpt2-124M-single-gpu'
+wandb_project = "gpt2"
+wandb_run_name = "gpt2-124M-single-gpu"
 
 # these make the total batch size be ~49K tokens
 # 4 batch size * 1024 block size * 12 gradaccum * 1 GPU = 49,152

@@ -1,11 +1,12 @@
 import pytest
 import torch
+
 from neuromanifold_gpt.training.curriculum import (
-    CurriculumScheduler,
     CurriculumConfig,
+    CurriculumLoss,
+    CurriculumScheduler,
     GenerationMode,
     HybridOutput,
-    CurriculumLoss,
 )
 
 

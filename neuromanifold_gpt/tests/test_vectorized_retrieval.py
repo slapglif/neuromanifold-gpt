@@ -6,6 +6,7 @@ of the 10-50x performance optimization.
 """
 import pytest
 import torch
+
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
 
 
@@ -47,28 +48,29 @@ def test_retrieve_batch_vs_sequential_equivalence():
         # Pad to top_k if needed
         if len(contents) < top_k:
             pad_size = top_k - len(contents)
-            contents = torch.cat([
-                contents,
-                torch.zeros(pad_size, content_dim, device=contents.device)
-            ], dim=0)
-            sims = torch.cat([
-                sims,
-                torch.zeros(pad_size, device=sims.device)
-            ], dim=0)
+            contents = torch.cat(
+                [contents, torch.zeros(pad_size, content_dim, device=contents.device)],
+                dim=0,
+            )
+            sims = torch.cat([sims, torch.zeros(pad_size, device=sims.device)], dim=0)
         sequential_contents.append(contents)
         sequential_sims.append(sims)
 
-    sequential_contents = torch.stack(sequential_contents)  # (num_queries, top_k, content_dim)
+    sequential_contents = torch.stack(
+        sequential_contents
+    )  # (num_queries, top_k, content_dim)
     sequential_sims = torch.stack(sequential_sims)  # (num_queries, top_k)
 
     # Batch retrieval (new approach)
     batch_contents, batch_sims = memory.retrieve_batch(query_sdrs, top_k=top_k)
 
     # Compare results - should be nearly identical
-    assert torch.allclose(sequential_contents, batch_contents, atol=1e-6), \
-        "Contents from batch retrieval should match sequential retrieval"
-    assert torch.allclose(sequential_sims, batch_sims, atol=1e-6), \
-        "Similarities from batch retrieval should match sequential retrieval"
+    assert torch.allclose(
+        sequential_contents, batch_contents, atol=1e-6
+    ), "Contents from batch retrieval should match sequential retrieval"
+    assert torch.allclose(
+        sequential_sims, batch_sims, atol=1e-6
+    ), "Similarities from batch retrieval should match sequential retrieval"
 
 
 def test_large_batch_vectorized_retrieval():
@@ -118,7 +120,9 @@ def test_retrieval_threshold_filtering():
     content_dim = 128
     threshold = 0.5
 
-    memory = SDREngramMemory(sdr_size, capacity, n_active, content_dim=content_dim, threshold=threshold)
+    memory = SDREngramMemory(
+        sdr_size, capacity, n_active, content_dim=content_dim, threshold=threshold
+    )
 
     # Store one memory
     stored_sdr = torch.zeros(1, sdr_size)
@@ -134,16 +138,18 @@ def test_retrieval_threshold_filtering():
     query_sdrs[0] = stored_sdr[0]
 
     # Query 1: Medium overlap (50% overlap)
-    overlap_indices = indices[:n_active // 2]
-    new_indices = torch.randperm(sdr_size)[:n_active // 2]
-    new_indices = new_indices[~torch.isin(new_indices, indices)][:n_active // 2]
+    overlap_indices = indices[: n_active // 2]
+    new_indices = torch.randperm(sdr_size)[: n_active // 2]
+    new_indices = new_indices[~torch.isin(new_indices, indices)][: n_active // 2]
     query_sdrs[1, overlap_indices] = 1.0
     query_sdrs[1, new_indices] = 1.0
 
     # Query 2: Low overlap (10% overlap)
-    small_overlap = indices[:n_active // 10]
-    remaining = torch.randperm(sdr_size)[:n_active - len(small_overlap)]
-    remaining = remaining[~torch.isin(remaining, indices)][:n_active - len(small_overlap)]
+    small_overlap = indices[: n_active // 10]
+    remaining = torch.randperm(sdr_size)[: n_active - len(small_overlap)]
+    remaining = remaining[~torch.isin(remaining, indices)][
+        : n_active - len(small_overlap)
+    ]
     query_sdrs[2, small_overlap] = 1.0
     query_sdrs[2, remaining] = 1.0
 
@@ -156,5 +162,6 @@ def test_retrieval_threshold_filtering():
     for i in range(3):
         for k in range(5):
             if sims[i, k] < threshold:
-                assert torch.allclose(contents[i, k], torch.zeros(content_dim)), \
-                    f"Content should be zero when similarity {sims[i, k]:.3f} < threshold {threshold}"
+                assert torch.allclose(
+                    contents[i, k], torch.zeros(content_dim)
+                ), f"Content should be zero when similarity {sims[i, k]:.3f} < threshold {threshold}"

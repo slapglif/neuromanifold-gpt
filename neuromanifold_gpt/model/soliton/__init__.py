@@ -46,14 +46,14 @@ Usage:
     >>> u_evolved, info = solver(u, n_steps=5)
 """
 
-from neuromanifold_gpt.model.soliton.base import PDESolver, PDEConfig
-from neuromanifold_gpt.model.soliton.sine_gordon import SineGordonSolver
-from neuromanifold_gpt.model.soliton.kdv import KdVSolver
-from neuromanifold_gpt.model.soliton.heimburg_jackson import HeimburgJacksonSolver
 from neuromanifold_gpt.model.soliton.attention import (
-    SolitonInteractionLayer,
     MultiHeadSolitonAttention,
+    SolitonInteractionLayer,
 )
+from neuromanifold_gpt.model.soliton.base import PDEConfig, PDESolver
+from neuromanifold_gpt.model.soliton.heimburg_jackson import HeimburgJacksonSolver
+from neuromanifold_gpt.model.soliton.kdv import KdVSolver
+from neuromanifold_gpt.model.soliton.sine_gordon import SineGordonSolver
 
 __all__ = [
     "PDESolver",

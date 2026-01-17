@@ -1,7 +1,7 @@
+import math
 
 import torch
 import torch.nn as nn
-import math
 
 
 class ALiBiPositionalBias(nn.Module):
@@ -34,7 +34,7 @@ class ALiBiPositionalBias(nn.Module):
 
         # Compute slopes for each head: m_h = 2^(-8h/n_heads) for h in [1, n_heads]
         slopes = self._get_slopes(n_heads)
-        self.register_buffer('slopes', slopes)
+        self.register_buffer("slopes", slopes)
 
         # Precompute bias matrix for max_seq_len
         self._build_cache(max_seq_len)
@@ -46,11 +46,12 @@ class ALiBiPositionalBias(nn.Module):
         Following the ALiBi paper, slopes are geometric: m_h = 2^(-8h/n)
         For non-power-of-2 heads, we interpolate between adjacent powers of 2.
         """
+
         def get_slopes_power_of_2(n):
             # For n heads (power of 2): slopes are 2^(-8/n), 2^(-16/n), ..., 2^(-8)
             start = 2 ** (-8 / n)
             ratio = start
-            return torch.tensor([start * (ratio ** i) for i in range(n)])
+            return torch.tensor([start * (ratio**i) for i in range(n)])
 
         # Check if n_heads is a power of 2
         if math.log2(n_heads).is_integer():
@@ -90,7 +91,7 @@ class ALiBiPositionalBias(nn.Module):
 
         # Add batch dimension for broadcasting with attention scores
         # Final shape: [1, n_heads, seq_len, seq_len]
-        self.register_buffer('bias_cached', bias.unsqueeze(0), persistent=False)
+        self.register_buffer("bias_cached", bias.unsqueeze(0), persistent=False)
         self.cached_seq_len = seq_len
 
     def forward(self, seq_len):

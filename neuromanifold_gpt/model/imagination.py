@@ -4,7 +4,6 @@ Consistency Imagination Module - Stub implementation.
 This is a placeholder for future counterfactual imagination capabilities.
 Currently not implemented but imported by gpt.py for future use.
 """
-import torch
 import torch.nn as nn
 
 
@@ -15,6 +14,7 @@ class ConsistencyImaginationModule(nn.Module):
     This will be implemented in a future update to provide
     counterfactual exploration and consistency checking.
     """
+
     def __init__(self, embed_dim, manifold_dim, n_imagination_steps=4):
         super().__init__()
         self.embed_dim = embed_dim

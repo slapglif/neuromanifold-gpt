@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Diagnose SDR mode collapse - why does SDR cause degenerate generation?"""
 
+from collections import Counter
+
 import torch
 import torch.nn.functional as F
-from collections import Counter
 from loguru import logger
 
 torch.backends.cudnn.benchmark = True
@@ -12,7 +13,6 @@ torch.backends.cudnn.allow_tf32 = True
 
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
-
 
 config = NeuroManifoldConfig(
     vocab_size=65,
@@ -43,13 +43,18 @@ config = NeuroManifoldConfig(
 
 def load_shakespeare():
     data_path = "neuromanifold_gpt/data/input.txt"
-    with open(data_path, 'r') as f:
+    with open(data_path, "r") as f:
         text = f.read()
     chars = sorted(set(text))
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+
+    def encode(s):
+        return [stoi[c] for c in s]
+
+    def decode(l):
+        return "".join([itos[i] for i in l])
+
     data = torch.tensor(encode(text), dtype=torch.long)
     return data, decode, encode
 
@@ -62,7 +67,7 @@ def analyze_sdr_diversity(model, data, device, n_samples=1000):
     with torch.no_grad():
         # Get random sample of tokens
         idx = torch.randint(len(data) - 32, (n_samples,))
-        tokens = torch.stack([data[i:i+32] for i in idx]).to(device)
+        tokens = torch.stack([data[i : i + 32] for i in idx]).to(device)
 
         # Get SDRs from encoder
         sdr, scores, _ = model.encoder(tokens)
@@ -72,14 +77,20 @@ def analyze_sdr_diversity(model, data, device, n_samples=1000):
 
         # Check active bits per SDR
         active_per_sdr = sdr.sum(dim=-1)  # (n_samples, 32)
-        logger.info(f"Active bits per SDR: mean={active_per_sdr.mean():.1f}, min={active_per_sdr.min():.0f}, max={active_per_sdr.max():.0f}")
+        logger.info(
+            f"Active bits per SDR: mean={active_per_sdr.mean():.1f}, min={active_per_sdr.min():.0f}, max={active_per_sdr.max():.0f}"
+        )
 
         # Check bit usage across all SDRs
         bit_usage = sdr.sum(dim=(0, 1))  # (sdr_size,)
         total_sdrs = n_samples * 32
         bit_freq = bit_usage / total_sdrs
-        logger.info(f"Bit usage: {(bit_usage > 0).sum().item()} / {sdr.size(-1)} bits used")
-        logger.info(f"Bit freq: mean={bit_freq.mean():.4f}, max={bit_freq.max():.4f}, min non-zero={bit_freq[bit_freq > 0].min():.4f}")
+        logger.info(
+            f"Bit usage: {(bit_usage > 0).sum().item()} / {sdr.size(-1)} bits used"
+        )
+        logger.info(
+            f"Bit freq: mean={bit_freq.mean():.4f}, max={bit_freq.max():.4f}, min non-zero={bit_freq[bit_freq > 0].min():.4f}"
+        )
 
         # Check temperature
         temp = model.encoder.temperature.item()
@@ -94,7 +105,9 @@ def analyze_sdr_diversity(model, data, device, n_samples=1000):
         # Convert to hashable tuples for counting
         sdr_hashes = [tuple(s.nonzero().squeeze(-1).tolist()) for s in sdr_flat]
         unique_count = len(set(sdr_hashes))
-        logger.info(f"Unique SDR patterns: {unique_count} / {len(sdr_hashes)} ({100*unique_count/len(sdr_hashes):.1f}%)")
+        logger.info(
+            f"Unique SDR patterns: {unique_count} / {len(sdr_hashes)} ({100*unique_count/len(sdr_hashes):.1f}%)"
+        )
 
         # Check if different tokens get different SDRs
         # Group by token ID
@@ -112,10 +125,14 @@ def analyze_sdr_diversity(model, data, device, n_samples=1000):
             token_diversity[tok] = (unique, len(sdrs))
 
         # Report
-        logger.info("Token-SDR diversity (should be many unique SDRs per token if context-aware):")
+        logger.info(
+            "Token-SDR diversity (should be many unique SDRs per token if context-aware):"
+        )
         for tok in sorted(token_diversity.keys())[:10]:
             unique, total = token_diversity[tok]
-            logger.info(f"  Token {tok}: {unique}/{total} unique SDRs ({100*unique/total:.1f}%)")
+            logger.info(
+                f"  Token {tok}: {unique}/{total} unique SDRs ({100*unique/total:.1f}%)"
+            )
 
         return sdr
 
@@ -137,8 +154,8 @@ def analyze_after_training(model, data, device, n_iters=500):
 
     for i in range(n_iters):
         ix = torch.randint(len(data) - block_size, (batch_size,))
-        x = torch.stack([data[j:j+block_size] for j in ix]).to(device)
-        y = torch.stack([data[j+1:j+block_size+1] for j in ix]).to(device)
+        x = torch.stack([data[j : j + block_size] for j in ix]).to(device)
+        y = torch.stack([data[j + 1 : j + block_size + 1] for j in ix]).to(device)
 
         logits, loss, info = model(x, y)
         loss.backward()
@@ -160,12 +177,14 @@ def analyze_after_training(model, data, device, n_iters=500):
     model.eval()
     context = torch.zeros((1, 1), dtype=torch.long, device=device)
     with torch.no_grad():
-        generated = model.generate(context, max_new_tokens=100, temperature=0.8, top_k=40)
+        generated = model.generate(
+            context, max_new_tokens=100, temperature=0.8, top_k=40
+        )
 
     # Analyze what was generated
     gen_ids = generated[0].tolist()
     char_counts = Counter(gen_ids)
-    logger.info(f"Character distribution in generated text:")
+    logger.info("Character distribution in generated text:")
     for tok, count in char_counts.most_common(5):
         logger.info(f"  Token {tok}: {count} occurrences")
 
@@ -180,7 +199,7 @@ def analyze_logits_entropy(model, data, device, decode):
     with torch.no_grad():
         # Get batch
         ix = torch.randint(len(data) - 256, (16,))
-        tokens = torch.stack([data[i:i+256] for i in ix]).to(device)
+        tokens = torch.stack([data[i : i + 256] for i in ix]).to(device)
 
         logits, _, info = model(tokens)
 
@@ -188,7 +207,9 @@ def analyze_logits_entropy(model, data, device, decode):
         probs = F.softmax(logits, dim=-1)
         entropy = -(probs * probs.log().clamp(min=-100)).sum(dim=-1)  # (B, T)
 
-        logger.info(f"Prediction entropy: mean={entropy.mean():.4f}, min={entropy.min():.4f}, max={entropy.max():.4f}")
+        logger.info(
+            f"Prediction entropy: mean={entropy.mean():.4f}, min={entropy.min():.4f}, max={entropy.max():.4f}"
+        )
 
         # Check most predicted tokens
         top_probs, top_ids = torch.topk(probs, 5, dim=-1)
@@ -203,11 +224,13 @@ def analyze_logits_entropy(model, data, device, decode):
         logger.info("Most common predictions (argmax):")
         for tok, count in pred_counts.most_common(5):
             char = decode([tok])
-            logger.info(f"  '{char}' (tok {tok}): {count} times ({100*count/argmax_preds.numel():.1f}%)")
+            logger.info(
+                f"  '{char}' (tok {tok}): {count} times ({100*count/argmax_preds.numel():.1f}%)"
+            )
 
 
 def main():
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")
 
     data, decode, encode = load_shakespeare()
@@ -230,7 +253,9 @@ def main():
 
     # Final duty cycle stats
     duty = model.encoder.bit_duty_cycle
-    logger.info(f"Final duty cycle: mean={duty.mean():.6f}, std={duty.std():.6f}, max={duty.max():.6f}")
+    logger.info(
+        f"Final duty cycle: mean={duty.mean():.6f}, std={duty.std():.6f}, max={duty.max():.6f}"
+    )
 
 
 if __name__ == "__main__":

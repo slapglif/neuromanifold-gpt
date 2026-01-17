@@ -1,7 +1,7 @@
 # train a miniature character-level shakespeare model
 # Kaufmann Trifecta Attention Run (V3: Stabilized Reaction-Diffusion)
 
-out_dir = 'out-kaufmann-v3'
+out_dir = "out-kaufmann-v3"
 eval_interval = 250
 eval_iters = 200
 log_interval = 10
@@ -9,10 +9,10 @@ log_interval = 10
 always_save_checkpoint = False
 
 wandb_log = False
-wandb_project = 'shakespeare-char'
-wandb_run_name = 'kaufmann-v3'
+wandb_project = "shakespeare-char"
+wandb_run_name = "kaufmann-v3"
 
-dataset = 'shakespeare_char'
+dataset = "shakespeare_char"
 gradient_accumulation_steps = 1
 batch_size = 64
 block_size = 256
@@ -34,16 +34,16 @@ kan_wavelet = "dog"
 use_fast_wavekan = True
 
 # Kaufmann Features
-use_kaufmann_attention = True # Enable Trifecta (FHN + Knot + Ramanujan)
-use_knot_attention = False # Internal to Kaufmann
-use_ramanujan = True # Included
+use_kaufmann_attention = True  # Enable Trifecta (FHN + Knot + Ramanujan)
+use_knot_attention = False  # Internal to Kaufmann
+use_ramanujan = True  # Included
 
 # FHN Tuning (Stabilized V3)
 fhn_threshold = 0.5
 fhn_tau = 12.5
-n_fhn_steps = 5 # More steps for smoother integration
+n_fhn_steps = 5  # More steps for smoother integration
 use_fhn_imex = True
-use_fhn_partitioning = False 
+use_fhn_partitioning = False
 use_fhn_fused = False
 use_fhn_parallel = False
 
@@ -54,4 +54,4 @@ min_lr = 1e-4
 beta2 = 0.99
 warmup_iters = 100
 
-model_type = 'neuromanifold'
+model_type = "neuromanifold"

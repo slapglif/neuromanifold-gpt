@@ -9,8 +9,8 @@ while providing performance improvements.
 """
 import pytest
 import torch
-from neuromanifold_gpt.model.ssm import SelectiveScan, ParallelSelectiveScan
 
+from neuromanifold_gpt.model.ssm import ParallelSelectiveScan, SelectiveScan
 
 # ============================================================================
 # Basic Numerical Equivalence Tests
@@ -26,10 +26,14 @@ def test_parallel_scan_matches_sequential_basic():
 
     # Use same initialization for both
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     # Same input
     x = torch.randn(batch_size, seq_len, embed_dim)
@@ -59,10 +63,14 @@ def test_parallel_scan_matches_sequential_different_dims():
 
     for embed_dim, state_dim, seq_len in test_configs:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -72,8 +80,9 @@ def test_parallel_scan_matches_sequential_different_dims():
         y_seq = sequential(x)
         y_par = parallel(x)
 
-        assert torch.allclose(y_seq, y_par, atol=1e-5), \
-            f"Failed for config: embed_dim={embed_dim}, state_dim={state_dim}, seq_len={seq_len}"
+        assert torch.allclose(
+            y_seq, y_par, atol=1e-5
+        ), f"Failed for config: embed_dim={embed_dim}, state_dim={state_dim}, seq_len={seq_len}"
 
 
 def test_parallel_scan_matches_sequential_various_batch_sizes():
@@ -84,10 +93,14 @@ def test_parallel_scan_matches_sequential_various_batch_sizes():
 
     for batch_size in [1, 2, 4, 8]:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -97,8 +110,9 @@ def test_parallel_scan_matches_sequential_various_batch_sizes():
         y_seq = sequential(x)
         y_par = parallel(x)
 
-        assert torch.allclose(y_seq, y_par, atol=1e-5), \
-            f"Failed for batch_size={batch_size}"
+        assert torch.allclose(
+            y_seq, y_par, atol=1e-5
+        ), f"Failed for batch_size={batch_size}"
 
 
 # ============================================================================
@@ -114,10 +128,14 @@ def test_parallel_scan_power_of_2_sequences():
 
     for seq_len in [16, 32, 64, 128, 256]:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -127,8 +145,9 @@ def test_parallel_scan_power_of_2_sequences():
         y_seq = sequential(x)
         y_par = parallel(x)
 
-        assert torch.allclose(y_seq, y_par, atol=1e-5), \
-            f"Failed for power-of-2 seq_len={seq_len}"
+        assert torch.allclose(
+            y_seq, y_par, atol=1e-5
+        ), f"Failed for power-of-2 seq_len={seq_len}"
 
 
 def test_parallel_scan_non_power_of_2_sequences():
@@ -140,10 +159,14 @@ def test_parallel_scan_non_power_of_2_sequences():
     # Test various non-power-of-2 lengths
     for seq_len in [17, 33, 63, 100, 127, 200]:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -153,8 +176,9 @@ def test_parallel_scan_non_power_of_2_sequences():
         y_seq = sequential(x)
         y_par = parallel(x)
 
-        assert torch.allclose(y_seq, y_par, atol=1e-5), \
-            f"Failed for non-power-of-2 seq_len={seq_len}"
+        assert torch.allclose(
+            y_seq, y_par, atol=1e-5
+        ), f"Failed for non-power-of-2 seq_len={seq_len}"
 
 
 def test_parallel_scan_very_short_sequences():
@@ -165,10 +189,14 @@ def test_parallel_scan_very_short_sequences():
 
     for seq_len in [1, 2, 3, 4, 5]:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -178,8 +206,9 @@ def test_parallel_scan_very_short_sequences():
         y_seq = sequential(x)
         y_par = parallel(x)
 
-        assert torch.allclose(y_seq, y_par, atol=1e-5), \
-            f"Failed for very short seq_len={seq_len}"
+        assert torch.allclose(
+            y_seq, y_par, atol=1e-5
+        ), f"Failed for very short seq_len={seq_len}"
 
 
 def test_parallel_scan_long_sequences():
@@ -190,10 +219,14 @@ def test_parallel_scan_long_sequences():
 
     for seq_len in [512, 1024]:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -203,8 +236,9 @@ def test_parallel_scan_long_sequences():
         y_seq = sequential(x)
         y_par = parallel(x)
 
-        assert torch.allclose(y_seq, y_par, atol=1e-4), \
-            f"Failed for long seq_len={seq_len}"
+        assert torch.allclose(
+            y_seq, y_par, atol=1e-4
+        ), f"Failed for long seq_len={seq_len}"
 
 
 # ============================================================================
@@ -220,10 +254,14 @@ def test_parallel_scan_float32_precision():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim, dtype=torch.float32)
 
@@ -246,10 +284,14 @@ def test_parallel_scan_float64_precision():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False).double()
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    ).double()
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False).double()
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    ).double()
 
     x = torch.randn(batch_size, seq_len, embed_dim, dtype=torch.float64)
 
@@ -278,10 +320,14 @@ def test_parallel_scan_zero_input():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.zeros(batch_size, seq_len, embed_dim)
 
@@ -302,10 +348,14 @@ def test_parallel_scan_constant_input():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.ones(batch_size, seq_len, embed_dim) * 0.5
 
@@ -326,10 +376,14 @@ def test_parallel_scan_impulse_input():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     # Impulse at t=0
     x = torch.zeros(batch_size, seq_len, embed_dim)
@@ -352,10 +406,14 @@ def test_parallel_scan_random_sparse_input():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     # Sparse input (90% zeros)
     torch.manual_seed(123)
@@ -387,10 +445,14 @@ def test_parallel_scan_various_input_scales():
     # Test practical input scales (extreme scales like 100 can cause numerical precision issues)
     for scale in [0.01, 0.1, 1.0, 10.0]:
         torch.manual_seed(42)
-        sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        sequential = SelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         torch.manual_seed(42)
-        parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+        parallel = ParallelSelectiveScan(
+            embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+        )
 
         x = torch.randn(batch_size, seq_len, embed_dim) * scale
 
@@ -403,8 +465,9 @@ def test_parallel_scan_various_input_scales():
         # Scale-dependent tolerance with relative error
         atol = max(1e-4 * scale, 1e-5)
         rtol = 1e-5
-        assert torch.allclose(y_seq, y_par, atol=atol, rtol=rtol), \
-            f"Failed for scale={scale}"
+        assert torch.allclose(
+            y_seq, y_par, atol=atol, rtol=rtol
+        ), f"Failed for scale={scale}"
 
 
 # ============================================================================
@@ -425,18 +488,12 @@ def test_parallel_scan_with_hippo_legs():
 
     torch.manual_seed(42)
     sequential = SelectiveScan(
-        embed_dim=embed_dim,
-        state_dim=state_dim,
-        use_hippo_init=True,
-        hippo_type="legs"
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=True, hippo_type="legs"
     )
 
     torch.manual_seed(42)
     parallel = ParallelSelectiveScan(
-        embed_dim=embed_dim,
-        state_dim=state_dim,
-        use_hippo_init=True,
-        hippo_type="legs"
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=True, hippo_type="legs"
     )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
@@ -476,18 +533,12 @@ def test_parallel_scan_with_hippo_legt():
 
     torch.manual_seed(42)
     sequential = SelectiveScan(
-        embed_dim=embed_dim,
-        state_dim=state_dim,
-        use_hippo_init=True,
-        hippo_type="legt"
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=True, hippo_type="legt"
     )
 
     torch.manual_seed(42)
     parallel = ParallelSelectiveScan(
-        embed_dim=embed_dim,
-        state_dim=state_dim,
-        use_hippo_init=True,
-        hippo_type="legt"
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=True, hippo_type="legt"
     )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
@@ -527,10 +578,14 @@ def test_parallel_scan_gradient_equivalence():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim, requires_grad=True)
     x_clone = x.clone().detach().requires_grad_(True)
@@ -558,10 +613,14 @@ def test_parallel_scan_parameter_gradients():
     seq_len = 32
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -594,7 +653,9 @@ def test_parallel_scan_no_nan_or_inf():
     seq_len = 128
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -613,10 +674,14 @@ def test_parallel_scan_numerical_stability_long_sequence():
     seq_len = 1024
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -644,7 +709,9 @@ def test_parallel_scan_numerical_stability():
     seq_len = 32
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     parallel.eval()
 
@@ -670,7 +737,9 @@ def test_parallel_scan_deterministic():
     seq_len = 32
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
 
@@ -689,7 +758,9 @@ def test_parallel_scan_batch_independence():
     seq_len = 32
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x1 = torch.randn(1, seq_len, embed_dim)
     x2 = torch.randn(1, seq_len, embed_dim)
@@ -744,10 +815,14 @@ def test_parallel_scan_single_timestep():
     batch_size = 2
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, 1, embed_dim)
 
@@ -768,10 +843,14 @@ def test_parallel_scan_relative_error_bounds():
     seq_len = 256
 
     torch.manual_seed(42)
-    sequential = SelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    sequential = SelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     torch.manual_seed(42)
-    parallel = ParallelSelectiveScan(embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False)
+    parallel = ParallelSelectiveScan(
+        embed_dim=embed_dim, state_dim=state_dim, use_hippo_init=False
+    )
 
     x = torch.randn(batch_size, seq_len, embed_dim)
 

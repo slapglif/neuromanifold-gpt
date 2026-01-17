@@ -1,8 +1,9 @@
 """Tests for structured error handling with rich-formatted panels."""
 
-import pytest
 from io import StringIO
 from unittest.mock import patch
+
+import pytest
 
 
 class TestNeuroManifoldError:
@@ -50,9 +51,7 @@ class TestNeuroManifoldError:
         from neuromanifold_gpt.errors import NeuroManifoldError
 
         with patch("neuromanifold_gpt.errors.console.print"):
-            error = NeuroManifoldError(
-                problem="Test problem", recovery="Test recovery"
-            )
+            error = NeuroManifoldError(problem="Test problem", recovery="Test recovery")
 
         assert error.problem == "Test problem"
         assert error.cause is None
@@ -178,7 +177,7 @@ class TestValidationError:
 
     def test_validation_error_inherits_from_base(self):
         """Test that ValidationError inherits from NeuroManifoldError."""
-        from neuromanifold_gpt.errors import ValidationError, NeuroManifoldError
+        from neuromanifold_gpt.errors import NeuroManifoldError, ValidationError
 
         with patch("neuromanifold_gpt.errors.console.print"):
             error = ValidationError(problem="Test")
@@ -221,7 +220,7 @@ class TestRuntimeError:
 
     def test_runtime_error_inherits_from_base(self):
         """Test that RuntimeError inherits from NeuroManifoldError."""
-        from neuromanifold_gpt.errors import RuntimeError, NeuroManifoldError
+        from neuromanifold_gpt.errors import NeuroManifoldError, RuntimeError
 
         with patch("neuromanifold_gpt.errors.console.print"):
             error = RuntimeError(problem="Test")
@@ -412,7 +411,7 @@ class TestErrorFormatting:
         from neuromanifold_gpt.errors import ConfigurationError
 
         with patch("neuromanifold_gpt.errors.console.print") as mock_print:
-            error = ConfigurationError(problem="Test")
+            ConfigurationError(problem="Test")
 
         # Verify that console.print was called once
         assert mock_print.call_count == 1
@@ -428,7 +427,7 @@ class TestErrorFormatting:
         from neuromanifold_gpt.errors import ConfigurationError
 
         with patch("neuromanifold_gpt.errors.console.print") as mock_print:
-            error = ConfigurationError(problem="Test")
+            ConfigurationError(problem="Test")
 
         call_args = mock_print.call_args[0]
         panel = call_args[0]
@@ -441,8 +440,8 @@ class TestErrorFormatting:
         from neuromanifold_gpt.errors import (
             ConfigurationError,
             ModelError,
-            ValidationError,
             RuntimeError,
+            ValidationError,
         )
 
         error_classes = [

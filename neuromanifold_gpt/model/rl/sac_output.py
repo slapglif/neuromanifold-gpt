@@ -7,11 +7,12 @@ Implements continuous generation via RL-based policy optimization:
 - Temperature parameter: Balances exploration vs exploitation
 """
 
+from typing import Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
-from typing import Tuple, Dict, Optional
 
 
 class GaussianActor(nn.Module):

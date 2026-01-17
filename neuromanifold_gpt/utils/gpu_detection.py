@@ -5,8 +5,9 @@ Provides GPU capability detection and automatic attention backend selection
 for optimal performance across different GPU architectures.
 """
 
+from typing import Any, Dict
+
 import torch
-from typing import Optional, Dict, Any
 
 
 def detect_gpu_capability() -> Dict[str, Any]:
@@ -110,6 +111,7 @@ def get_optimal_attention_backend() -> str:
     if gpu_info["supports_xformers"]:
         try:
             import xformers  # noqa: F401
+
             return "xformers"
         except ImportError:
             pass
@@ -118,6 +120,7 @@ def get_optimal_attention_backend() -> str:
     if gpu_info["supports_triton"]:
         try:
             import triton  # noqa: F401
+
             return "triton"
         except ImportError:
             pass

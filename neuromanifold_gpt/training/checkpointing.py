@@ -1,8 +1,8 @@
+from typing import Callable, Optional
+
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-from typing import Optional, Callable
-import math
 
 
 class GradientCheckpointing(nn.Module):

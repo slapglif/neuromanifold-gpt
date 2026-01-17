@@ -33,9 +33,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 
-from .braid import BraidEncoder, BraidGroup, TemperleyLiebAlgebra
+from .braid import BraidEncoder, TemperleyLiebAlgebra
 
 
 @dataclass
@@ -188,15 +187,15 @@ class JonesEvaluator(nn.Module):
         self.n_evaluations = len(t_values)
 
         # Register t values as buffer
-        self.register_buffer('t_buffer', torch.tensor(list(t_values)))
+        self.register_buffer("t_buffer", torch.tensor(list(t_values)))
 
         # Build Vandermonde-like matrix for polynomial evaluation
         # Each row is [1, t, t^2, ..., t^{n-1}]
         powers = torch.arange(n_coefficients // 2).float()  # Use half (real part)
-        vandermonde = torch.stack([
-            t ** powers for t in t_values
-        ])  # (n_evals, n_coefficients//2)
-        self.register_buffer('vandermonde', vandermonde)
+        vandermonde = torch.stack(
+            [t**powers for t in t_values]
+        )  # (n_evals, n_coefficients//2)
+        self.register_buffer("vandermonde", vandermonde)
 
         # Refinement network for learned adjustments
         self.refine = nn.Sequential(
@@ -367,7 +366,9 @@ class JonesApproximator(nn.Module):
         self.n_evaluations = len(t_values)
         bracket_dim = n_coefficients * 2 if use_kauffman_bracket else 0
         tl_out_dim = self.tl_algebra.dim if use_temperley_lieb else 0
-        self.output_dim = self.n_evaluations + bracket_dim + tl_out_dim + 1  # +1 for writhe
+        self.output_dim = (
+            self.n_evaluations + bracket_dim + tl_out_dim + 1
+        )  # +1 for writhe
 
         # Final projection to unified output
         self.output_proj = nn.Linear(self.output_dim, self.output_dim)
@@ -404,13 +405,15 @@ class JonesApproximator(nn.Module):
             evaluations = self.evaluator(bracket)  # (B, n_evals)
             features.append(evaluations)
 
-            info['bracket_norm'] = bracket.norm(dim=-1).mean().item()
-            info['poly_evals'] = evaluations.detach()
+            info["bracket_norm"] = bracket.norm(dim=-1).mean().item()
+            info["poly_evals"] = evaluations.detach()
         else:
             # Direct evaluation from representation
-            direct_coef = rep_flat[:, :self.n_coefficients * 2]
+            direct_coef = rep_flat[:, : self.n_coefficients * 2]
             if direct_coef.shape[-1] < self.n_coefficients * 2:
-                direct_coef = F.pad(direct_coef, (0, self.n_coefficients * 2 - direct_coef.shape[-1]))
+                direct_coef = F.pad(
+                    direct_coef, (0, self.n_coefficients * 2 - direct_coef.shape[-1])
+                )
             evaluations = self.evaluator(direct_coef)
             features.append(evaluations)
 
@@ -418,12 +421,12 @@ class JonesApproximator(nn.Module):
         if self.use_temperley_lieb:
             tl_features = self.tl_processor(rep_flat)  # (B, tl_dim)
             features.append(tl_features)
-            info['tl_norm'] = tl_features.norm(dim=-1).mean().item()
+            info["tl_norm"] = tl_features.norm(dim=-1).mean().item()
 
         # Writhe (signed crossing number)
         writhe = self.writhe_head(rep_flat)  # (B, 1)
         features.append(writhe)
-        info['writhe'] = writhe.squeeze(-1).detach()
+        info["writhe"] = writhe.squeeze(-1).detach()
 
         # Concatenate all features
         invariants = torch.cat(features, dim=-1)
@@ -461,9 +464,9 @@ class JonesApproximator(nn.Module):
 
         # Compile info dictionary
         info = {
-            'braid_rep': braid_rep.detach(),
-            'generator_weights': braid_info['generator_weights'],
-            'dominant_generator': braid_info['dominant_generator'],
+            "braid_rep": braid_rep.detach(),
+            "generator_weights": braid_info["generator_weights"],
+            "dominant_generator": braid_info["dominant_generator"],
             **invariant_info,
         }
 
@@ -586,7 +589,7 @@ class JonesLoss(nn.Module):
             poly_aug, _ = self.jones(x_aug)
             inv_loss = (poly - poly_aug).pow(2).mean()
             loss = loss + self.invariance_weight * inv_loss
-            info['invariance_loss'] = inv_loss.item()
+            info["invariance_loss"] = inv_loss.item()
 
         # Distinctiveness loss: negatives should be far
         if x_neg is not None:
@@ -594,14 +597,14 @@ class JonesLoss(nn.Module):
             dist = (poly - poly_neg).norm(dim=-1)
             dist_loss = F.relu(self.margin - dist).mean()
             loss = loss + self.distinctiveness_weight * dist_loss
-            info['distinctiveness_loss'] = dist_loss.item()
+            info["distinctiveness_loss"] = dist_loss.item()
 
         # Regularization: encourage sparse polynomial coefficients
         reg_loss = poly.abs().mean() * 0.01
         loss = loss + reg_loss
-        info['reg_loss'] = reg_loss.item()
+        info["reg_loss"] = reg_loss.item()
 
-        info['total_loss'] = loss.item()
+        info["total_loss"] = loss.item()
 
         return loss, info
 

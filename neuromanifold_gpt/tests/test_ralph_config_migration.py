@@ -30,7 +30,9 @@ def get_repo_root() -> Path:
         if (current / "config").is_dir() and (current / "neuromanifold_gpt").is_dir():
             return current
         current = current.parent
-    raise RuntimeError("Could not find repository root (looking for config/ and neuromanifold_gpt/ directories)")
+    raise RuntimeError(
+        "Could not find repository root (looking for config/ and neuromanifold_gpt/ directories)"
+    )
 
 
 def find_ralph_iter_files() -> list[tuple[int, Path]]:
@@ -43,9 +45,9 @@ def find_ralph_iter_files() -> list[tuple[int, Path]]:
     config_dir = repo_root / "config"
 
     files = []
-    pattern = re.compile(r'ralph_iter(\d+)\.py$')
+    pattern = re.compile(r"ralph_iter(\d+)\.py$")
 
-    for file_path in config_dir.glob('ralph_iter*.py'):
+    for file_path in config_dir.glob("ralph_iter*.py"):
         match = pattern.search(file_path.name)
         if match:
             iteration = int(match.group(1))
@@ -63,7 +65,7 @@ def parse_old_config(file_path: Path) -> dict[str, Any]:
     Returns:
         Dictionary mapping parameter names to values
     """
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         content = f.read()
 
     # Parse the Python file into an AST
@@ -104,38 +106,45 @@ def load_new_config(iteration: int) -> object:
     """
     # Import modules directly to avoid torch dependency in neuromanifold_gpt.__init__
     import sys
+
     repo_root = get_repo_root()
 
     # Create a fake neuromanifold_gpt.config.ralph_base module to satisfy imports
     # This prevents the full package from being loaded
-    if 'neuromanifold_gpt' not in sys.modules:
-        sys.modules['neuromanifold_gpt'] = type(sys)('neuromanifold_gpt')
-    if 'neuromanifold_gpt.config' not in sys.modules:
-        sys.modules['neuromanifold_gpt.config'] = type(sys)('neuromanifold_gpt.config')
+    if "neuromanifold_gpt" not in sys.modules:
+        sys.modules["neuromanifold_gpt"] = type(sys)("neuromanifold_gpt")
+    if "neuromanifold_gpt.config" not in sys.modules:
+        sys.modules["neuromanifold_gpt.config"] = type(sys)("neuromanifold_gpt.config")
 
     # Load ralph_base module
     ralph_base_path = repo_root / "neuromanifold_gpt" / "config" / "ralph_base.py"
-    spec = importlib.util.spec_from_file_location("neuromanifold_gpt.config.ralph_base", ralph_base_path)
+    spec = importlib.util.spec_from_file_location(
+        "neuromanifold_gpt.config.ralph_base", ralph_base_path
+    )
     ralph_base = importlib.util.module_from_spec(spec)
-    sys.modules['neuromanifold_gpt.config.ralph_base'] = ralph_base
+    sys.modules["neuromanifold_gpt.config.ralph_base"] = ralph_base
     spec.loader.exec_module(ralph_base)
 
     # Load ralph_builder module (it will now find ralph_base via sys.modules)
     ralph_builder_path = repo_root / "neuromanifold_gpt" / "config" / "ralph_builder.py"
-    spec = importlib.util.spec_from_file_location("neuromanifold_gpt.config.ralph_builder", ralph_builder_path)
+    spec = importlib.util.spec_from_file_location(
+        "neuromanifold_gpt.config.ralph_builder", ralph_builder_path
+    )
     ralph_builder = importlib.util.module_from_spec(spec)
-    sys.modules['neuromanifold_gpt.config.ralph_builder'] = ralph_builder
+    sys.modules["neuromanifold_gpt.config.ralph_builder"] = ralph_builder
     spec.loader.exec_module(ralph_builder)
 
     # Load iterations module
-    iterations_path = repo_root / "neuromanifold_gpt" / "config" / "ralph_configs" / "iterations.py"
+    iterations_path = (
+        repo_root / "neuromanifold_gpt" / "config" / "ralph_configs" / "iterations.py"
+    )
     spec = importlib.util.spec_from_file_location("iterations", iterations_path)
     iterations = importlib.util.module_from_spec(spec)
-    sys.modules['iterations'] = iterations
+    sys.modules["iterations"] = iterations
     spec.loader.exec_module(iterations)
 
     # Get the iteration function
-    func_name = f'ralph_iter{iteration}'
+    func_name = f"ralph_iter{iteration}"
     if not hasattr(iterations, func_name):
         raise AttributeError(f"Function {func_name} not found in iterations module")
 
@@ -169,19 +178,25 @@ class TestRalphConfigMigration:
     def test_all_new_configs_exist(self):
         """Test that all iteration functions exist in iterations.py."""
         repo_root = get_repo_root()
-        iterations_path = repo_root / "neuromanifold_gpt" / "config" / "ralph_configs" / "iterations.py"
+        iterations_path = (
+            repo_root
+            / "neuromanifold_gpt"
+            / "config"
+            / "ralph_configs"
+            / "iterations.py"
+        )
 
         # Read the iterations.py file and check for function definitions
-        with open(iterations_path, 'r') as f:
+        with open(iterations_path, "r") as f:
             content = f.read()
 
         files = find_ralph_iter_files()
         missing = []
 
         for iteration, _ in files:
-            func_name = f'ralph_iter{iteration}'
+            func_name = f"ralph_iter{iteration}"
             # Check if function is defined in the file
-            if f'def {func_name}()' not in content:
+            if f"def {func_name}()" not in content:
                 missing.append(iteration)
 
         assert not missing, f"Missing iteration functions: {missing}"
@@ -238,29 +253,58 @@ class TestRalphConfigMigration:
         # Expected core parameters (from RalphBaseConfig)
         expected_params = {
             # Data
-            'dataset', 'batch_size', 'block_size', 'num_workers',
+            "dataset",
+            "batch_size",
+            "block_size",
+            "num_workers",
             # Model
-            'model_type', 'n_layer', 'n_head', 'n_embd', 'dropout', 'bias',
+            "model_type",
+            "n_layer",
+            "n_head",
+            "n_embd",
+            "dropout",
+            "bias",
             # NeuroManifold features
-            'use_sdr', 'use_kan', 'kan_type', 'kan_num_centers',
-            'use_mhc', 'use_full_mhc', 'mhc_n_streams',
+            "use_sdr",
+            "use_kan",
+            "kan_type",
+            "kan_num_centers",
+            "use_mhc",
+            "use_full_mhc",
+            "mhc_n_streams",
             # FHN
-            'fhn_threshold', 'fhn_tau', 'n_fhn_steps',
-            'use_fhn_imex', 'use_fhn_partitioning', 'use_fhn_fused',
+            "fhn_threshold",
+            "fhn_tau",
+            "n_fhn_steps",
+            "use_fhn_imex",
+            "use_fhn_partitioning",
+            "use_fhn_fused",
             # Speed optimizations
-            'skip_manifold_spectral',
+            "skip_manifold_spectral",
             # Training
-            'max_iters', 'gradient_accumulation_steps', 'learning_rate',
-            'min_lr', 'weight_decay', 'warmup_iters', 'lr_decay_iters',
-            'grad_clip', 'early_stopping_patience',
+            "max_iters",
+            "gradient_accumulation_steps",
+            "learning_rate",
+            "min_lr",
+            "weight_decay",
+            "warmup_iters",
+            "lr_decay_iters",
+            "grad_clip",
+            "early_stopping_patience",
             # Eval/logging
-            'eval_interval', 'log_interval', 'eval_iters', 'sample_interval',
+            "eval_interval",
+            "log_interval",
+            "eval_iters",
+            "sample_interval",
             # Output
-            'out_dir', 'save_checkpoints',
+            "out_dir",
+            "save_checkpoints",
             # Hardware
-            'devices', 'precision', 'compile_model',
+            "devices",
+            "precision",
+            "compile_model",
             # Logging
-            'wandb_log',
+            "wandb_log",
         }
 
         missing = expected_params - set(config_dict.keys())
@@ -280,7 +324,7 @@ class TestRalphConfigMigration:
             except Exception as e:
                 errors.append(f"Iteration {iteration}: {e}")
 
-        assert not errors, f"Failed to load configs:\n" + "\n".join(errors)
+        assert not errors, "Failed to load configs:\n" + "\n".join(errors)
 
     def test_sample_iterations_spot_check(self):
         """Spot check a few key iterations for correct values."""
@@ -296,5 +340,8 @@ class TestRalphConfigMigration:
         # Iteration 10 - check it differs from iteration 1
         config10 = load_new_config(10)
         # Should have different parameters (verify migration captured variations)
-        assert (config10.n_layer, config10.n_embd, config10.batch_size) != \
-               (config1.n_layer, config1.n_embd, config1.batch_size)
+        assert (config10.n_layer, config10.n_embd, config10.batch_size) != (
+            config1.n_layer,
+            config1.n_embd,
+            config1.batch_size,
+        )

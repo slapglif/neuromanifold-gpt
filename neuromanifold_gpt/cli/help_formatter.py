@@ -41,24 +41,20 @@ Usage:
     # args contains all values with config overrides applied
 """
 
-import sys
 import argparse
-from typing import Any, Dict, List, Optional, Tuple, Union
-from typing import TextIO
-from ast import literal_eval
+import sys
+from dataclasses import MISSING, fields, is_dataclass
 from pathlib import Path
-from dataclasses import fields, is_dataclass, MISSING
+from typing import Any, Dict, List, Optional, TextIO, Union
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
 # Optional loguru import - fall back to standard logging if not available
 try:
     from loguru import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO)
 
@@ -91,12 +87,7 @@ class RichArgumentParser(argparse.ArgumentParser):
         _rich_console: Rich console for colored output
     """
 
-    def __init__(
-        self,
-        *args,
-        examples: Optional[List[str]] = None,
-        **kwargs
-    ):
+    def __init__(self, *args, examples: Optional[List[str]] = None, **kwargs):
         """Initialize parser with rich formatting.
 
         Args:
@@ -105,7 +96,7 @@ class RichArgumentParser(argparse.ArgumentParser):
             **kwargs: Keyword arguments for ArgumentParser
         """
         # Set custom formatter
-        kwargs.setdefault('formatter_class', RichHelpFormatter)
+        kwargs.setdefault("formatter_class", RichHelpFormatter)
         super().__init__(*args, **kwargs)
 
         self.examples = examples or []
@@ -140,20 +131,20 @@ class RichArgumentParser(argparse.ArgumentParser):
 
             # Remove markup tags for plain argparse sections
             # and add rich markup for our custom sections
-            lines = help_text.split('\n')
+            lines = help_text.split("\n")
             formatted_lines = []
 
             for line in lines:
                 # Highlight section headers
-                if line and not line.startswith(' ') and line.endswith(':'):
+                if line and not line.startswith(" ") and line.endswith(":"):
                     formatted_lines.append(f"[bold cyan]{line}[/bold cyan]")
                 # Highlight argument names
-                elif line.strip().startswith('-'):
+                elif line.strip().startswith("-"):
                     formatted_lines.append(f"[yellow]{line}[/yellow]")
                 else:
                     formatted_lines.append(line)
 
-            self._rich_console.print('\n'.join(formatted_lines))
+            self._rich_console.print("\n".join(formatted_lines))
         else:
             # Fallback to standard output if file is specified
             print(self.format_help(), file=file)
@@ -204,8 +195,8 @@ def create_parser_from_defaults(
 
     # Add optional config file as first positional argument
     parser.add_argument(
-        'config',
-        nargs='?',
+        "config",
+        nargs="?",
         default=None,
         help=config_file_help,
     )
@@ -216,8 +207,7 @@ def create_parser_from_defaults(
         group_objects = {}
         for group_name, param_names in groups.items():
             group_objects[group_name] = parser.add_argument_group(
-                f"[{group_name}]",
-                description=f"{group_name} parameters"
+                f"[{group_name}]", description=f"{group_name} parameters"
             )
 
         # Add arguments to their groups
@@ -225,9 +215,7 @@ def create_parser_from_defaults(
             group = group_objects[group_name]
             for param_name in param_names:
                 if param_name in defaults:
-                    _add_argument_from_default(
-                        group, param_name, defaults[param_name]
-                    )
+                    _add_argument_from_default(group, param_name, defaults[param_name])
 
         # Add ungrouped arguments to a separate "Other" group
         grouped_params = set()
@@ -237,8 +225,7 @@ def create_parser_from_defaults(
         ungrouped_params = set(defaults.keys()) - grouped_params
         if ungrouped_params:
             other_group = parser.add_argument_group(
-                "[Other]",
-                description="Other parameters"
+                "[Other]", description="Other parameters"
             )
             for param_name in sorted(ungrouped_params):
                 _add_argument_from_default(
@@ -274,9 +261,9 @@ def _add_argument_from_default(
     if isinstance(default_value, bool):
         parser_or_group.add_argument(
             flag_name,
-            action='store_true' if not default_value else 'store_false',
+            action="store_true" if not default_value else "store_false",
             default=default_value,
-            help=f"(default: {default_value})"
+            help=f"(default: {default_value})",
         )
     else:
         # For other types, use type inference
@@ -284,7 +271,7 @@ def _add_argument_from_default(
             flag_name,
             type=param_type,
             default=default_value,
-            help=f"(default: {default_value})"
+            help=f"(default: {default_value})",
         )
 
 
@@ -329,7 +316,7 @@ def parse_args_with_config_override(
 
             # Override parsed values with config values
             for key, value in config_globals.items():
-                if hasattr(parsed, key) and not key.startswith('_'):
+                if hasattr(parsed, key) and not key.startswith("_"):
                     setattr(parsed, key, value)
                     logger.debug(f"Config override: {key} = {value}")
 
@@ -377,9 +364,9 @@ def create_parser_from_globals(
     for key, value in globals_dict.items():
         # Skip private, excluded, and complex types
         if (
-            key.startswith('_') or
-            key in exclude or
-            not isinstance(value, (str, int, float, bool))
+            key.startswith("_")
+            or key in exclude
+            or not isinstance(value, (str, int, float, bool))
         ):
             continue
 

@@ -4,14 +4,17 @@ Simple FHN test without JIT to compare.
 """
 
 import time
+
 import torch
 from rich.console import Console
+
 from neuromanifold_gpt.utils.logging import get_logger
 
 logger = get_logger(__name__)
 console = Console()  # Keep for table rendering
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def fhn_update_no_jit(v, w, I, a, b, tau, dt, n_steps):
     """Plain Python FHN update - no JIT."""
@@ -62,7 +65,9 @@ def main():
         torch.cuda.synchronize()
     start = time.perf_counter()
     with torch.no_grad():
-        v_out, w_out = fhn_update_no_jit(v.clone(), w.clone(), I, a, b, tau, dt, n_steps)
+        v_out, w_out = fhn_update_no_jit(
+            v.clone(), w.clone(), I, a, b, tau, dt, n_steps
+        )
     if DEVICE == "cuda":
         torch.cuda.synchronize()
     t_python = (time.perf_counter() - start) * 1000
@@ -74,7 +79,9 @@ def main():
         torch.cuda.synchronize()
     start = time.perf_counter()
     with torch.no_grad():
-        v_out2, w_out2 = fhn_update_no_jit(v.clone(), w.clone(), I, a, b, tau, dt, n_steps)
+        v_out2, w_out2 = fhn_update_no_jit(
+            v.clone(), w.clone(), I, a, b, tau, dt, n_steps
+        )
     if DEVICE == "cuda":
         torch.cuda.synchronize()
     t_python_warm = (time.perf_counter() - start) * 1000
@@ -99,7 +106,9 @@ def main():
         torch.cuda.synchronize()
     start = time.perf_counter()
     with torch.no_grad():
-        v_jit2, w_jit2 = fhn_update_step(v.clone(), w.clone(), I, a, b, tau, dt, n_steps)
+        v_jit2, w_jit2 = fhn_update_step(
+            v.clone(), w.clone(), I, a, b, tau, dt, n_steps
+        )
     if DEVICE == "cuda":
         torch.cuda.synchronize()
     t_jit_warm = (time.perf_counter() - start) * 1000
@@ -112,7 +121,9 @@ def main():
     logger.info(f"   JIT warm:     {t_jit_warm:.3f} ms")
 
     if t_jit_cold > 100:
-        logger.warning(f"JIT compile is {t_jit_cold/t_python_warm:.1f}x slower than runtime!")
+        logger.warning(
+            f"JIT compile is {t_jit_cold/t_python_warm:.1f}x slower than runtime!"
+        )
         logger.info("Consider: compile JIT script once at module load, not per-call")
 
     # Scale estimates

@@ -20,22 +20,22 @@ Example:
 """
 
 # Chebyshev KAN
-from .cheby import ChebyKANLinear, ChebyKANFFN
+from .cheby import ChebyKANFFN, ChebyKANLinear
 
-# Wavelet KAN
-from .wave import WaveKANLinear, WaveKANFFN
+# EMA (Exponential Moving Average)
+from .ema import CEMA, MultiHeadDampedEMA
 
 # FasterKAN (RSWAF basis) - Default/Recommended
 from .faster import (
-    FasterKANLayer,
     FasterKANFFN,
+    FasterKANLayer,
     FasterKANLinear,
     RSWAFBasis,
     replace_linear_with_fasterkan,
 )
 
-# EMA (Exponential Moving Average)
-from .ema import MultiHeadDampedEMA, CEMA
+# Wavelet KAN
+from .wave import WaveKANFFN, WaveKANLinear
 
 __all__ = [
     # FasterKAN (default)

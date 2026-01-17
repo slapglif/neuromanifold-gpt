@@ -23,10 +23,10 @@ Example:
 """
 
 import json
-import os
-from pathlib import Path
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from neuromanifold_gpt.nas.search_space import ArchitectureConfig
@@ -105,22 +105,28 @@ def export_config(
 
     # Attention configuration section
     config_lines.append("# Attention Configuration")
-    config_lines.append(f"attention_type = \"{architecture.attention_type}\"")
+    config_lines.append(f'attention_type = "{architecture.attention_type}"')
     config_lines.append(f"use_qk_norm = {architecture.use_qk_norm}")
     config_lines.append("")
 
     # Component choices section
     config_lines.append("# Component Choices")
-    config_lines.append(f"use_mhc = {architecture.use_mhc}  # Manifold-Constrained Hyper-Connections")
-    config_lines.append(f"use_mla = {architecture.use_mla}  # Multi-Head Latent Attention")
+    config_lines.append(
+        f"use_mhc = {architecture.use_mhc}  # Manifold-Constrained Hyper-Connections"
+    )
+    config_lines.append(
+        f"use_mla = {architecture.use_mla}  # Multi-Head Latent Attention"
+    )
     config_lines.append(f"use_moe = {architecture.use_moe}  # Mixture of Experts")
-    config_lines.append(f"use_kan = {architecture.use_kan}  # Kolmogorov-Arnold Networks")
+    config_lines.append(
+        f"use_kan = {architecture.use_kan}  # Kolmogorov-Arnold Networks"
+    )
     config_lines.append("")
 
     # KAN configuration (if enabled)
     if architecture.use_kan:
         config_lines.append("# KAN Configuration")
-        config_lines.append(f"kan_type = \"{architecture.kan_type}\"")
+        config_lines.append(f'kan_type = "{architecture.kan_type}"')
         config_lines.append(f"kan_num_centers = {architecture.kan_num_centers}")
         config_lines.append("")
 
@@ -136,7 +142,9 @@ def export_config(
     config_lines.append("# Manifold Projection")
     config_lines.append(f"manifold_dim = {architecture.manifold_dim}")
     config_lines.append(f"n_eigenvectors = {architecture.n_eigenvectors}")
-    config_lines.append(f"use_multiscale_manifold = {architecture.use_multiscale_manifold}")
+    config_lines.append(
+        f"use_multiscale_manifold = {architecture.use_multiscale_manifold}"
+    )
     config_lines.append("")
 
     # Add training parameters if provided
@@ -144,7 +152,7 @@ def export_config(
         config_lines.append("# Training Parameters")
         for key, value in sorted(training_params.items()):
             if isinstance(value, str):
-                config_lines.append(f"{key} = \"{value}\"")
+                config_lines.append(f'{key} = "{value}"')
             elif isinstance(value, bool):
                 config_lines.append(f"{key} = {value}")
             elif isinstance(value, float):
@@ -168,8 +176,7 @@ def export_config(
 
 
 def export_architecture_to_dict(
-    architecture: ArchitectureConfig,
-    metrics: Optional[Dict[str, Any]] = None
+    architecture: ArchitectureConfig, metrics: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Export architecture and metrics to a dictionary.
 
@@ -200,8 +207,7 @@ def export_architecture_to_dict(
 
 
 def generate_config_summary(
-    architecture: ArchitectureConfig,
-    metrics: Optional[Dict[str, Any]] = None
+    architecture: ArchitectureConfig, metrics: Optional[Dict[str, Any]] = None
 ) -> str:
     """Generate a human-readable summary of an architecture configuration.
 
@@ -325,7 +331,7 @@ def export_to_json(
         "metadata": {
             "exported_at": datetime.now().isoformat(),
             "architecture_id": architecture.architecture_id,
-        }
+        },
     }
 
     # Add description if provided
@@ -401,27 +407,45 @@ def generate_summary_report(
         moe_count = sum(1 for arch in architectures if arch.use_moe)
         kan_count = sum(1 for arch in architectures if arch.use_kan)
 
-        lines.append(f"  MHC (Manifold Hyper-Connections): {mhc_count}/{len(architectures)} ({100*mhc_count/len(architectures):.1f}%)")
-        lines.append(f"  MLA (Multi-Head Latent Attention): {mla_count}/{len(architectures)} ({100*mla_count/len(architectures):.1f}%)")
-        lines.append(f"  MoE (Mixture of Experts): {moe_count}/{len(architectures)} ({100*moe_count/len(architectures):.1f}%)")
-        lines.append(f"  KAN (Kolmogorov-Arnold Networks): {kan_count}/{len(architectures)} ({100*kan_count/len(architectures):.1f}%)")
+        lines.append(
+            f"  MHC (Manifold Hyper-Connections): {mhc_count}/{len(architectures)} ({100*mhc_count/len(architectures):.1f}%)"
+        )
+        lines.append(
+            f"  MLA (Multi-Head Latent Attention): {mla_count}/{len(architectures)} ({100*mla_count/len(architectures):.1f}%)"
+        )
+        lines.append(
+            f"  MoE (Mixture of Experts): {moe_count}/{len(architectures)} ({100*moe_count/len(architectures):.1f}%)"
+        )
+        lines.append(
+            f"  KAN (Kolmogorov-Arnold Networks): {kan_count}/{len(architectures)} ({100*kan_count/len(architectures):.1f}%)"
+        )
         lines.append("")
 
         # Attention type distribution
         lines.append("Attention Type Distribution:")
         attention_types = {}
         for arch in architectures:
-            attention_types[arch.attention_type] = attention_types.get(arch.attention_type, 0) + 1
-        for att_type, count in sorted(attention_types.items(), key=lambda x: x[1], reverse=True):
-            lines.append(f"  {att_type}: {count}/{len(architectures)} ({100*count/len(architectures):.1f}%)")
+            attention_types[arch.attention_type] = (
+                attention_types.get(arch.attention_type, 0) + 1
+            )
+        for att_type, count in sorted(
+            attention_types.items(), key=lambda x: x[1], reverse=True
+        ):
+            lines.append(
+                f"  {att_type}: {count}/{len(architectures)} ({100*count/len(architectures):.1f}%)"
+            )
         lines.append("")
 
         # Model size statistics
         n_layers = [arch.n_layer for arch in architectures]
         n_embds = [arch.n_embd for arch in architectures]
         lines.append("Model Size Statistics:")
-        lines.append(f"  Layers - Min: {min(n_layers)}, Max: {max(n_layers)}, Avg: {sum(n_layers)/len(n_layers):.1f}")
-        lines.append(f"  Embedding Dim - Min: {min(n_embds)}, Max: {max(n_embds)}, Avg: {sum(n_embds)/len(n_embds):.1f}")
+        lines.append(
+            f"  Layers - Min: {min(n_layers)}, Max: {max(n_layers)}, Avg: {sum(n_layers)/len(n_layers):.1f}"
+        )
+        lines.append(
+            f"  Embedding Dim - Min: {min(n_embds)}, Max: {max(n_embds)}, Avg: {sum(n_embds)/len(n_embds):.1f}"
+        )
         lines.append("")
 
     # Performance metrics summary (if provided)
@@ -439,7 +463,11 @@ def generate_summary_report(
 
         # Compute statistics for each metric
         for metric_key in sorted(all_metric_keys):
-            values = [m[metric_key] for m in metrics_list if m and metric_key in m and isinstance(m[metric_key], (int, float))]
+            values = [
+                m[metric_key]
+                for m in metrics_list
+                if m and metric_key in m and isinstance(m[metric_key], (int, float))
+            ]
             if values:
                 lines.append(f"{metric_key}:")
                 lines.append(f"  Best: {min(values):.4f}")
@@ -458,7 +486,7 @@ def generate_summary_report(
         def get_sort_key(idx):
             metrics = metrics_list[idx]
             if not metrics:
-                return float('inf')
+                return float("inf")
             # Prefer common metrics
             for key in ["loss", "perplexity", "validation_loss", "val_loss"]:
                 if key in metrics and isinstance(metrics[key], (int, float)):
@@ -467,7 +495,7 @@ def generate_summary_report(
             for key, value in metrics.items():
                 if isinstance(value, (int, float)):
                     return value
-            return float('inf')
+            return float("inf")
 
         # Get indices sorted by performance
         sorted_indices = sorted(range(len(architectures)), key=get_sort_key)
@@ -483,7 +511,9 @@ def generate_summary_report(
             if arch.architecture_id:
                 lines.append(f"Architecture ID: {arch.architecture_id}")
 
-            lines.append(f"Configuration: {arch.n_layer} layers, {arch.n_embd} dim, {arch.n_heads} heads")
+            lines.append(
+                f"Configuration: {arch.n_layer} layers, {arch.n_embd} dim, {arch.n_heads} heads"
+            )
             lines.append(f"Attention: {arch.attention_type}")
 
             components = []
@@ -495,7 +525,9 @@ def generate_summary_report(
                 components.append("MoE")
             if arch.use_kan:
                 components.append(f"KAN-{arch.kan_type}")
-            lines.append(f"Components: {', '.join(components) if components else 'Standard'}")
+            lines.append(
+                f"Components: {', '.join(components) if components else 'Standard'}"
+            )
 
             if metrics:
                 lines.append("Metrics:")

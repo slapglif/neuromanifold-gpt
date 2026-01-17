@@ -1,9 +1,9 @@
 """Unit tests for Optuna HPO wrapper."""
 
+from unittest.mock import Mock
+
 import pytest
-import tempfile
-import os
-from unittest.mock import Mock, patch, MagicMock
+
 from neuromanifold_gpt.hpo.optuna_search import OptunaHPO
 
 
@@ -79,7 +79,11 @@ def test_create_study(sample_config):
 
 def test_create_study_with_different_samplers(sample_config):
     """Test study creation with different sampler types."""
-    samplers = ["tpe", "random", "cmaes"]  # Removed "grid" - GridSampler requires search_space parameter
+    samplers = [
+        "tpe",
+        "random",
+        "cmaes",
+    ]  # Removed "grid" - GridSampler requires search_space parameter
 
     for sampler_name in samplers:
         config = sample_config.copy()
@@ -143,9 +147,11 @@ def test_export_best_config_format(sample_config, tmp_path):
 
     # Verify it's importable (valid Python syntax)
     import sys
+
     sys.path.insert(0, str(tmp_path))
     try:
         import test_best
+
         assert test_best.learning_rate == 0.001
     finally:
         sys.path.remove(str(tmp_path))

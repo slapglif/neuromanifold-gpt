@@ -1,6 +1,7 @@
+from typing import Callable, Optional, Tuple
+
 import torch
 import torch.nn as nn
-from typing import Callable, Tuple, Optional
 
 
 class SymplecticIntegrator(nn.Module):
@@ -139,8 +140,11 @@ class SolitonSymplecticWrapper(nn.Module):
         self.dt = dt
         self.n_steps = n_steps
 
-        potential_fn = lambda q: self.H(q, torch.zeros_like(q))
-        kinetic_fn = lambda p: self.H(torch.zeros_like(p), p)
+        def potential_fn(q):
+            return self.H(q, torch.zeros_like(q))
+
+        def kinetic_fn(p):
+            return self.H(torch.zeros_like(p), p)
 
         if integrator == "verlet":
             self.integrator = StormerVerlet(potential_fn, kinetic_fn)

@@ -204,7 +204,7 @@ class KdVSolver(PDESolver):
         """
         # KdV potential is cubic: -u³/3
         # We compute positive version for energy interpretation
-        potential = (u ** 3 / 3).sum(dim=(-2, -1))
+        potential = (u**3 / 3).sum(dim=(-2, -1))
         return potential.abs()
 
     def compute_mass(self, u: torch.Tensor) -> torch.Tensor:
@@ -238,7 +238,7 @@ class KdVSolver(PDESolver):
             Momentum per batch element, shape (B,) or (B, H)
         """
         # Sum of u² over spatial dimension
-        momentum = (u ** 2).sum(dim=-2)
+        momentum = (u**2).sum(dim=-2)
 
         # Average over feature dimension
         return momentum.mean(dim=-1)
@@ -289,9 +289,7 @@ class KdVSolver(PDESolver):
                 u_xxx = self.spatial_derivative(u, order=3)
 
                 # Use JIT-compiled RK4 step
-                u = kdv_rk4_step(
-                    u, dt, self.nonlin_coeff, self.disp_coeff, u_x, u_xxx
-                )
+                u = kdv_rk4_step(u, dt, self.nonlin_coeff, self.disp_coeff, u_x, u_xxx)
 
                 # Apply damping manually if needed
                 if self.damping > 0:
@@ -315,24 +313,27 @@ class KdVSolver(PDESolver):
         energy_final = self.compute_energy(u, None)
 
         info = {
-            'mass': mass_final.mean().item(),
-            'mass_initial': mass_initial.mean().item(),
-            'mass_conservation': (
-                (mass_final - mass_initial).abs() /
-                (mass_initial.abs() + 1e-8)
-            ).mean().item(),
-            'momentum': momentum_final.mean().item(),
-            'momentum_initial': momentum_initial.mean().item(),
-            'momentum_conservation': (
-                (momentum_final - momentum_initial).abs() /
-                (momentum_initial.abs() + 1e-8)
-            ).mean().item(),
-            'energy': energy_final.mean().item(),
-            'energy_initial': energy_initial.mean().item(),
+            "mass": mass_final.mean().item(),
+            "mass_initial": mass_initial.mean().item(),
+            "mass_conservation": (
+                (mass_final - mass_initial).abs() / (mass_initial.abs() + 1e-8)
+            )
+            .mean()
+            .item(),
+            "momentum": momentum_final.mean().item(),
+            "momentum_initial": momentum_initial.mean().item(),
+            "momentum_conservation": (
+                (momentum_final - momentum_initial).abs()
+                / (momentum_initial.abs() + 1e-8)
+            )
+            .mean()
+            .item(),
+            "energy": energy_final.mean().item(),
+            "energy_initial": energy_initial.mean().item(),
         }
 
         if return_trajectory:
-            info['trajectory'] = torch.stack(trajectory, dim=0)
+            info["trajectory"] = torch.stack(trajectory, dim=0)
 
         return u, info
 
@@ -386,7 +387,7 @@ class KdVSolver(PDESolver):
         # Soliton profile: u = A · sech²(scale · x)
         # sech(x) = 2 / (exp(x) + exp(-x)) = 1 / cosh(x)
         sech_val = 1.0 / torch.cosh(scale * x)
-        u_profile = A * sech_val ** 2
+        u_profile = A * sech_val**2
 
         # Expand to full shape
         # u_profile is (T,), need to broadcast to shape

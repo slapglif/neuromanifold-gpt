@@ -12,19 +12,20 @@ Tests cover:
 - MultiHeadSolitonAttention: Multi-head variant with grouped physics
 """
 
+import math
+
 import pytest
 import torch
 import torch.nn as nn
-import math
 
 from neuromanifold_gpt.model.soliton import (
-    PDESolver,
-    PDEConfig,
-    SineGordonSolver,
-    KdVSolver,
     HeimburgJacksonSolver,
-    SolitonInteractionLayer,
+    KdVSolver,
     MultiHeadSolitonAttention,
+    PDEConfig,
+    PDESolver,
+    SineGordonSolver,
+    SolitonInteractionLayer,
 )
 
 # Alias for backward compatibility

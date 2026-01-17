@@ -103,7 +103,7 @@ jobs:
 
     - name: Lint with ruff
       run: |
-        ruff check neuromanifold_gpt/ --select E,F,W,I,N
+        ruff check neuromanifold_gpt/
 
     - name: Check formatting with black
       run: |

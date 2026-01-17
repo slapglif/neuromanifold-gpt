@@ -6,12 +6,11 @@ with PyTorch Lightning training. It monitors validation loss and allows
 Optuna to stop unpromising trials early, saving computational resources.
 """
 
-from typing import Optional
 
 import optuna
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import Callback
 from loguru import logger
+from pytorch_lightning.callbacks import Callback
 
 
 class OptunaPruningCallback(Callback):

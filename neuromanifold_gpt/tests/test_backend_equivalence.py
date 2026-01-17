@@ -7,11 +7,11 @@ numerically equivalent outputs (within floating point tolerance).
 import pytest
 import torch
 import torch.nn as nn
-from neuromanifold_gpt.model.attention import (
-    StandardAttention,
-    FHNAttention,
-)
 
+from neuromanifold_gpt.model.attention import (
+    FHNAttention,
+    StandardAttention,
+)
 
 # Tolerance for numerical comparisons (accounting for different precision in backends)
 ATOL = 1e-4  # Absolute tolerance
@@ -47,12 +47,15 @@ def get_available_backends():
     backends = ["manual"]  # Manual always available
 
     # Check Flash Attention (PyTorch >= 2.0)
-    if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+    if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
         backends.append("flash")
 
     # Check xformers
     try:
-        from neuromanifold_gpt.model.attention.memory_efficient import XFORMERS_AVAILABLE
+        from neuromanifold_gpt.model.attention.memory_efficient import (
+            XFORMERS_AVAILABLE,
+        )
+
         if XFORMERS_AVAILABLE:
             backends.append("xformers")
     except ImportError:
@@ -123,13 +126,15 @@ def test_standard_attention_backend_equivalence(sample_input):
         outputs[backend] = y
         infos[backend] = info
 
-        print(f"  {backend:10s}: shape={y.shape}, mean={y.mean():.6f}, std={y.std():.6f}")
+        print(
+            f"  {backend:10s}: shape={y.shape}, mean={y.mean():.6f}, std={y.std():.6f}"
+        )
         assert info["backend"] == backend, f"Expected {backend}, got {info['backend']}"
 
     # Compare outputs between backends
     backend_pairs = []
     for i, backend1 in enumerate(available_backends):
-        for backend2 in available_backends[i+1:]:
+        for backend2 in available_backends[i + 1 :]:
             backend_pairs.append((backend1, backend2))
 
     for backend1, backend2 in backend_pairs:
@@ -143,7 +148,9 @@ def test_standard_attention_backend_equivalence(sample_input):
         max_diff = (out1 - out2).abs().max().item()
         mean_diff = (out1 - out2).abs().mean().item()
 
-        print(f"  {backend1} vs {backend2}: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}")
+        print(
+            f"  {backend1} vs {backend2}: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}"
+        )
 
         assert torch.allclose(out1, out2, atol=ATOL, rtol=RTOL), (
             f"{backend1} and {backend2} outputs differ: "
@@ -160,7 +167,9 @@ def test_fhn_attention_fast_path_equivalence(sample_input, sample_spectral_basis
     if len(available_backends) < 2:
         pytest.skip(f"Need at least 2 backends, only have: {available_backends}")
 
-    print(f"\nTesting FHNAttention (fast path) equivalence across: {available_backends}")
+    print(
+        f"\nTesting FHNAttention (fast path) equivalence across: {available_backends}"
+    )
 
     # Create attention module with fixed seed
     torch.manual_seed(42)
@@ -192,14 +201,16 @@ def test_fhn_attention_fast_path_equivalence(sample_input, sample_spectral_basis
         outputs[backend] = y
         infos[backend] = info
 
-        print(f"  {backend:10s}: shape={y.shape}, mean={y.mean():.6f}, std={y.std():.6f}")
+        print(
+            f"  {backend:10s}: shape={y.shape}, mean={y.mean():.6f}, std={y.std():.6f}"
+        )
         assert info["backend"] == backend, f"Expected {backend}, got {info['backend']}"
-        assert info["fhn_state"] == 0.0, f"Fast path should have zero FHN state"
+        assert info["fhn_state"] == 0.0, "Fast path should have zero FHN state"
 
     # Compare outputs between backends
     backend_pairs = []
     for i, backend1 in enumerate(available_backends):
-        for backend2 in available_backends[i+1:]:
+        for backend2 in available_backends[i + 1 :]:
             backend_pairs.append((backend1, backend2))
 
     for backend1, backend2 in backend_pairs:
@@ -213,7 +224,9 @@ def test_fhn_attention_fast_path_equivalence(sample_input, sample_spectral_basis
         max_diff = (out1 - out2).abs().max().item()
         mean_diff = (out1 - out2).abs().mean().item()
 
-        print(f"  {backend1} vs {backend2}: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}")
+        print(
+            f"  {backend1} vs {backend2}: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}"
+        )
 
         assert torch.allclose(out1, out2, atol=ATOL, rtol=RTOL), (
             f"{backend1} and {backend2} outputs differ: "
@@ -230,7 +243,9 @@ def test_standard_attention_gradient_equivalence(sample_input):
     if len(available_backends) < 2:
         pytest.skip(f"Need at least 2 backends, only have: {available_backends}")
 
-    print(f"\nTesting StandardAttention gradient equivalence across: {available_backends}")
+    print(
+        f"\nTesting StandardAttention gradient equivalence across: {available_backends}"
+    )
 
     embed_dim = 384
     n_heads = 8
@@ -264,12 +279,14 @@ def test_standard_attention_gradient_equivalence(sample_input):
 
         gradients[backend] = x.grad.clone()
 
-        print(f"  {backend:10s}: grad mean={x.grad.mean():.6f}, grad std={x.grad.std():.6f}")
+        print(
+            f"  {backend:10s}: grad mean={x.grad.mean():.6f}, grad std={x.grad.std():.6f}"
+        )
 
     # Compare gradients between backends
     backend_pairs = []
     for i, backend1 in enumerate(available_backends):
-        for backend2 in available_backends[i+1:]:
+        for backend2 in available_backends[i + 1 :]:
             backend_pairs.append((backend1, backend2))
 
     for backend1, backend2 in backend_pairs:
@@ -277,13 +294,17 @@ def test_standard_attention_gradient_equivalence(sample_input):
         grad2 = gradients[backend2]
 
         # Check shapes match
-        assert grad1.shape == grad2.shape, f"{backend1} and {backend2} gradient shapes differ"
+        assert (
+            grad1.shape == grad2.shape
+        ), f"{backend1} and {backend2} gradient shapes differ"
 
         # Check numerical equivalence
         max_diff = (grad1 - grad2).abs().max().item()
         mean_diff = (grad1 - grad2).abs().mean().item()
 
-        print(f"  {backend1} vs {backend2}: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}")
+        print(
+            f"  {backend1} vs {backend2}: max_diff={max_diff:.2e}, mean_diff={mean_diff:.2e}"
+        )
 
         # Use slightly higher tolerance for gradients due to numerical precision
         assert torch.allclose(grad1, grad2, atol=ATOL * 10, rtol=RTOL * 10), (
@@ -301,7 +322,7 @@ def test_backend_equivalence_different_sequence_lengths():
     if len(available_backends) < 2:
         pytest.skip(f"Need at least 2 backends, only have: {available_backends}")
 
-    print(f"\nTesting backend equivalence across sequence lengths")
+    print("\nTesting backend equivalence across sequence lengths")
 
     embed_dim = 384
     n_heads = 8
@@ -340,7 +361,7 @@ def test_backend_equivalence_different_sequence_lengths():
         # Compare outputs
         backend_pairs = []
         for i, backend1 in enumerate(available_backends):
-            for backend2 in available_backends[i+1:]:
+            for backend2 in available_backends[i + 1 :]:
                 backend_pairs.append((backend1, backend2))
 
         for backend1, backend2 in backend_pairs:
@@ -365,7 +386,7 @@ def test_backend_equivalence_different_batch_sizes():
     if len(available_backends) < 2:
         pytest.skip(f"Need at least 2 backends, only have: {available_backends}")
 
-    print(f"\nTesting backend equivalence across batch sizes")
+    print("\nTesting backend equivalence across batch sizes")
 
     embed_dim = 384
     n_heads = 8
@@ -404,7 +425,7 @@ def test_backend_equivalence_different_batch_sizes():
         # Compare outputs
         backend_pairs = []
         for i, backend1 in enumerate(available_backends):
-            for backend2 in available_backends[i+1:]:
+            for backend2 in available_backends[i + 1 :]:
                 backend_pairs.append((backend1, backend2))
 
         for backend1, backend2 in backend_pairs:
@@ -429,7 +450,7 @@ def test_backend_info_dict_consistency():
     if len(available_backends) < 2:
         pytest.skip(f"Need at least 2 backends, only have: {available_backends}")
 
-    print(f"\nTesting info dict consistency across backends")
+    print("\nTesting info dict consistency across backends")
 
     torch.manual_seed(42)
     x = torch.randn(2, 16, 384)

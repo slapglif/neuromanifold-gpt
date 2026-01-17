@@ -16,16 +16,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .manifold import ManifoldProjection
-from .spectral import SpectralDecomposition
-from .attention.fhn import FHNAttention
-from .attention.knot import KnotAttention
-from .attention.kaufmann import KaufmannAttention
-from .kan.cheby import ChebyKANFFN
-from .kan.wave import WaveKANFFN
-from .kan.faster import FasterKANFFN
-from .mhc import HyperConnections, Residual
 from ..config.block_config import NeuroManifoldBlockConfig
+from .attention.fhn import FHNAttention
+from .attention.kaufmann import KaufmannAttention
+from .attention.knot import KnotAttention
+from .kan.cheby import ChebyKANFFN
+from .kan.faster import FasterKANFFN
+from .kan.wave import WaveKANFFN
+from .manifold import ManifoldProjection
+from .mhc import HyperConnections, Residual
+from .spectral import SpectralDecomposition
 
 
 class SwiGLU(nn.Module):
@@ -37,7 +37,9 @@ class SwiGLU(nn.Module):
     More expressive than GELU with similar compute.
     """
 
-    def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0, bias: bool = False):
+    def __init__(
+        self, dim: int, hidden_dim: int, dropout: float = 0.0, bias: bool = False
+    ):
         super().__init__()
         # LLaMA-style: 2/3 hidden dim for gate+up, then down
         self.w_gate = nn.Linear(dim, hidden_dim, bias=bias)
@@ -105,8 +107,12 @@ class NeuroManifoldBlock(nn.Module):
 
         # Manifold + Spectral (skip if requested for speed)
         if not self.config.skip_manifold_spectral:
-            self.manifold = ManifoldProjection(self.config.sdr_size, self.config.manifold_dim)
-            self.spectral = SpectralDecomposition(self.config.manifold_dim, self.config.n_eigenvectors)
+            self.manifold = ManifoldProjection(
+                self.config.sdr_size, self.config.manifold_dim
+            )
+            self.spectral = SpectralDecomposition(
+                self.config.manifold_dim, self.config.n_eigenvectors
+            )
         else:
             self.manifold = None
             self.spectral = None
@@ -122,7 +128,7 @@ class NeuroManifoldBlock(nn.Module):
                 fhn_tau=self.config.fhn.fhn_tau,
                 use_imex=self.config.fhn.use_fhn_imex,
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
-                use_fused=self.config.fhn.use_fhn_fused
+                use_fused=self.config.fhn.use_fhn_fused,
             )
         else:
             self.attention = FHNAttention(
@@ -137,7 +143,7 @@ class NeuroManifoldBlock(nn.Module):
                 use_partitioning=self.config.fhn.use_fhn_partitioning,
                 use_fused=self.config.fhn.use_fhn_fused,
                 chunk_size=self.config.fhn.fhn_chunk_size,
-                use_chunked=self.config.fhn.use_fhn_chunked
+                use_chunked=self.config.fhn.use_fhn_chunked,
             )
 
         # Knot attention (optional)
@@ -145,7 +151,7 @@ class NeuroManifoldBlock(nn.Module):
             self.knot_attention = KnotAttention(
                 embed_dim=self.config.embed_dim,
                 manifold_dim=self.config.manifold_dim,
-                n_heads=self.config.n_heads
+                n_heads=self.config.n_heads,
             )
             # Gating for combining FHN and Knot attention
             self.attn_gate = nn.Linear(self.config.embed_dim, 2)
@@ -159,7 +165,7 @@ class NeuroManifoldBlock(nn.Module):
                     self.config.embed_dim,
                     mlp_hidden,
                     num_centers=self.config.kan.kan_num_centers,
-                    dropout=self.config.dropout
+                    dropout=self.config.dropout,
                 )
             elif self.config.kan.kan_type == "cheby":
                 # ChebyKAN FFN
@@ -167,7 +173,7 @@ class NeuroManifoldBlock(nn.Module):
                     self.config.embed_dim,
                     mlp_hidden,
                     degree=self.config.kan.kan_degree,
-                    dropout=self.config.dropout
+                    dropout=self.config.dropout,
                 )
             elif self.config.kan.kan_type == "wave":
                 # WaveKAN FFN
@@ -176,7 +182,7 @@ class NeuroManifoldBlock(nn.Module):
                     mlp_hidden,
                     wavelet_type=self.config.kan.kan_wavelet,
                     dropout=self.config.dropout,
-                    use_fast_wavekan=self.config.kan.use_fast_wavekan
+                    use_fast_wavekan=self.config.kan.use_fast_wavekan,
                 )
             else:
                 raise ValueError(f"Unknown KAN type: {self.config.kan.kan_type}")
@@ -185,7 +191,9 @@ class NeuroManifoldBlock(nn.Module):
             # Standard FFN: 2 * dim * hidden = 2 * d * 4d = 8d²
             # SwiGLU: 3 * dim * hidden = 3 * d * (8/3)d = 8d² (same params)
             mlp_hidden = int(self.config.embed_dim * self.config.mlp_ratio * 2 / 3)
-            self.mlp = SwiGLU(self.config.embed_dim, mlp_hidden, dropout=self.config.dropout)
+            self.mlp = SwiGLU(
+                self.config.embed_dim, mlp_hidden, dropout=self.config.dropout
+            )
 
         # Layer norms
         self.norm1 = nn.LayerNorm(self.config.embed_dim)
@@ -249,11 +257,15 @@ class NeuroManifoldBlock(nn.Module):
         if self.config.mhc.use_mhc:
             # New mHC architecture: H_pre computes branch input, H_post adds to residual
             branch_input, add_residual_fn = self.mhc_attn(x)
-            attn_out, attn_info = self.attention(self.norm1(branch_input), spectral_basis)
+            attn_out, attn_info = self.attention(
+                self.norm1(branch_input), spectral_basis
+            )
 
             # Knot attention (if enabled)
             if self.config.use_knot_attention:
-                knot_out, knot_info = self.knot_attention(self.norm1(branch_input), coords)
+                knot_out, knot_info = self.knot_attention(
+                    self.norm1(branch_input), coords
+                )
                 attn_info.update(knot_info)
                 gate = F.softmax(self.attn_gate(branch_input), dim=-1)
                 attn_out = gate[..., 0:1] * attn_out + gate[..., 1:2] * knot_out
@@ -282,12 +294,12 @@ class NeuroManifoldBlock(nn.Module):
             x = x + mlp_out
 
         info = {
-            'manifold_coords': coords,
-            'metric': metric,
-            'spectral_basis': spectral_basis,
-            'spectral_freqs': spectral_freqs,
-            'ortho_loss': ortho_loss,  # Add to training loss
-            **attn_info
+            "manifold_coords": coords,
+            "metric": metric,
+            "spectral_basis": spectral_basis,
+            "spectral_freqs": spectral_freqs,
+            "ortho_loss": ortho_loss,  # Add to training loss
+            **attn_info,
         }
 
         return x, info

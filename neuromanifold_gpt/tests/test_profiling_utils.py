@@ -53,12 +53,7 @@ class TestProfileComponent:
             return (torch.randn(4, 10),)
 
         result = profile_component(
-            "TestLinear",
-            module,
-            make_input,
-            n_warmup=2,
-            n_iters=5,
-            device="cpu"
+            "TestLinear", module, make_input, n_warmup=2, n_iters=5, device="cpu"
         )
 
         # Check result structure
@@ -86,12 +81,7 @@ class TestProfileComponent:
             return (torch.randn(2, 5),)
 
         result = profile_component(
-            "CustomName",
-            module,
-            make_input,
-            n_warmup=1,
-            n_iters=3,
-            device="cpu"
+            "CustomName", module, make_input, n_warmup=1, n_iters=3, device="cpu"
         )
 
         assert result["name"] == "CustomName"
@@ -108,11 +98,7 @@ class TestProfileComponent:
 
         # Device=None should auto-detect
         result = profile_component(
-            "AutoDevice",
-            module,
-            make_input,
-            n_warmup=1,
-            n_iters=2
+            "AutoDevice", module, make_input, n_warmup=1, n_iters=2
         )
 
         assert "mean_ms" in result
@@ -128,12 +114,7 @@ class TestProfileComponent:
             return (torch.randn(4, 10),)
 
         result = profile_component(
-            "CustomIters",
-            module,
-            make_input,
-            n_warmup=3,
-            n_iters=10,
-            device="cpu"
+            "CustomIters", module, make_input, n_warmup=3, n_iters=10, device="cpu"
         )
 
         # Should complete successfully with custom parameters
@@ -155,7 +136,7 @@ class TestProfileComponent:
             n_warmup=1,
             n_iters=2,
             device="cpu",
-            track_memory=True
+            track_memory=True,
         )
 
         # Memory tracking adds mem_mb even on CPU, but value is 0
@@ -173,12 +154,7 @@ class TestProfileComponent:
             return (torch.randn(8, 64, device="cuda"),)
 
         result = profile_component(
-            "CUDATest",
-            module,
-            make_input,
-            n_warmup=2,
-            n_iters=5,
-            device="cuda"
+            "CUDATest", module, make_input, n_warmup=2, n_iters=5, device="cuda"
         )
 
         assert result["mean_ms"] > 0
@@ -201,7 +177,7 @@ class TestProfileComponent:
             n_warmup=1,
             n_iters=2,
             device="cuda",
-            track_memory=True
+            track_memory=True,
         )
 
         # Should include memory usage on CUDA
@@ -228,12 +204,7 @@ class TestProfileComponent:
             return (torch.randn(4, 5),)
 
         result = profile_component(
-            "EvalMode",
-            module,
-            make_input,
-            n_warmup=1,
-            n_iters=2,
-            device="cpu"
+            "EvalMode", module, make_input, n_warmup=1, n_iters=2, device="cpu"
         )
 
         # Should complete successfully
@@ -260,12 +231,7 @@ class TestProfileComponent:
             return (torch.randn(2, 5), torch.randn(2, 5))
 
         result = profile_component(
-            "MultiInput",
-            module,
-            make_input,
-            n_warmup=1,
-            n_iters=2,
-            device="cpu"
+            "MultiInput", module, make_input, n_warmup=1, n_iters=2, device="cpu"
         )
 
         assert result["mean_ms"] > 0
@@ -293,7 +259,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=2,
             n_iters=5,
-            device="cpu"
+            device="cpu",
         )
 
         # Check result structure
@@ -330,7 +296,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=1,
             n_iters=3,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["name"] == "TrainingTest"
@@ -349,12 +315,7 @@ class TestProfileForwardBackward:
             return output.mean()
 
         result = profile_forward_backward(
-            "AutoDevice",
-            module,
-            make_input,
-            loss_fn,
-            n_warmup=1,
-            n_iters=2
+            "AutoDevice", module, make_input, loss_fn, n_warmup=1, n_iters=2
         )
 
         assert "mean_ms" in result
@@ -379,7 +340,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=3,
             n_iters=10,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["mean_ms"] > 0
@@ -404,7 +365,7 @@ class TestProfileForwardBackward:
             n_warmup=1,
             n_iters=2,
             device="cpu",
-            track_memory=True
+            track_memory=True,
         )
 
         # Memory tracking adds mem_mb even on CPU, but value is 0
@@ -431,7 +392,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=2,
             n_iters=5,
-            device="cuda"
+            device="cuda",
         )
 
         assert result["mean_ms"] > 0
@@ -458,7 +419,7 @@ class TestProfileForwardBackward:
             n_warmup=1,
             n_iters=2,
             device="cuda",
-            track_memory=True
+            track_memory=True,
         )
 
         # Should include memory usage on CUDA
@@ -485,7 +446,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=1,
             n_iters=2,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["mean_ms"] > 0
@@ -515,7 +476,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=1,
             n_iters=2,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["mean_ms"] > 0
@@ -552,7 +513,7 @@ class TestProfileForwardBackward:
             loss_fn,
             n_warmup=1,
             n_iters=2,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["mean_ms"] > 0
@@ -568,7 +529,7 @@ class TestProfileForwardBackward:
 
         def custom_loss_fn(output):
             # Custom loss: sum of squares
-            return (output ** 2).sum()
+            return (output**2).sum()
 
         result = profile_forward_backward(
             "CustomLoss",
@@ -577,7 +538,7 @@ class TestProfileForwardBackward:
             custom_loss_fn,
             n_warmup=1,
             n_iters=2,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["mean_ms"] > 0
@@ -588,10 +549,7 @@ class TestBackwardCompatibilityAliases:
 
     def test_profile_module_alias(self):
         """Test that profile_module is an alias for profile_component."""
-        from neuromanifold_gpt.utils.profiling import (
-            profile_module,
-            profile_component
-        )
+        from neuromanifold_gpt.utils.profiling import profile_component, profile_module
 
         # Should be the same function
         assert profile_module is profile_component
@@ -599,8 +557,8 @@ class TestBackwardCompatibilityAliases:
     def test_profile_fwd_bwd_alias(self):
         """Test that profile_fwd_bwd is an alias for profile_forward_backward."""
         from neuromanifold_gpt.utils.profiling import (
+            profile_forward_backward,
             profile_fwd_bwd,
-            profile_forward_backward
         )
 
         # Should be the same function
@@ -616,12 +574,7 @@ class TestBackwardCompatibilityAliases:
             return (torch.randn(4, 8),)
 
         result = profile_module(
-            "AliasTest",
-            module,
-            make_input,
-            n_warmup=1,
-            n_iters=2,
-            device="cpu"
+            "AliasTest", module, make_input, n_warmup=1, n_iters=2, device="cpu"
         )
 
         assert result["name"] == "AliasTest"
@@ -646,7 +599,7 @@ class TestBackwardCompatibilityAliases:
             loss_fn,
             n_warmup=1,
             n_iters=2,
-            device="cpu"
+            device="cpu",
         )
 
         assert result["name"] == "AliasTest"

@@ -8,7 +8,7 @@ model size estimates, and key settings.
 
 import re
 from pathlib import Path
-from typing import List, Dict, Optional, NamedTuple
+from typing import Dict, List, NamedTuple, Optional
 
 from rich.console import Console
 from rich.table import Table
@@ -18,6 +18,7 @@ console = Console()
 
 class PresetInfo(NamedTuple):
     """Information about a config preset."""
+
     name: str
     description: str
     n_layer: Optional[int]
@@ -37,15 +38,15 @@ def _extract_description(file_path: Path) -> str:
         First non-empty comment line from file header
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             lines = f.readlines()
 
         # Extract first comment line (skip shebang if present)
         for line in lines:
             line = line.strip()
-            if line.startswith('#') and not line.startswith('#!'):
+            if line.startswith("#") and not line.startswith("#!"):
                 # Remove leading # and whitespace
-                description = line.lstrip('#').strip()
+                description = line.lstrip("#").strip()
                 if description:
                     return description
 
@@ -65,37 +66,37 @@ def _extract_key_settings(file_path: Path) -> Dict[str, Optional[int]]:
         Values are None if not found in file.
     """
     settings = {
-        'n_layer': None,
-        'n_head': None,
-        'n_embd': None,
-        'max_iters': None,
-        'use_nano_config': False
+        "n_layer": None,
+        "n_head": None,
+        "n_embd": None,
+        "max_iters": None,
+        "use_nano_config": False,
     }
 
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             content = f.read()
 
         # Extract each setting using regex
         for key in settings.keys():
-            if key == 'use_nano_config':
+            if key == "use_nano_config":
                 # Special handling for boolean
-                match = re.search(rf'{key}\s*=\s*(True|False)', content)
+                match = re.search(rf"{key}\s*=\s*(True|False)", content)
                 if match:
-                    settings[key] = match.group(1) == 'True'
+                    settings[key] = match.group(1) == "True"
             else:
-                match = re.search(rf'{key}\s*=\s*(\d+)', content)
+                match = re.search(rf"{key}\s*=\s*(\d+)", content)
                 if match:
                     settings[key] = int(match.group(1))
 
         # If use_nano_config is True, apply nano defaults
-        if settings['use_nano_config']:
-            if settings['n_layer'] is None:
-                settings['n_layer'] = 4
-            if settings['n_head'] is None:
-                settings['n_head'] = 4
-            if settings['n_embd'] is None:
-                settings['n_embd'] = 128
+        if settings["use_nano_config"]:
+            if settings["n_layer"] is None:
+                settings["n_layer"] = 4
+            if settings["n_head"] is None:
+                settings["n_head"] = 4
+            if settings["n_embd"] is None:
+                settings["n_embd"] = 128
 
     except Exception:
         pass
@@ -118,7 +119,7 @@ def _estimate_model_size(n_layer: Optional[int], n_embd: Optional[int]) -> str:
 
     # Rough parameter estimate for transformer:
     # params ≈ 12 * n_layer * n_embd^2 (for attention, FFN, etc)
-    params = 12 * n_layer * (n_embd ** 2)
+    params = 12 * n_layer * (n_embd**2)
 
     if params < 1_000_000:
         return f"~{params // 1000}K"
@@ -178,20 +179,24 @@ def _scan_presets(directory: str) -> List[PresetInfo]:
             description = _extract_description(preset_file)
             settings = _extract_key_settings(preset_file)
 
-            presets.append(PresetInfo(
-                name=name,
-                description=description,
-                n_layer=settings['n_layer'],
-                n_head=settings['n_head'],
-                n_embd=settings['n_embd'],
-                max_iters=settings['max_iters'],
-                file_path=str(preset_file)
-            ))
+            presets.append(
+                PresetInfo(
+                    name=name,
+                    description=description,
+                    n_layer=settings["n_layer"],
+                    n_head=settings["n_head"],
+                    n_embd=settings["n_embd"],
+                    max_iters=settings["max_iters"],
+                    file_path=str(preset_file),
+                )
+            )
 
     return presets
 
 
-def list_presets(directory: str = "neuromanifold_gpt/config/presets", show_table: bool = True) -> List[str]:
+def list_presets(
+    directory: str = "neuromanifold_gpt/config/presets", show_table: bool = True
+) -> List[str]:
     """List all available config presets with details.
 
     Args:
@@ -210,7 +215,7 @@ def list_presets(directory: str = "neuromanifold_gpt/config/presets", show_table
 
     # Display rich table if requested
     if show_table:
-        table = Table(title=f"Available Config Presets")
+        table = Table(title="Available Config Presets")
         table.add_column("Preset Name", style="cyan", width=18)
         table.add_column("Description", style="white", width=40)
         table.add_column("Model Size", justify="right", style="yellow", width=12)
@@ -229,11 +234,7 @@ def list_presets(directory: str = "neuromanifold_gpt/config/presets", show_table
             training_time = _estimate_training_time(preset.max_iters)
 
             table.add_row(
-                preset.name,
-                preset.description,
-                model_size,
-                training_time,
-                key_settings
+                preset.name, preset.description, model_size, training_time, key_settings
             )
 
         console.print(table)
@@ -241,7 +242,9 @@ def list_presets(directory: str = "neuromanifold_gpt/config/presets", show_table
     return [preset.name for preset in presets]
 
 
-def get_preset_info(preset_name: str, directory: str = "neuromanifold_gpt/config/presets") -> Optional[Dict]:
+def get_preset_info(
+    preset_name: str, directory: str = "neuromanifold_gpt/config/presets"
+) -> Optional[Dict]:
     """Get detailed information about a specific preset.
 
     Args:
@@ -260,15 +263,15 @@ def get_preset_info(preset_name: str, directory: str = "neuromanifold_gpt/config
     settings = _extract_key_settings(preset_file)
 
     return {
-        'name': preset_name,
-        'description': description,
-        'file_path': str(preset_file),
-        'n_layer': settings['n_layer'],
-        'n_head': settings['n_head'],
-        'n_embd': settings['n_embd'],
-        'max_iters': settings['max_iters'],
-        'model_size': _estimate_model_size(settings['n_layer'], settings['n_embd']),
-        'training_time': _estimate_training_time(settings['max_iters'])
+        "name": preset_name,
+        "description": description,
+        "file_path": str(preset_file),
+        "n_layer": settings["n_layer"],
+        "n_head": settings["n_head"],
+        "n_embd": settings["n_embd"],
+        "max_iters": settings["max_iters"],
+        "model_size": _estimate_model_size(settings["n_layer"], settings["n_embd"]),
+        "training_time": _estimate_training_time(settings["max_iters"]),
     }
 
 

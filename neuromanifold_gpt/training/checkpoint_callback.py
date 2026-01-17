@@ -9,12 +9,11 @@ to separate files, enabling:
 """
 
 import os
-from typing import Optional
 
-import torch
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import Callback
+import torch
 from loguru import logger
+from pytorch_lightning.callbacks import Callback
 
 
 class SeparatedCheckpointCallback(Callback):
@@ -93,7 +92,9 @@ class SeparatedCheckpointCallback(Callback):
         """
         # Generate filenames
         model_filename = f"{self.filename_prefix}-step{global_step:06d}-model.pt"
-        optimizer_filename = f"{self.filename_prefix}-step{global_step:06d}-optimizer.pt"
+        optimizer_filename = (
+            f"{self.filename_prefix}-step{global_step:06d}-optimizer.pt"
+        )
         model_path = os.path.join(self.save_dir, model_filename)
         optimizer_path = os.path.join(self.save_dir, optimizer_filename)
 
@@ -134,7 +135,9 @@ class SeparatedCheckpointCallback(Callback):
                 logger.info("Model-only mode: skipping optimizer checkpoint")
 
         except Exception as e:
-            logger.error(f"Failed to save separated checkpoint at step {global_step}: {e}")
+            logger.error(
+                f"Failed to save separated checkpoint at step {global_step}: {e}"
+            )
 
     def on_train_end(
         self,

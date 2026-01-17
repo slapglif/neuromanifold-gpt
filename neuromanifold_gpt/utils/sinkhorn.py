@@ -6,6 +6,7 @@ the Birkhoff polytope (set of doubly stochastic matrices where all rows and colu
 sum to 1).
 """
 from typing import Optional
+
 import torch
 
 
@@ -13,7 +14,7 @@ def sinkhorn_log(
     logits: torch.Tensor,
     num_iters: int = 10,
     tau: float = 0.05,
-    convergence_tol: Optional[float] = None
+    convergence_tol: Optional[float] = None,
 ) -> torch.Tensor:
     """
     Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.

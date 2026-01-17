@@ -157,9 +157,7 @@ class TestGoalConditioning:
 
         # Results should differ due to goal conditioning
         assert not torch.allclose(
-            result_with_goal["alternatives"],
-            result_no_goal["alternatives"],
-            atol=1e-4
+            result_with_goal["alternatives"], result_no_goal["alternatives"], atol=1e-4
         )
 
     def test_goal_affects_scores(self):
@@ -181,9 +179,7 @@ class TestGoalConditioning:
 
         # Scores should differ due to goal alignment bonus
         assert not torch.allclose(
-            result_with_goal["scores"],
-            result_no_goal["scores"],
-            atol=1e-4
+            result_with_goal["scores"], result_no_goal["scores"], atol=1e-4
         )
 
 
@@ -356,10 +352,10 @@ class TestDropout:
 
         # Run twice with same seed - should differ due to dropout
         torch.manual_seed(42)
-        result1 = imagination(x, goal=None, n_alternatives=4)
+        imagination(x, goal=None, n_alternatives=4)
 
         torch.manual_seed(42)
-        result2 = imagination(x, goal=None, n_alternatives=4)
+        imagination(x, goal=None, n_alternatives=4)
 
         # May differ slightly due to dropout randomness
         # (Note: this test may be flaky, but it's checking the setup is correct)

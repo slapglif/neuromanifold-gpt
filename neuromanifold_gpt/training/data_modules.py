@@ -8,13 +8,13 @@ This module provides dataset and datamodule classes for training:
 
 import os
 import pickle
-from typing import Optional, Dict
+from typing import Optional
 
 import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
+import torch
 from loguru import logger
+from torch.utils.data import DataLoader, Dataset
 
 
 class MemmapDataset(Dataset):
@@ -69,7 +69,9 @@ class TextDataModule(pl.LightningDataModule):
             logger.info(f"Loaded vocab_size={self.vocab_size} from {meta_path}")
         else:
             self.vocab_size = 50304  # GPT-2 default
-            logger.info(f"No meta.pkl found, using default vocab_size={self.vocab_size}")
+            logger.info(
+                f"No meta.pkl found, using default vocab_size={self.vocab_size}"
+            )
 
         self.train_ds = MemmapDataset(
             os.path.join(self.data_dir, "train.bin"), self.block_size
@@ -117,18 +119,20 @@ class StreamingDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         from neuromanifold_gpt.data.streaming import create_streaming_dataset
+
         self.train_ds = create_streaming_dataset(
-            self.dataset_name,
-            block_size=self.block_size
+            self.dataset_name, block_size=self.block_size
         )
         self.val_ds = create_streaming_dataset(
-            self.dataset_name,
-            block_size=self.block_size
+            self.dataset_name, block_size=self.block_size
         )
-        logger.info(f"Streaming dataset: {self.dataset_name}, vocab_size={self.vocab_size}")
+        logger.info(
+            f"Streaming dataset: {self.dataset_name}, vocab_size={self.vocab_size}"
+        )
 
     def train_dataloader(self) -> DataLoader:
         from neuromanifold_gpt.data.streaming import create_streaming_dataset
+
         dataset = create_streaming_dataset(self.dataset_name, self.block_size)
         return DataLoader(
             dataset,
@@ -139,6 +143,7 @@ class StreamingDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         from neuromanifold_gpt.data.streaming import create_streaming_dataset
+
         dataset = create_streaming_dataset(self.dataset_name, self.block_size)
         return DataLoader(
             dataset,

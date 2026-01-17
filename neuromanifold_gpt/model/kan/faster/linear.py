@@ -26,9 +26,7 @@ class FasterKANLinear(nn.Module):
     ):
         super().__init__()
         self.kan = FasterKANLayer(
-            in_features, out_features,
-            num_centers=num_centers,
-            bias=bias
+            in_features, out_features, num_centers=num_centers, bias=bias
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

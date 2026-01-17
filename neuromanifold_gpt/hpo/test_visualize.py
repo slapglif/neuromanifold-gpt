@@ -1,17 +1,18 @@
 """Unit tests for HPO visualization."""
 
-import pytest
-from unittest.mock import Mock, patch
-import tempfile
 import os
+import tempfile
+from unittest.mock import Mock
+
+import pytest
 
 
 def test_plot_optimization_history_import():
     """Test that visualization functions can be imported."""
     from neuromanifold_gpt.hpo.visualize import (
+        plot_all_visualizations,
         plot_optimization_history,
         plot_param_importances,
-        plot_all_visualizations,
     )
 
     assert callable(plot_optimization_history)
@@ -46,6 +47,7 @@ def test_matplotlib_availability_check():
     # This test verifies the module loads even without matplotlib
     try:
         from neuromanifold_gpt.hpo.visualize import plot_all_visualizations
+
         # If we get here, the import succeeded
         assert True
     except ImportError as e:

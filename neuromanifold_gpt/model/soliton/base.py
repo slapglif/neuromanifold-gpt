@@ -21,8 +21,8 @@ Reference: Ablowitz & Segur, "Solitons and the Inverse Scattering Transform"
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -95,7 +95,9 @@ class PDESolver(nn.Module, ABC):
         self.dt_init = dt
         self.dx = dx
         self.n_steps = n_steps
-        self.use_spectral = use_spectral and not causal # Spectral is inherently acausal
+        self.use_spectral = (
+            use_spectral and not causal
+        )  # Spectral is inherently acausal
         self.causal = causal
         self.clamp_min = clamp_min
         self.clamp_max = clamp_max
@@ -128,7 +130,9 @@ class PDESolver(nn.Module, ABC):
         pass
 
     @abstractmethod
-    def compute_rhs(self, u: torch.Tensor, u_t: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def compute_rhs(
+        self, u: torch.Tensor, u_t: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Compute the right-hand side of the PDE.
 
@@ -188,27 +192,27 @@ class PDESolver(nn.Module, ABC):
             # u_shifted = roll(1) puts u[i-1] at position i
             # But standard roll wraps around (u[-1] -> u[0]), which is acausal/leakage
             # We must use padding instead of roll, or mask the first element
-            
+
             # Using torch.cat for causal shift
             # Shape: [..., T, ...]
             # u_shifted: [0, u[0], u[1], ..., u[T-2]]
-            
+
             # Construct slicing for generic dim
             slices = [slice(None)] * u.ndim
-            slices[dim] = slice(0, -1) # All but last
-            
+            slices[dim] = slice(0, -1)  # All but last
+
             # Zero padding shape
             pad_shape = list(u.shape)
             pad_shape[dim] = 1
             zeros = torch.zeros(pad_shape, device=u.device, dtype=u.dtype)
-            
+
             u_shifted = torch.cat([zeros, u[tuple(slices)]], dim=dim)
-            
+
             return (u - u_shifted) / self.dx
 
         elif order == 2:
             # Backward second difference: (u[i] - 2*u[i-1] + u[i-2]) / dx^2
-            
+
             # u[i-1]
             slices_1 = [slice(None)] * u.ndim
             slices_1[dim] = slice(0, -1)
@@ -216,7 +220,7 @@ class PDESolver(nn.Module, ABC):
             pad_shape_1[dim] = 1
             zeros_1 = torch.zeros(pad_shape_1, device=u.device, dtype=u.dtype)
             u_m1 = torch.cat([zeros_1, u[tuple(slices_1)]], dim=dim)
-            
+
             # u[i-2]
             slices_2 = [slice(None)] * u.ndim
             slices_2[dim] = slice(0, -2)
@@ -224,7 +228,7 @@ class PDESolver(nn.Module, ABC):
             pad_shape_2[dim] = 2
             zeros_2 = torch.zeros(pad_shape_2, device=u.device, dtype=u.dtype)
             u_m2 = torch.cat([zeros_2, u[tuple(slices_2)]], dim=dim)
-            
+
             return (u - 2 * u_m1 + u_m2) / (self.dx**2)
 
         else:
@@ -290,7 +294,7 @@ class PDESolver(nn.Module, ABC):
             dim = u.ndim + dim
 
         # Get sequence length
-        n = u.shape[dim]
+        u.shape[dim]
 
         if order == 1:
             # Central difference: (u[i+1] - u[i-1]) / (2*dx)
@@ -407,7 +411,9 @@ class PDESolver(nn.Module, ABC):
         """
         return torch.clamp(u, self.clamp_min, self.clamp_max)
 
-    def compute_energy(self, u: torch.Tensor, u_t: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def compute_energy(
+        self, u: torch.Tensor, u_t: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Compute total energy of the wave field.
 

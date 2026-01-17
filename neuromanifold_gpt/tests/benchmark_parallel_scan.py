@@ -12,13 +12,17 @@ Measures:
 Tests at different sequence lengths: 128, 256, 512, 1024, 2048
 """
 
-import time
 import argparse
-import torch
-import torch.nn as nn
+import time
 from contextlib import nullcontext
 
-from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan, ParallelSelectiveScan
+import torch
+import torch.nn as nn
+
+from neuromanifold_gpt.model.ssm.selective_scan import (
+    ParallelSelectiveScan,
+    SelectiveScan,
+)
 
 
 def benchmark_scan(
@@ -52,7 +56,7 @@ def benchmark_scan(
         start = time.perf_counter()
         for _ in range(n_iters):
             with ctx:
-                output = scan_module(x)
+                scan_module(x)
         if device.type == "cuda":
             torch.cuda.synchronize()
         forward_time = (time.perf_counter() - start) / n_iters * 1000
@@ -76,7 +80,9 @@ def benchmark_scan_backward(
 
     # Warmup backward pass
     for _ in range(warmup):
-        x = torch.randn(batch_size, seq_len, embed_dim, device=device, requires_grad=True)
+        x = torch.randn(
+            batch_size, seq_len, embed_dim, device=device, requires_grad=True
+        )
         with ctx:
             output = scan_module(x)
         loss = output.mean()
@@ -92,7 +98,9 @@ def benchmark_scan_backward(
     # Benchmark backward pass
     start = time.perf_counter()
     for _ in range(n_iters):
-        x = torch.randn(batch_size, seq_len, embed_dim, device=device, requires_grad=True)
+        x = torch.randn(
+            batch_size, seq_len, embed_dim, device=device, requires_grad=True
+        )
         with ctx:
             output = scan_module(x)
         loss = output.mean()
@@ -135,7 +143,7 @@ def benchmark_scan_memory(
     # Run forward pass and measure peak memory
     with torch.no_grad():
         with ctx:
-            output = scan_module(x)
+            scan_module(x)
 
     if device.type == "cuda":
         torch.cuda.synchronize()
@@ -168,9 +176,13 @@ def benchmark_memory(quick_test: bool = False):
     torch.cuda.reset_peak_memory_stats()
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+    dtype = "bfloat16" if torch.cuda.is_bf16_supported() else "float16"
+    device_type = "cuda"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
     ctx = torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
     # Test configurations
@@ -195,7 +207,7 @@ def benchmark_memory(quick_test: bool = False):
     embed_dim = 768  # GPT-2 size
     state_dim = 16  # Standard SSM state dimension
 
-    print(f"\nSSM Configuration:")
+    print("\nSSM Configuration:")
     print(f"  embed_dim: {embed_dim}")
     print(f"  state_dim: {state_dim}")
     print("=" * 80)
@@ -230,7 +242,7 @@ def benchmark_memory(quick_test: bool = False):
                 device,
                 ctx,
             )
-            sequential_memory_mb = sequential_memory / (1024 ** 2)
+            sequential_memory_mb = sequential_memory / (1024**2)
             print(f"  ✓ Peak memory: {sequential_memory_mb:.2f} MB")
         except RuntimeError as e:
             if "out of memory" in str(e):
@@ -262,7 +274,7 @@ def benchmark_memory(quick_test: bool = False):
                 device,
                 ctx,
             )
-            parallel_memory_mb = parallel_memory / (1024 ** 2)
+            parallel_memory_mb = parallel_memory / (1024**2)
             print(f"  ✓ Peak memory: {parallel_memory_mb:.2f} MB")
         except RuntimeError as e:
             if "out of memory" in str(e):
@@ -284,7 +296,7 @@ def benchmark_memory(quick_test: bool = False):
             }
 
             print(f"\n{'─' * 80}")
-            print(f"Results:")
+            print("Results:")
             print(f"  Sequential: {sequential_memory / (1024 ** 2):.2f} MB")
             print(f"  Parallel:   {parallel_memory / (1024 ** 2):.2f} MB")
             print(f"  Ratio:      {memory_ratio:.2f}x")
@@ -305,12 +317,14 @@ def benchmark_memory(quick_test: bool = False):
     print("\n" + "=" * 80)
     print("SUMMARY - Memory Usage")
     print("=" * 80)
-    print(f"{'Seq Len':<10} {'Batch':<8} {'Sequential':<15} {'Parallel':<15} {'Ratio':<10}")
+    print(
+        f"{'Seq Len':<10} {'Batch':<8} {'Sequential':<15} {'Parallel':<15} {'Ratio':<10}"
+    )
     print("-" * 80)
 
     for result in results:
-        sequential_mb = result['sequential_memory'] / (1024 ** 2)
-        parallel_mb = result['parallel_memory'] / (1024 ** 2)
+        sequential_mb = result["sequential_memory"] / (1024**2)
+        parallel_mb = result["parallel_memory"] / (1024**2)
         print(
             f"{result['seq_len']:<10} "
             f"{result['batch_size']:<8} "
@@ -328,10 +342,10 @@ def benchmark_memory(quick_test: bool = False):
         max_ratio = max(r["memory_ratio"] for r in results)
         avg_ratio = sum(r["memory_ratio"] for r in results) / len(results)
 
-        print(f"Memory usage ratio (parallel / sequential):")
+        print("Memory usage ratio (parallel / sequential):")
         print(f"  Maximum: {max_ratio:.2f}x")
         print(f"  Average: {avg_ratio:.2f}x")
-        print(f"  Target:  <2.00x")
+        print("  Target:  <2.00x")
 
         memory_pass = max_ratio < 2.0
         if memory_pass:
@@ -362,10 +376,22 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
         torch.cuda.reset_peak_memory_stats()
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    dtype = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
+    device_type = "cuda" if "cuda" in str(device) else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    )
 
     # Test configurations
     if quick_test:
@@ -393,7 +419,7 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
     embed_dim = 768  # GPT-2 size
     state_dim = 16  # Standard SSM state dimension
 
-    print(f"\nSSM Configuration:")
+    print("\nSSM Configuration:")
     print(f"  embed_dim: {embed_dim}")
     print(f"  state_dim: {state_dim}")
     print(f"  iterations: {n_iters}")
@@ -518,19 +544,23 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
             }
 
             print(f"\n{'─' * 80}")
-            print(f"Results (Forward):")
+            print("Results (Forward):")
             print(f"  Sequential: {sequential_time:.3f} ms")
             print(f"  Parallel:   {parallel_time:.3f} ms")
             print(f"  Speedup:    {speedup:.2f}x")
             print(f"  Throughput: {tokens_per_sec:,.0f} tokens/sec")
 
-            if backward and sequential_backward_time is not None and parallel_backward_time is not None:
+            if (
+                backward
+                and sequential_backward_time is not None
+                and parallel_backward_time is not None
+            ):
                 backward_speedup = sequential_backward_time / parallel_backward_time
                 result["sequential_backward_time"] = sequential_backward_time
                 result["parallel_backward_time"] = parallel_backward_time
                 result["backward_speedup"] = backward_speedup
 
-                print(f"\nResults (Backward):")
+                print("\nResults (Backward):")
                 print(f"  Sequential: {sequential_backward_time:.3f} ms")
                 print(f"  Parallel:   {parallel_backward_time:.3f} ms")
                 print(f"  Speedup:    {backward_speedup:.2f}x")
@@ -553,7 +583,9 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
     print("\n" + "=" * 80)
     print("SUMMARY - Forward Pass")
     print("=" * 80)
-    print(f"{'Seq Len':<10} {'Batch':<8} {'Sequential':<15} {'Parallel':<15} {'Speedup':<10}")
+    print(
+        f"{'Seq Len':<10} {'Batch':<8} {'Sequential':<15} {'Parallel':<15} {'Speedup':<10}"
+    )
     print("-" * 80)
 
     for result in results:
@@ -570,7 +602,9 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
         print("\n" + "=" * 80)
         print("SUMMARY - Backward Pass")
         print("=" * 80)
-        print(f"{'Seq Len':<10} {'Batch':<8} {'Sequential':<15} {'Parallel':<15} {'Speedup':<10}")
+        print(
+            f"{'Seq Len':<10} {'Batch':<8} {'Sequential':<15} {'Parallel':<15} {'Speedup':<10}"
+        )
         print("-" * 80)
 
         for result in results:
@@ -592,12 +626,14 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
     if long_seq_results:
         # Check forward pass
         min_speedup = min(r["speedup"] for r in long_seq_results)
-        avg_speedup = sum(r["speedup"] for r in long_seq_results) / len(long_seq_results)
+        avg_speedup = sum(r["speedup"] for r in long_seq_results) / len(
+            long_seq_results
+        )
 
-        print(f"Forward pass speedup for sequences >= 1024 tokens:")
+        print("Forward pass speedup for sequences >= 1024 tokens:")
         print(f"  Minimum: {min_speedup:.2f}x")
         print(f"  Average: {avg_speedup:.2f}x")
-        print(f"  Target:  >3.00x")
+        print("  Target:  >3.00x")
 
         forward_pass = min_speedup > 3.0
         if forward_pass:
@@ -609,23 +645,31 @@ def benchmark_speed(quick_test: bool = False, backward: bool = False):
         if backward:
             backward_results = [r for r in long_seq_results if "backward_speedup" in r]
             if backward_results:
-                min_backward_speedup = min(r["backward_speedup"] for r in backward_results)
-                avg_backward_speedup = sum(r["backward_speedup"] for r in backward_results) / len(backward_results)
+                min_backward_speedup = min(
+                    r["backward_speedup"] for r in backward_results
+                )
+                avg_backward_speedup = sum(
+                    r["backward_speedup"] for r in backward_results
+                ) / len(backward_results)
 
-                print(f"\nBackward pass speedup for sequences >= 1024 tokens:")
+                print("\nBackward pass speedup for sequences >= 1024 tokens:")
                 print(f"  Minimum: {min_backward_speedup:.2f}x")
                 print(f"  Average: {avg_backward_speedup:.2f}x")
-                print(f"  Target:  >3.00x")
+                print("  Target:  >3.00x")
 
                 backward_pass = min_backward_speedup > 3.0
                 if backward_pass:
-                    print(f"  ✓ PASS: Minimum speedup ({min_backward_speedup:.2f}x) exceeds 3x target")
+                    print(
+                        f"  ✓ PASS: Minimum speedup ({min_backward_speedup:.2f}x) exceeds 3x target"
+                    )
                 else:
-                    print(f"  ✗ FAIL: Minimum speedup ({min_backward_speedup:.2f}x) below 3x target")
+                    print(
+                        f"  ✗ FAIL: Minimum speedup ({min_backward_speedup:.2f}x) below 3x target"
+                    )
 
                 return forward_pass and backward_pass
             else:
-                print(f"\n✗ FAIL: No backward pass results for sequences >= 1024 tokens")
+                print("\n✗ FAIL: No backward pass results for sequences >= 1024 tokens")
                 return False
 
         return forward_pass

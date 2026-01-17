@@ -21,10 +21,14 @@ Usage:
 # Validate dependencies before heavy imports to fail fast with clear messages
 import sys
 import os as _os
-_validation_path = _os.path.join(_os.path.dirname(__file__), 'neuromanifold_gpt', 'config')
+
+_validation_path = _os.path.join(
+    _os.path.dirname(__file__), "neuromanifold_gpt", "config"
+)
 sys.path.insert(0, _validation_path)
 try:
     import validation as _validation_module
+
     _validation_module.validate_dependencies(verbose=True)
 finally:
     sys.path.pop(0)  # Clean up sys.path
@@ -64,6 +68,7 @@ from model import GPTConfig, GPT
 @dataclass
 class TrainingConfig:
     """Training configuration with all hyperparameters."""
+
     # I/O
     out_dir: str = "out-shakespeare-char"
     eval_interval: int = 250
@@ -98,6 +103,31 @@ class TrainingConfig:
     kan_type: str = "faster"
     kan_wavelet: str = "dog"
     use_fast_wavekan: bool = True
+
+    # Advanced NeuroManifold Features
+    use_fno_encoder: bool = False
+    fno_modes: int = 16
+    fno_width: int = 32
+
+    use_mixture_of_mamba: bool = False
+    mom_num_experts: int = 4
+    mom_top_k: int = 2
+    mom_state_dim: int = 16
+
+    use_soliton_mixing: bool = False
+    soliton_types: list = field(default_factory=lambda: ["sine_gordon"])
+
+    use_hybrid_reasoning: bool = False
+    n_thinking_layers: int = 2
+    thinking_threshold: float = 0.5
+    use_e7_prior: bool = False
+
+    use_topological_loss: bool = False
+    braid_dim: int = 64
+
+    use_continuous_head: bool = False
+    use_sac_output: bool = False
+
     kan_num_centers: int = 3
     fhn_threshold: float = 0.5
     fhn_tau: float = 12.5
@@ -218,7 +248,9 @@ class TextDataModule(pl.LightningDataModule):
             logger.info(f"Loaded vocab_size={self.vocab_size} from {meta_path}")
         else:
             self.vocab_size = 50304  # GPT-2 default
-            logger.info(f"No meta.pkl found, using default vocab_size={self.vocab_size}")
+            logger.info(
+                f"No meta.pkl found, using default vocab_size={self.vocab_size}"
+            )
 
         self.train_ds = MemmapDataset(
             os.path.join(self.data_dir, "train.bin"), self.block_size
@@ -266,18 +298,20 @@ class StreamingDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         from neuromanifold_gpt.data.streaming import create_streaming_dataset
+
         self.train_ds = create_streaming_dataset(
-            self.dataset_name,
-            block_size=self.block_size
+            self.dataset_name, block_size=self.block_size
         )
         self.val_ds = create_streaming_dataset(
-            self.dataset_name,
-            block_size=self.block_size
+            self.dataset_name, block_size=self.block_size
         )
-        logger.info(f"Streaming dataset: {self.dataset_name}, vocab_size={self.vocab_size}")
+        logger.info(
+            f"Streaming dataset: {self.dataset_name}, vocab_size={self.vocab_size}"
+        )
 
     def train_dataloader(self) -> DataLoader:
         from neuromanifold_gpt.data.streaming import create_streaming_dataset
+
         dataset = create_streaming_dataset(self.dataset_name, self.block_size)
         return DataLoader(
             dataset,
@@ -288,6 +322,7 @@ class StreamingDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         from neuromanifold_gpt.data.streaming import create_streaming_dataset
+
         dataset = create_streaming_dataset(self.dataset_name, self.block_size)
         return DataLoader(
             dataset,
@@ -328,7 +363,7 @@ class NeuroManifoldLitModule(pl.LightningModule):
 
         # Log parameter count
         n_params = sum(p.numel() for p in self.model.parameters())
-        logger.info(f"Model parameters: {n_params/1e6:.2f}M")
+        logger.info(f"Model parameters: {n_params / 1e6:.2f}M")
 
     def forward(self, x: torch.Tensor, targets: Optional[torch.Tensor] = None):
         return self.model(x, targets)
@@ -397,7 +432,10 @@ class NeuroManifoldLitModule(pl.LightningModule):
         # which conflicts with Lightning's gradient clipping mechanism
         optimizer = torch.optim.AdamW(
             [
-                {"params": decay_params, "weight_decay": self.train_config.weight_decay},
+                {
+                    "params": decay_params,
+                    "weight_decay": self.train_config.weight_decay,
+                },
                 {"params": nodecay_params, "weight_decay": 0.0},
             ],
             lr=self.train_config.learning_rate,
@@ -531,7 +569,9 @@ class SampleGenerationCallback(Callback):
             )
 
             text = "".join([self.itos[i] for i in out_idx[0].tolist()])
-            logger.info(f"\n--- Sample (step {trainer.global_step}) ---\n{text}\n--- End Sample ---")
+            logger.info(
+                f"\n--- Sample (step {trainer.global_step}) ---\n{text}\n--- End Sample ---"
+            )
 
             # Log to wandb if available
             if trainer.logger and hasattr(trainer.logger, "experiment"):
@@ -597,8 +637,8 @@ class MFUCallback(Callback):
 def train(config: TrainingConfig) -> None:
     """Main training entry point."""
     # Set matmul precision for Tensor Cores (speed/memory trade-off)
-    torch.set_float32_matmul_precision('medium')
-    
+    torch.set_float32_matmul_precision("medium")
+
     pl.seed_everything(1337)
 
     # Setup data
@@ -646,7 +686,17 @@ def train(config: TrainingConfig) -> None:
             use_soliton_mixing=config.use_soliton_mixing,
             soliton_type=config.soliton_type,
             use_topological_loss=config.use_topological_loss,
+            braid_dim=config.braid_dim,
             use_continuous_head=config.use_continuous_head,
+            use_sac_output=config.use_sac_output,
+            use_hybrid_reasoning=config.use_hybrid_reasoning,
+            n_thinking_layers=config.n_thinking_layers,
+            thinking_threshold=config.thinking_threshold,
+            use_e7_prior=config.use_e7_prior,
+            mom_num_experts=config.mom_num_experts,
+            mom_top_k=config.mom_top_k,
+            mom_state_dim=config.mom_state_dim,
+            use_mixture_of_mamba=config.use_mixture_of_mamba,
         )
     elif config.model_type == "neuromanifold":
         model_config = NeuroManifoldConfig(

@@ -1,7 +1,5 @@
-
 import torch
 import torch.nn as nn
-import math
 
 
 class RotaryPositionalEmbedding(nn.Module):
@@ -34,7 +32,7 @@ class RotaryPositionalEmbedding(nn.Module):
         # Compute rotation frequencies for each dimension pair
         # θ_i = base^(-2i/head_dim) for i in [0, head_dim/2)
         inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2).float() / head_dim))
-        self.register_buffer('inv_freq', inv_freq)
+        self.register_buffer("inv_freq", inv_freq)
 
         # Precompute cos and sin for positions [0, max_seq_len)
         self._build_cache(max_seq_len)
@@ -53,8 +51,8 @@ class RotaryPositionalEmbedding(nn.Module):
         emb = torch.repeat_interleave(freqs, 2, dim=-1)
 
         # Register cos and sin caches
-        self.register_buffer('cos_cached', emb.cos(), persistent=False)
-        self.register_buffer('sin_cached', emb.sin(), persistent=False)
+        self.register_buffer("cos_cached", emb.cos(), persistent=False)
+        self.register_buffer("sin_cached", emb.sin(), persistent=False)
         self.cached_seq_len = seq_len
 
     def _rotate_half(self, x):

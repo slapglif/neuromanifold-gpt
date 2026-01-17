@@ -12,15 +12,19 @@ The searcher interface provides a consistent API for:
 - Exporting top architectures
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-from pathlib import Path
 import json
 import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from neuromanifold_gpt.nas.search_space import SearchSpace, ArchitectureConfig
-from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator, EvaluationResult, ComputeBudget
+from neuromanifold_gpt.nas.evaluator import (
+    ArchitectureEvaluator,
+    ComputeBudget,
+    EvaluationResult,
+)
+from neuromanifold_gpt.nas.search_space import ArchitectureConfig, SearchSpace
 
 
 @dataclass
@@ -38,6 +42,7 @@ class SearchResult:
         strategy_name: Name of the search strategy used
         metadata: Additional strategy-specific metadata
     """
+
     architectures: List[ArchitectureConfig]
     results: List[EvaluationResult]
     best_architecture: ArchitectureConfig
@@ -48,7 +53,9 @@ class SearchResult:
     strategy_name: str
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def get_top_k(self, k: int = 5) -> List[tuple[ArchitectureConfig, EvaluationResult]]:
+    def get_top_k(
+        self, k: int = 5
+    ) -> List[tuple[ArchitectureConfig, EvaluationResult]]:
         """Get top-k architectures by perplexity.
 
         Args:
@@ -137,10 +144,7 @@ class SearchResult:
         ]
 
         # Reconstruct results
-        results = [
-            EvaluationResult(**res_dict)
-            for res_dict in data["results"]
-        ]
+        results = [EvaluationResult(**res_dict) for res_dict in data["results"]]
 
         # Reconstruct best architecture and result
         best_architecture = ArchitectureConfig.from_dict(data["best_architecture"])
@@ -219,7 +223,9 @@ class Searcher(ABC):
         """
         pass
 
-    def get_best_architecture(self) -> Optional[tuple[ArchitectureConfig, EvaluationResult]]:
+    def get_best_architecture(
+        self,
+    ) -> Optional[tuple[ArchitectureConfig, EvaluationResult]]:
         """Get the best architecture found so far.
 
         Returns:

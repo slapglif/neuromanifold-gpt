@@ -22,17 +22,16 @@ Usage:
 import sys
 import time
 from collections import deque
-from typing import Any, Dict, Deque, List, Optional, Union
+from typing import Any, Deque, Dict, List, Optional, Union
 
 import torch
-import lightning as pl
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from rich.console import Console
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
 from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
 
 
 class TrainingHealthCallback(Callback):
@@ -65,7 +64,9 @@ class TrainingHealthCallback(Callback):
         self.grad_norm_before_clip: Optional[float] = None
         self.total_clip_events = 0
         self.total_steps = 0
-        self.clip_ratios: Deque[float] = deque(maxlen=100)  # Track clip magnitude when clipping occurs
+        self.clip_ratios: Deque[float] = deque(
+            maxlen=100
+        )  # Track clip magnitude when clipping occurs
 
         # Memory tracking
         self.peak_memory_mb = 0.0
@@ -83,9 +84,15 @@ class TrainingHealthCallback(Callback):
         # Anomaly detection
         self.warnings: List[Dict[str, Any]] = []  # List of warning messages
         self.loss_spike_threshold = 3.0  # Number of std devs for spike detection
-        self.grad_explosion_threshold = 3.0  # Number of std devs for gradient explosion detection
-        self.min_loss_history_for_detection = 20  # Minimum samples before detecting anomalies
-        self.min_grad_history_for_detection = 20  # Minimum samples before detecting gradient explosions
+        self.grad_explosion_threshold = (
+            3.0  # Number of std devs for gradient explosion detection
+        )
+        self.min_loss_history_for_detection = (
+            20  # Minimum samples before detecting anomalies
+        )
+        self.min_grad_history_for_detection = (
+            20  # Minimum samples before detecting gradient explosions
+        )
 
         # Rich dashboard
         self.console = Console()
@@ -129,7 +136,7 @@ class TrainingHealthCallback(Callback):
 
         # Calculate standard deviation
         variance = sum((x - mean_loss) ** 2 for x in loss_list) / len(loss_list)
-        std_loss = variance ** 0.5
+        std_loss = variance**0.5
 
         # Detect spike: current loss > mean + threshold * std
         if current_loss > mean_loss + self.loss_spike_threshold * std_loss:
@@ -138,16 +145,20 @@ class TrainingHealthCallback(Callback):
                 f"Loss={current_loss:.4f} (mean={mean_loss:.4f}, std={std_loss:.4f}). "
                 f"Consider reducing learning rate or checking for data issues."
             )
-            self.warnings.append({
-                'type': 'loss_spike',
-                'step': current_step,
-                'message': warning_msg,
-                'loss': current_loss,
-                'mean': mean_loss,
-                'std': std_loss
-            })
+            self.warnings.append(
+                {
+                    "type": "loss_spike",
+                    "step": current_step,
+                    "message": warning_msg,
+                    "loss": current_loss,
+                    "mean": mean_loss,
+                    "std": std_loss,
+                }
+            )
 
-    def _detect_gradient_explosion(self, current_grad_norm: float, current_step: int) -> None:
+    def _detect_gradient_explosion(
+        self, current_grad_norm: float, current_step: int
+    ) -> None:
         """Detect if current gradient norm is exploding (anomalously high).
 
         Uses rolling statistics: flags explosion if grad_norm > mean + threshold*std.
@@ -165,24 +176,31 @@ class TrainingHealthCallback(Callback):
         mean_grad_norm = sum(grad_norm_list) / len(grad_norm_list)
 
         # Calculate standard deviation
-        variance = sum((x - mean_grad_norm) ** 2 for x in grad_norm_list) / len(grad_norm_list)
-        std_grad_norm = variance ** 0.5
+        variance = sum((x - mean_grad_norm) ** 2 for x in grad_norm_list) / len(
+            grad_norm_list
+        )
+        std_grad_norm = variance**0.5
 
         # Detect explosion: current grad norm > mean + threshold * std
-        if current_grad_norm > mean_grad_norm + self.grad_explosion_threshold * std_grad_norm:
+        if (
+            current_grad_norm
+            > mean_grad_norm + self.grad_explosion_threshold * std_grad_norm
+        ):
             warning_msg = (
                 f"[bold red]⚠ GRADIENT EXPLOSION DETECTED[/bold red] at step {current_step}: "
                 f"GradNorm={current_grad_norm:.4f} (mean={mean_grad_norm:.4f}, std={std_grad_norm:.4f}). "
                 f"Consider reducing learning rate or enabling gradient clipping."
             )
-            self.warnings.append({
-                'type': 'gradient_explosion',
-                'step': current_step,
-                'message': warning_msg,
-                'grad_norm': current_grad_norm,
-                'mean': mean_grad_norm,
-                'std': std_grad_norm
-            })
+            self.warnings.append(
+                {
+                    "type": "gradient_explosion",
+                    "step": current_step,
+                    "message": warning_msg,
+                    "grad_norm": current_grad_norm,
+                    "mean": mean_grad_norm,
+                    "std": std_grad_norm,
+                }
+            )
 
     def _detect_nan_inf_loss(self, loss_value: float, current_step: int) -> None:
         """Detect if loss contains NaN or Inf values.
@@ -202,13 +220,15 @@ class TrainingHealthCallback(Callback):
                 f"Training is unstable. Check: (1) Learning rate too high, (2) Gradient explosion, "
                 f"(3) Data preprocessing issues, (4) Numerical instability in model."
             )
-            self.warnings.append({
-                'type': 'nan_loss',
-                'step': current_step,
-                'message': warning_msg,
-                'loss': loss_value,
-                'severity': 'critical'
-            })
+            self.warnings.append(
+                {
+                    "type": "nan_loss",
+                    "step": current_step,
+                    "message": warning_msg,
+                    "loss": loss_value,
+                    "severity": "critical",
+                }
+            )
 
         if has_inf:
             warning_msg = (
@@ -216,15 +236,19 @@ class TrainingHealthCallback(Callback):
                 f"Training is unstable. Check: (1) Learning rate too high, (2) Gradient explosion, "
                 f"(3) Numerical overflow in model computations."
             )
-            self.warnings.append({
-                'type': 'inf_loss',
-                'step': current_step,
-                'message': warning_msg,
-                'loss': loss_value,
-                'severity': 'critical'
-            })
+            self.warnings.append(
+                {
+                    "type": "inf_loss",
+                    "step": current_step,
+                    "message": warning_msg,
+                    "loss": loss_value,
+                    "severity": "critical",
+                }
+            )
 
-    def _detect_nan_inf_gradients(self, pl_module: LightningModule, current_step: int) -> None:
+    def _detect_nan_inf_gradients(
+        self, pl_module: LightningModule, current_step: int
+    ) -> None:
         """Detect if gradients contain NaN or Inf values.
 
         This is a critical error that requires immediate attention.
@@ -256,13 +280,15 @@ class TrainingHealthCallback(Callback):
                 f"Affected parameters: {params_str}. "
                 f"Check: (1) Learning rate too high, (2) Numerical instability, (3) Data issues."
             )
-            self.warnings.append({
-                'type': 'nan_gradients',
-                'step': current_step,
-                'message': warning_msg,
-                'affected_params': nan_params,
-                'severity': 'critical'
-            })
+            self.warnings.append(
+                {
+                    "type": "nan_gradients",
+                    "step": current_step,
+                    "message": warning_msg,
+                    "affected_params": nan_params,
+                    "severity": "critical",
+                }
+            )
 
         if inf_params:
             # Limit displayed params to first 5 for readability
@@ -277,13 +303,15 @@ class TrainingHealthCallback(Callback):
                 f"Affected parameters: {params_str}. "
                 f"Check: (1) Learning rate too high, (2) Gradient explosion, (3) Enable gradient clipping."
             )
-            self.warnings.append({
-                'type': 'inf_gradients',
-                'step': current_step,
-                'message': warning_msg,
-                'affected_params': inf_params,
-                'severity': 'critical'
-            })
+            self.warnings.append(
+                {
+                    "type": "inf_gradients",
+                    "step": current_step,
+                    "message": warning_msg,
+                    "affected_params": inf_params,
+                    "severity": "critical",
+                }
+            )
 
     def _generate_dashboard(self):
         """Generate the Rich dashboard table with current metrics.
@@ -291,7 +319,9 @@ class TrainingHealthCallback(Callback):
         Returns:
             Either a Table (if no warnings) or a Layout (if warnings exist)
         """
-        table = Table(title="[bold cyan]Training Health Dashboard[/bold cyan]", show_header=True)
+        table = Table(
+            title="[bold cyan]Training Health Dashboard[/bold cyan]", show_header=True
+        )
 
         # Add columns
         table.add_column("Metric", style="cyan", justify="left")
@@ -299,28 +329,24 @@ class TrainingHealthCallback(Callback):
         table.add_column("Details", style="yellow", justify="left")
 
         # Add rows
-        table.add_row(
-            "Step",
-            f"{self.current_step}",
-            f"Total: {self.total_steps}"
-        )
+        table.add_row("Step", f"{self.current_step}", f"Total: {self.total_steps}")
 
         table.add_row(
             "Loss",
             f"{self.current_loss:.4f}",
-            f"Avg: {sum(self.loss_history) / len(self.loss_history):.4f}" if self.loss_history else "-"
+            f"Avg: {sum(self.loss_history) / len(self.loss_history):.4f}"
+            if self.loss_history
+            else "-",
         )
 
-        table.add_row(
-            "Learning Rate",
-            f"{self.current_lr:.6f}",
-            ""
-        )
+        table.add_row("Learning Rate", f"{self.current_lr:.6f}", "")
 
         table.add_row(
             "Grad Norm",
             f"{self.current_grad_norm:.4f}",
-            f"Avg: {sum(self.grad_norm_history) / len(self.grad_norm_history):.4f}" if self.grad_norm_history else "-"
+            f"Avg: {sum(self.grad_norm_history) / len(self.grad_norm_history):.4f}"
+            if self.grad_norm_history
+            else "-",
         )
 
         # Memory
@@ -328,16 +354,12 @@ class TrainingHealthCallback(Callback):
             table.add_row(
                 "GPU Memory",
                 f"{self.current_memory_mb:.0f} MB",
-                f"Peak: {self.peak_memory_mb:.0f} MB"
+                f"Peak: {self.peak_memory_mb:.0f} MB",
             )
 
         # MFU
         if self.mfu > 0:
-            table.add_row(
-                "MFU",
-                f"{self.mfu:.2f}%",
-                ""
-            )
+            table.add_row("MFU", f"{self.mfu:.2f}%", "")
 
         # Gradient clipping stats
         if self.total_steps > 0:
@@ -347,37 +369,33 @@ class TrainingHealthCallback(Callback):
                 avg_clip_ratio = sum(self.clip_ratios) / len(self.clip_ratios)
                 details += f" | Avg ratio: {avg_clip_ratio:.3f}"
             table.add_row(
-                "Grad Clipping",
-                f"{self.total_clip_events}/{self.total_steps}",
-                details
+                "Grad Clipping", f"{self.total_clip_events}/{self.total_steps}", details
             )
 
         # Throughput
         if self.step_times:
             avg_step_time = sum(self.step_times) / len(self.step_times)
-            table.add_row(
-                "Step Time",
-                f"{avg_step_time * 1000:.1f} ms",
-                ""
-            )
+            table.add_row("Step Time", f"{avg_step_time * 1000:.1f} ms", "")
 
         # ETA (Estimated Time of Arrival)
-        if (self.step_times and len(self.step_times) >= self.warmup_steps and
-            self.max_steps is not None and self.max_steps > self.current_step):
+        if (
+            self.step_times
+            and len(self.step_times) >= self.warmup_steps
+            and self.max_steps is not None
+            and self.max_steps > self.current_step
+        ):
             avg_step_time = sum(self.step_times) / len(self.step_times)
             steps_remaining = self.max_steps - self.current_step
             eta_seconds = steps_remaining * avg_step_time
             table.add_row(
-                "ETA",
-                self._format_eta(eta_seconds),
-                f"{steps_remaining} steps left"
+                "ETA", self._format_eta(eta_seconds), f"{steps_remaining} steps left"
             )
         elif self.max_steps is not None and len(self.step_times) < self.warmup_steps:
             # Show warmup message
             table.add_row(
                 "ETA",
                 "Warming up...",
-                f"{self.warmup_steps - len(self.step_times)} steps to go"
+                f"{self.warmup_steps - len(self.step_times)} steps to go",
             )
 
         # If no warnings, return just the table
@@ -388,17 +406,17 @@ class TrainingHealthCallback(Callback):
         layout = Layout()
         layout.split_column(
             Layout(name="warnings", size=len(self.warnings) * 3 + 2),
-            Layout(table, name="metrics")
+            Layout(table, name="metrics"),
         )
 
         # Create warning panels - show last 3 warnings
         recent_warnings = self.warnings[-3:]
-        warning_text = "\n\n".join([w['message'] for w in recent_warnings])
+        warning_text = "\n\n".join([w["message"] for w in recent_warnings])
         warning_panel = Panel(
             warning_text,
             title="[bold red]⚠ Training Warnings[/bold red]",
             border_style="red",
-            expand=False
+            expand=False,
         )
         layout["warnings"].update(warning_panel)
 
@@ -419,11 +437,13 @@ class TrainingHealthCallback(Callback):
         elif trainer.max_epochs and trainer.max_epochs > 0:
             # Estimate steps from epochs if available
             # This is an approximation
-            if hasattr(trainer, 'num_training_batches'):
+            if hasattr(trainer, "num_training_batches"):
                 self.max_steps = trainer.max_epochs * trainer.num_training_batches
 
         if self.enable_dashboard:
-            self.live = Live(self._generate_dashboard(), console=self.console, refresh_per_second=4)
+            self.live = Live(
+                self._generate_dashboard(), console=self.console, refresh_per_second=4
+            )
             self.live.start()
 
     def on_train_end(
@@ -464,7 +484,7 @@ class TrainingHealthCallback(Callback):
             if p.grad is not None:
                 param_norm = p.grad.data.norm(2)
                 total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
+        total_norm = total_norm**0.5
 
         self.grad_norm_before_clip = total_norm
         self.grad_norm_history.append(total_norm)
@@ -481,19 +501,21 @@ class TrainingHealthCallback(Callback):
         We can detect if clipping occurred by comparing norms.
         """
         # Check if gradient clipping occurred
-        if hasattr(pl_module, 'config') and pl_module.config.grad_clip > 0:
+        if hasattr(pl_module, "config") and pl_module.config.grad_clip > 0:
             # Calculate gradient norm after clipping
             total_norm_after = 0.0
             for p in pl_module.parameters():
                 if p.grad is not None:
                     param_norm = p.grad.data.norm(2)
                     total_norm_after += param_norm.item() ** 2
-            total_norm_after = total_norm_after ** 0.5
+            total_norm_after = total_norm_after**0.5
 
             # If gradient norm changed significantly, clipping occurred
             if self.grad_norm_before_clip is not None:
                 clip_threshold = pl_module.config.grad_clip
-                if self.grad_norm_before_clip > clip_threshold * 1.01:  # Small tolerance for numerical precision
+                if (
+                    self.grad_norm_before_clip > clip_threshold * 1.01
+                ):  # Small tolerance for numerical precision
                     self.total_clip_events += 1
                     # Track the ratio of clipped gradient to threshold
                     # This shows "how much" clipping occurred
@@ -520,7 +542,7 @@ class TrainingHealthCallback(Callback):
             self.step_times.append(step_time)
 
             # Calculate tokens/sec
-            if hasattr(batch, '__len__'):
+            if hasattr(batch, "__len__"):
                 batch_size = len(batch)
             elif isinstance(batch, (list, tuple)):
                 batch_size = batch[0].size(0) if len(batch) > 0 else 0
@@ -530,18 +552,31 @@ class TrainingHealthCallback(Callback):
             else:
                 batch_size = 0
 
-            seq_len = batch[0].size(1) if isinstance(batch, (list, tuple)) and len(batch) > 0 else 256
-            if isinstance(batch, dict) and 'input_ids' in batch:
-                seq_len = batch['input_ids'].size(1)
+            seq_len = (
+                batch[0].size(1)
+                if isinstance(batch, (list, tuple)) and len(batch) > 0
+                else 256
+            )
+            if isinstance(batch, dict) and "input_ids" in batch:
+                seq_len = batch["input_ids"].size(1)
 
             tokens_per_step = batch_size * seq_len
             throughput = tokens_per_step / step_time if step_time > 0 else 0
 
-            pl_module.log('train/throughput_tokens_per_sec', throughput, on_step=True, prog_bar=False)
+            pl_module.log(
+                "train/throughput_tokens_per_sec",
+                throughput,
+                on_step=True,
+                prog_bar=False,
+            )
 
             # Average step time
-            avg_step_time = sum(self.step_times) / len(self.step_times) if self.step_times else 0
-            pl_module.log('train/step_time_ms', avg_step_time * 1000, on_step=True, prog_bar=False)
+            avg_step_time = (
+                sum(self.step_times) / len(self.step_times) if self.step_times else 0
+            )
+            pl_module.log(
+                "train/step_time_ms", avg_step_time * 1000, on_step=True, prog_bar=False
+            )
 
         # Log gradient norm statistics
         if self.grad_norm_history:
@@ -554,19 +589,30 @@ class TrainingHealthCallback(Callback):
             # Detect gradient explosions (anomaly detection)
             self._detect_gradient_explosion(current_grad_norm, self.current_step)
 
-            pl_module.log('train/grad_norm', current_grad_norm, on_step=True, prog_bar=True)
-            pl_module.log('train/grad_norm_avg', avg_grad_norm, on_step=True, prog_bar=False)
+            pl_module.log(
+                "train/grad_norm", current_grad_norm, on_step=True, prog_bar=True
+            )
+            pl_module.log(
+                "train/grad_norm_avg", avg_grad_norm, on_step=True, prog_bar=False
+            )
 
         # Log gradient clipping statistics
         if self.total_steps > 0:
             clip_rate = self.total_clip_events / self.total_steps
-            pl_module.log('train/clip_rate', clip_rate, on_step=True, prog_bar=False)
-            pl_module.log('train/total_clip_events', float(self.total_clip_events), on_step=True, prog_bar=False)
+            pl_module.log("train/clip_rate", clip_rate, on_step=True, prog_bar=False)
+            pl_module.log(
+                "train/total_clip_events",
+                float(self.total_clip_events),
+                on_step=True,
+                prog_bar=False,
+            )
 
             # Log average clip ratio if clipping has occurred
             if self.clip_ratios:
                 avg_clip_ratio = sum(self.clip_ratios) / len(self.clip_ratios)
-                pl_module.log('train/avg_clip_ratio', avg_clip_ratio, on_step=True, prog_bar=False)
+                pl_module.log(
+                    "train/avg_clip_ratio", avg_clip_ratio, on_step=True, prog_bar=False
+                )
 
         # Log memory usage (GPU only)
         if torch.cuda.is_available():
@@ -580,13 +626,23 @@ class TrainingHealthCallback(Callback):
             # Update current memory for dashboard
             self.current_memory_mb = current_memory_mb
 
-            pl_module.log('train/memory_current_mb', current_memory_mb, on_step=True, prog_bar=True)
-            pl_module.log('train/memory_peak_mb', self.peak_memory_mb, on_step=True, prog_bar=False)
+            pl_module.log(
+                "train/memory_current_mb",
+                current_memory_mb,
+                on_step=True,
+                prog_bar=True,
+            )
+            pl_module.log(
+                "train/memory_peak_mb",
+                self.peak_memory_mb,
+                on_step=True,
+                prog_bar=False,
+            )
 
         # Log current loss if available in outputs
         if outputs is not None:
-            if isinstance(outputs, dict) and 'loss' in outputs:
-                loss = outputs['loss']
+            if isinstance(outputs, dict) and "loss" in outputs:
+                loss = outputs["loss"]
             elif isinstance(outputs, torch.Tensor):
                 loss = outputs
             else:
@@ -609,22 +665,26 @@ class TrainingHealthCallback(Callback):
                 # Calculate loss statistics
                 if len(self.loss_history) > 1:
                     avg_loss = sum(self.loss_history) / len(self.loss_history)
-                    pl_module.log('train/loss_avg', avg_loss, on_step=True, prog_bar=False)
+                    pl_module.log(
+                        "train/loss_avg", avg_loss, on_step=True, prog_bar=False
+                    )
 
         # Log learning rate
         if trainer.optimizers:
             optimizer = trainer.optimizers[0]
-            lr = optimizer.param_groups[0]['lr']
+            lr = optimizer.param_groups[0]["lr"]
 
             # Update current LR for dashboard
             self.current_lr = lr
 
-            pl_module.log('train/lr', lr, on_step=True, prog_bar=True)
+            pl_module.log("train/lr", lr, on_step=True, prog_bar=True)
 
         # Try to get MFU from logged metrics
-        if hasattr(pl_module, 'trainer') and hasattr(pl_module.trainer, 'logged_metrics'):
-            if 'train/mfu' in pl_module.trainer.logged_metrics:
-                self.mfu = pl_module.trainer.logged_metrics['train/mfu'].item()
+        if hasattr(pl_module, "trainer") and hasattr(
+            pl_module.trainer, "logged_metrics"
+        ):
+            if "train/mfu" in pl_module.trainer.logged_metrics:
+                self.mfu = pl_module.trainer.logged_metrics["train/mfu"].item()
 
         # Update live dashboard
         if self.live is not None and batch_idx % self.log_interval == 0:

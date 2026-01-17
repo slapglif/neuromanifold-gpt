@@ -9,8 +9,7 @@ This loader automatically detects the checkpoint format and loads accordingly.
 """
 
 import os
-from pathlib import Path
-from typing import Dict, Optional, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from loguru import logger
@@ -26,12 +25,12 @@ def _is_separated_checkpoint(checkpoint_path: str) -> bool:
         True if this is a separated checkpoint (has corresponding -model.pt file)
     """
     # Check if the path itself is a model.pt file
-    if checkpoint_path.endswith('-model.pt'):
+    if checkpoint_path.endswith("-model.pt"):
         return True
 
     # Check if there's a corresponding -model.pt file
     # E.g., checkpoint-step001000.pt -> checkpoint-step001000-model.pt
-    base_path = checkpoint_path.rsplit('.', 1)[0]
+    base_path = checkpoint_path.rsplit(".", 1)[0]
     model_path = f"{base_path}-model.pt"
     return os.path.exists(model_path)
 
@@ -50,13 +49,13 @@ def _find_separated_checkpoint_paths(checkpoint_path: str) -> Tuple[str, Optiona
         FileNotFoundError: If model.pt file cannot be found
     """
     # If given a -model.pt file directly, use it
-    if checkpoint_path.endswith('-model.pt'):
+    if checkpoint_path.endswith("-model.pt"):
         model_path = checkpoint_path
         # Derive optimizer path: checkpoint-step001000-model.pt -> checkpoint-step001000-optimizer.pt
-        optimizer_path = checkpoint_path.replace('-model.pt', '-optimizer.pt')
+        optimizer_path = checkpoint_path.replace("-model.pt", "-optimizer.pt")
     else:
         # Given a base path or unified checkpoint path
-        base_path = checkpoint_path.rsplit('.', 1)[0]
+        base_path = checkpoint_path.rsplit(".", 1)[0]
         model_path = f"{base_path}-model.pt"
         optimizer_path = f"{base_path}-optimizer.pt"
 
@@ -73,7 +72,7 @@ def _find_separated_checkpoint_paths(checkpoint_path: str) -> Tuple[str, Optiona
 
 def load_checkpoint(
     checkpoint_path: str,
-    device: str = 'cpu',
+    device: str = "cpu",
     load_optimizer: bool = True,
     weights_only: bool = False,
 ) -> Dict[str, Any]:
@@ -116,27 +115,37 @@ def load_checkpoint(
 
         # Load model state
         logger.debug(f"Loading model from {model_path}")
-        model_checkpoint = torch.load(model_path, map_location=device, weights_only=weights_only)
+        model_checkpoint = torch.load(
+            model_path, map_location=device, weights_only=weights_only
+        )
 
         # Build unified checkpoint structure
         checkpoint = {
-            'model': model_checkpoint.get('model_state_dict', {}),
-            'config': model_checkpoint.get('config'),
-            'global_step': model_checkpoint.get('global_step', 0),
+            "model": model_checkpoint.get("model_state_dict", {}),
+            "config": model_checkpoint.get("config"),
+            "global_step": model_checkpoint.get("global_step", 0),
         }
 
         # Load optimizer state if requested and available
         if load_optimizer and optimizer_path is not None:
             logger.debug(f"Loading optimizer from {optimizer_path}")
-            optimizer_checkpoint = torch.load(optimizer_path, map_location=device, weights_only=weights_only)
+            optimizer_checkpoint = torch.load(
+                optimizer_path, map_location=device, weights_only=weights_only
+            )
 
-            checkpoint['optimizer_states'] = optimizer_checkpoint.get('optimizer_states', [])
-            checkpoint['lr_scheduler_states'] = optimizer_checkpoint.get('lr_scheduler_states', [])
-            checkpoint['epoch'] = optimizer_checkpoint.get('epoch', 0)
+            checkpoint["optimizer_states"] = optimizer_checkpoint.get(
+                "optimizer_states", []
+            )
+            checkpoint["lr_scheduler_states"] = optimizer_checkpoint.get(
+                "lr_scheduler_states", []
+            )
+            checkpoint["epoch"] = optimizer_checkpoint.get("epoch", 0)
 
             logger.info("Loaded model and optimizer state from separated checkpoints")
         elif load_optimizer and optimizer_path is None:
-            logger.warning(f"Optimizer checkpoint not found: expected at {checkpoint_path.replace('-model.pt', '-optimizer.pt')}")
+            logger.warning(
+                f"Optimizer checkpoint not found: expected at {checkpoint_path.replace('-model.pt', '-optimizer.pt')}"
+            )
             logger.warning("Continuing with model-only checkpoint")
         else:
             logger.info("Loaded model-only checkpoint (optimizer state not requested)")
@@ -148,12 +157,14 @@ def load_checkpoint(
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=weights_only)
+        checkpoint = torch.load(
+            checkpoint_path, map_location=device, weights_only=weights_only
+        )
 
         # Ensure consistent structure
         # Some old checkpoints might have 'model_state_dict' instead of 'model'
-        if 'model_state_dict' in checkpoint and 'model' not in checkpoint:
-            checkpoint['model'] = checkpoint['model_state_dict']
+        if "model_state_dict" in checkpoint and "model" not in checkpoint:
+            checkpoint["model"] = checkpoint["model_state_dict"]
 
         logger.info("Loaded unified checkpoint (backward compatible format)")
 
@@ -162,7 +173,7 @@ def load_checkpoint(
 
 def load_model_only(
     checkpoint_path: str,
-    device: str = 'cpu',
+    device: str = "cpu",
     weights_only: bool = False,
 ) -> Dict[str, Any]:
     """Load only model weights, ignoring optimizer state.
@@ -201,12 +212,14 @@ def get_model_state_dict(checkpoint: Dict[str, Any]) -> Dict[str, torch.Tensor]:
     Raises:
         KeyError: If no model state found in checkpoint
     """
-    if 'model' in checkpoint:
-        return checkpoint['model']
-    elif 'model_state_dict' in checkpoint:
-        return checkpoint['model_state_dict']
+    if "model" in checkpoint:
+        return checkpoint["model"]
+    elif "model_state_dict" in checkpoint:
+        return checkpoint["model_state_dict"]
     else:
-        raise KeyError("No model state found in checkpoint (expected 'model' or 'model_state_dict' key)")
+        raise KeyError(
+            "No model state found in checkpoint (expected 'model' or 'model_state_dict' key)"
+        )
 
 
 def has_optimizer_state(checkpoint: Dict[str, Any]) -> bool:
@@ -219,9 +232,9 @@ def has_optimizer_state(checkpoint: Dict[str, Any]) -> bool:
         True if checkpoint has optimizer state
     """
     # Check for separated format
-    if 'optimizer_states' in checkpoint:
-        return len(checkpoint.get('optimizer_states', [])) > 0
+    if "optimizer_states" in checkpoint:
+        return len(checkpoint.get("optimizer_states", [])) > 0
 
     # Check for unified format (various possible keys)
-    unified_keys = ['optimizer', 'optimizer_state_dict', 'optimizer_state']
+    unified_keys = ["optimizer", "optimizer_state_dict", "optimizer_state"]
     return any(key in checkpoint for key in unified_keys)

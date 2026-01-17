@@ -10,6 +10,13 @@ including settings for:
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class AttentionBackend(str, Enum):
+    STANDARD = "standard"
+    FHN = "fhn"
+    FLASH = "flash"
 
 
 @dataclass
@@ -67,11 +74,11 @@ class NeuroManifoldConfig:
     block_size: int = 1024
 
     # Position embedding type: 'learned', 'ramanujan', 'rotary', or 'alibi'
-    pos_emb_type: str = 'learned'
+    pos_emb_type: str = "learned"
 
     use_sdr: bool = False  # Dense embeddings (faster, less memory) - SDR disabled
     sdr_size: int = 2048
-    sdr_sparsity: float = 0.02 # Restored to 2% sparsity for stability
+    sdr_sparsity: float = 0.02  # Restored to 2% sparsity for stability
     sdr_n_active: int = field(init=False)  # Computed in __post_init__
     sdr_embed_dim: int = 256
     sdr_context_size: int = 5
@@ -100,12 +107,16 @@ class NeuroManifoldConfig:
     use_fhn_imex: bool = True  # Use semi-implicit IMEX scheme
     use_fhn_partitioning: bool = True  # Enable energy balancing for stability
     use_fhn_fused: bool = False  # Disabled (Using JIT instead)
-    use_fhn_parallel: bool = True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
+    use_fhn_parallel: bool = (
+        True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
+    )
 
     # Chunked attention for memory-efficient long sequences
     use_fhn_chunked: bool = True  # Enable chunked attention for reduced memory usage
-    fhn_chunk_size: int = 512  # Chunk size for processing long sequences (trade-off: memory vs speed)
-    
+    fhn_chunk_size: int = (
+        512  # Chunk size for processing long sequences (trade-off: memory vs speed)
+    )
+
     # Spectral regularization
     ortho_weight: float = 0.01
 
@@ -126,15 +137,23 @@ class NeuroManifoldConfig:
     use_full_mhc: bool = True  # Use full multi-stream mHC (vs simplified)
     mhc_n_streams: int = 2  # Number of parallel streams for full mHC (2 for efficiency)
     mhc_residual_weight: float = 0.9  # Initial identity mapping bias
-    mhc_sinkhorn_iters: int = 5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
+    mhc_sinkhorn_iters: int = (
+        5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
+    )
     mhc_sinkhorn_tau: float = 0.05  # Sinkhorn temperature for smoothness
-    use_mhc_fused: bool = field(init=False)  # Auto-enabled when CUDA available (Triton-optimized fused mHC)
+    use_mhc_fused: bool = field(
+        init=False
+    )  # Auto-enabled when CUDA available (Triton-optimized fused mHC)
 
     # Attention configuration
     attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"
     use_knot_attention: bool = False  # Enable Knot-Theoretic attention
-    use_kaufmann_attention: bool = False  # Enable Kaufmann Trifecta Attention (The Endgame)
-    use_qk_norm: bool = True  # Qwen3/GLM-4.5: RMSNorm on Q,K prevents attention logit explosion
+    use_kaufmann_attention: bool = (
+        False  # Enable Kaufmann Trifecta Attention (The Endgame)
+    )
+    use_qk_norm: bool = (
+        True  # Qwen3/GLM-4.5: RMSNorm on Q,K prevents attention logit explosion
+    )
 
     # KAN configuration
     # FFN/MLP uses FasterKAN (RSWAF basis) for speed
@@ -150,7 +169,9 @@ class NeuroManifoldConfig:
     # Applies to: manifold projection, spectral decomposition, attention projections
     # Skips: lm_head (vocab output), embeddings
     # WARNING: This causes parameter bloat - disable for efficiency
-    use_kan_everywhere: bool = False  # Keep Linear for projections, FasterKAN only for FFN
+    use_kan_everywhere: bool = (
+        False  # Keep Linear for projections, FasterKAN only for FFN
+    )
 
     # Model architecture
     n_layer: int = 6
@@ -186,8 +207,12 @@ class NeuroManifoldConfig:
     # Multi-Token Prediction (MTP) - DeepSeek/Meta style
     # Predicting multiple future tokens improves representation learning
     use_mtp: bool = True  # Enable multi-token prediction
-    mtp_n_predict: int = 4  # Number of future tokens to predict (1=standard, 4=recommended)
-    mtp_loss_weight: float = 0.1  # Weight for auxiliary MTP losses (main loss weight=1.0)
+    mtp_n_predict: int = (
+        4  # Number of future tokens to predict (1=standard, 4=recommended)
+    )
+    mtp_loss_weight: float = (
+        0.1  # Weight for auxiliary MTP losses (main loss weight=1.0)
+    )
 
     # MLA (Multi-Head Latent Attention) - DeepSeek style KV compression
     # Compresses KV cache to low-dimensional latent space for 8x memory reduction
@@ -237,7 +262,9 @@ class NeuroManifoldConfig:
     weight_decay: float = 0.1
     beta1: float = 0.9
     beta2: float = 0.95  # MiniMax: lower than default 0.999 for faster adaptation
-    optimizer_eps: float = 1e-15  # MiniMax critical: handles tiny gradients (default 1e-8 masks them)
+    optimizer_eps: float = (
+        1e-15  # MiniMax critical: handles tiny gradients (default 1e-8 masks them)
+    )
     grad_clip: float = 1.0
     early_stopping_patience: int = 5
     use_perplexity_stopping: bool = True
@@ -282,6 +309,7 @@ class NeuroManifoldConfig:
         # Auto-enable fused mHC when CUDA is available for performance
         try:
             import torch
+
             self.use_mhc_fused = torch.cuda.is_available()
         except ImportError:
             self.use_mhc_fused = False
@@ -292,6 +320,7 @@ class NeuroManifoldConfig:
         # Validate n_embd is divisible by n_heads
         if self.n_embd % self.n_heads != 0:
             from neuromanifold_gpt.errors import ConfigurationError
+
             raise ConfigurationError(
                 f"n_embd ({self.n_embd}) must be divisible by n_heads ({self.n_heads})"
             )

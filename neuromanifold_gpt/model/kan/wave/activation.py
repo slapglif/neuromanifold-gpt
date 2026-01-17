@@ -2,10 +2,7 @@ import torch
 
 
 @torch.jit.script
-def wavekan_activation(
-    x_scaled: torch.Tensor,
-    wavelet_type: str
-) -> torch.Tensor:
+def wavekan_activation(x_scaled: torch.Tensor, wavelet_type: str) -> torch.Tensor:
     """
     JIT-compiled wavelet activation function.
     """
@@ -28,6 +25,6 @@ def wavekan_activation(
         wavelet = -x_scaled * torch.exp(-0.5 * t2)
     else:
         # Default/Fallback (should not happen if checked before)
-        wavelet = x_scaled # Identity placeholder
+        wavelet = x_scaled  # Identity placeholder
 
     return wavelet

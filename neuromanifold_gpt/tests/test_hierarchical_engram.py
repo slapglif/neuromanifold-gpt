@@ -2,6 +2,7 @@
 """Tests for HierarchicalEngramMemory - 3-tier cache architecture."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 
 
@@ -28,8 +29,12 @@ def test_hierarchical_store_retrieve():
 def test_hierarchical_total_capacity():
     """Should track total memories across all tiers."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=5, l2_capacity=10, l3_capacity=15
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=5,
+        l2_capacity=10,
+        l3_capacity=15,
     )
 
     # Total capacity should be sum of all tiers
@@ -60,14 +65,18 @@ def test_hierarchical_empty_retrieval():
 def test_hierarchical_clear():
     """Should clear all memories across all tiers."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=5, l2_capacity=10, l3_capacity=15
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=5,
+        l2_capacity=10,
+        l3_capacity=15,
     )
 
     # Store some items
     for i in range(8):
         sdr = torch.zeros(2048)
-        sdr[i:i+40] = 1
+        sdr[i : i + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     assert len(memory) > 0
@@ -83,14 +92,18 @@ def test_hierarchical_clear():
 def test_hierarchical_get_stats():
     """Should return statistics about memory usage."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=5, l2_capacity=10, l3_capacity=15
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=5,
+        l2_capacity=10,
+        l3_capacity=15,
     )
 
     # Store 3 items (all should be in L1)
     for i in range(3):
         sdr = torch.zeros(2048)
-        sdr[i:i+40] = 1
+        sdr[i : i + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     stats = memory.get_stats()
@@ -190,7 +203,7 @@ def test_store_batch_correctness():
     contents = torch.randn(batch_size, 384)
 
     for i in range(batch_size):
-        sdrs[i, i*50:(i*50)+40] = 1  # Non-overlapping SDRs
+        sdrs[i, i * 50 : (i * 50) + 40] = 1  # Non-overlapping SDRs
 
     # Store batch
     memory.store_batch(sdrs, contents)
@@ -221,7 +234,7 @@ def test_store_batch_performance():
     contents = torch.randn(batch_size, 384)
 
     for i in range(batch_size):
-        sdrs[i, (i*20) % 2000:(i*20) % 2000 + 40] = 1
+        sdrs[i, (i * 20) % 2000 : (i * 20) % 2000 + 40] = 1
 
     # Store batch
     memory.store_batch(sdrs, contents)
@@ -240,8 +253,12 @@ def test_store_batch_performance():
 def test_store_batch_with_l1_overflow():
     """Batch store should handle L1 overflow with proper tier promotion."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=5, l2_capacity=10, l3_capacity=20
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=5,
+        l2_capacity=10,
+        l3_capacity=20,
     )
 
     # Store batch larger than L1 capacity
@@ -250,7 +267,7 @@ def test_store_batch_with_l1_overflow():
     contents = torch.randn(batch_size, 384)
 
     for i in range(batch_size):
-        sdrs[i, i*50:(i*50)+40] = 1
+        sdrs[i, i * 50 : (i * 50) + 40] = 1
 
     memory.store_batch(sdrs, contents)
 
@@ -270,14 +287,18 @@ def test_store_batch_with_l1_overflow():
 def test_store_batch_with_l2_overflow():
     """Batch store should cascade promotions through L2 to L3."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=3, l2_capacity=5, l3_capacity=20
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=3,
+        l2_capacity=5,
+        l3_capacity=20,
     )
 
     # First, fill L1 and L2
     for i in range(8):
         sdr = torch.zeros(2048)
-        sdr[i*50:(i*50)+40] = 1
+        sdr[i * 50 : (i * 50) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     # Now L1 has 3, L2 has 5
@@ -290,7 +311,7 @@ def test_store_batch_with_l2_overflow():
     contents = torch.randn(batch_size, 384)
 
     for i in range(batch_size):
-        sdrs[i, (i+10)*50:((i+10)*50)+40] = 1
+        sdrs[i, (i + 10) * 50 : ((i + 10) * 50) + 40] = 1
 
     memory.store_batch(sdrs, contents)
 
@@ -302,9 +323,7 @@ def test_store_batch_with_l2_overflow():
 
 def test_store_batch_empty():
     """Should handle empty batch gracefully."""
-    memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384
-    )
+    memory = HierarchicalEngramMemory(sdr_size=2048, n_active=40, content_dim=384)
 
     # Store empty batch
     sdrs = torch.zeros(0, 2048)
@@ -318,9 +337,7 @@ def test_store_batch_empty():
 
 def test_store_batch_single_item():
     """Should handle single-item batch correctly."""
-    memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384
-    )
+    memory = HierarchicalEngramMemory(sdr_size=2048, n_active=40, content_dim=384)
 
     # Store single-item batch
     sdrs = torch.zeros(1, 2048)
@@ -342,8 +359,12 @@ def test_store_batch_single_item():
 def test_store_batch_equivalence():
     """store_batch() should store all items with proper tier distribution."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=10, l2_capacity=20, l3_capacity=30
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=10,
+        l2_capacity=20,
+        l3_capacity=30,
     )
 
     # Create test data - use non-overlapping SDRs
@@ -354,7 +375,7 @@ def test_store_batch_equivalence():
     # Ensure SDRs don't overlap by using distinct regions
     for i in range(batch_size):
         start_pos = i * 100  # 100 bits apart to avoid any overlap
-        sdrs[i, start_pos:start_pos+40] = 1
+        sdrs[i, start_pos : start_pos + 40] = 1
 
     # Store as batch
     memory.store_batch(sdrs, contents)
@@ -381,14 +402,18 @@ def test_store_batch_equivalence():
 def test_tier_promotion_l1_to_l2():
     """Items should be promoted from L1 to L2 when L1 is full."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=3, l2_capacity=10, l3_capacity=20
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=3,
+        l2_capacity=10,
+        l3_capacity=20,
     )
 
     # Store 3 items to fill L1
     for i in range(3):
         sdr = torch.zeros(2048)
-        sdr[i*50:(i*50)+40] = 1
+        sdr[i * 50 : (i * 50) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     assert len(memory.l1) == 3
@@ -408,14 +433,18 @@ def test_tier_promotion_l1_to_l2():
 def test_tier_promotion_l2_to_l3():
     """Items should be promoted from L2 to L3 when both L1 and L2 are full."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=2, l2_capacity=3, l3_capacity=20
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=2,
+        l2_capacity=3,
+        l3_capacity=20,
     )
 
     # Fill L1 and L2 completely (2 + 3 = 5 items)
     for i in range(5):
         sdr = torch.zeros(2048)
-        sdr[i*50:(i*50)+40] = 1
+        sdr[i * 50 : (i * 50) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     assert len(memory.l1) == 2
@@ -435,14 +464,18 @@ def test_tier_promotion_l2_to_l3():
 def test_tier_promotion_cascade():
     """Should cascade promotions through all tiers correctly."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=2, l2_capacity=2, l3_capacity=10
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=2,
+        l2_capacity=2,
+        l3_capacity=10,
     )
 
     # Store items and verify cascade behavior
     for i in range(7):
         sdr = torch.zeros(2048)
-        sdr[i*100:(i*100)+40] = 1
+        sdr[i * 100 : (i * 100) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     # All tiers should be populated
@@ -457,14 +490,18 @@ def test_tier_promotion_cascade():
 def test_capacity_l1_limit():
     """L1 should enforce capacity limit."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=5, l2_capacity=10, l3_capacity=15
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=5,
+        l2_capacity=10,
+        l3_capacity=15,
     )
 
     # Store more than L1 capacity
     for i in range(10):
         sdr = torch.zeros(2048)
-        sdr[i*50:(i*50)+40] = 1
+        sdr[i * 50 : (i * 50) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     # L1 should be at its capacity limit
@@ -477,14 +514,18 @@ def test_capacity_l1_limit():
 def test_capacity_l2_limit():
     """L2 should enforce capacity limit."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=3, l2_capacity=5, l3_capacity=20
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=3,
+        l2_capacity=5,
+        l3_capacity=20,
     )
 
     # Store more than L1+L2 capacity
     for i in range(12):
         sdr = torch.zeros(2048)
-        sdr[i*50:(i*50)+40] = 1
+        sdr[i * 50 : (i * 50) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     # L1 and L2 should be at capacity
@@ -498,14 +539,18 @@ def test_capacity_l2_limit():
 def test_capacity_l3_limit():
     """L3 should enforce capacity limit and evict oldest items."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=2, l2_capacity=3, l3_capacity=5
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=2,
+        l2_capacity=3,
+        l3_capacity=5,
     )
 
     # Store more than total capacity
     for i in range(15):
         sdr = torch.zeros(2048)
-        sdr[i*50:(i*50)+40] = 1
+        sdr[i * 50 : (i * 50) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     # Each tier should be at capacity
@@ -520,14 +565,18 @@ def test_capacity_l3_limit():
 def test_capacity_total_limit():
     """Total memory should not exceed sum of all tier capacities."""
     memory = HierarchicalEngramMemory(
-        sdr_size=2048, n_active=40, content_dim=384,
-        l1_capacity=5, l2_capacity=10, l3_capacity=15
+        sdr_size=2048,
+        n_active=40,
+        content_dim=384,
+        l1_capacity=5,
+        l2_capacity=10,
+        l3_capacity=15,
     )
 
     # Store many more items than total capacity
     for i in range(50):
         sdr = torch.zeros(2048)
-        sdr[i*40:(i*40)+40] = 1
+        sdr[i * 40 : (i * 40) + 40] = 1
         memory.store(sdr, torch.randn(384))
 
     # Total should be capped at sum of capacities

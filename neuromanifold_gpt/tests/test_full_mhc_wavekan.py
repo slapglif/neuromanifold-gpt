@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Test full mHC + WaveKAN + FHN combination (no SDR)."""
 
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 from loguru import logger
-import sys
-from pathlib import Path
 
 # Configure loguru
 logger.remove()
@@ -38,8 +39,8 @@ def load_shakespeare():
 def get_batch(data, block_size, batch_size, device):
     """Get random batch."""
     ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i:i+block_size] for i in ix])
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    x = torch.stack([data[i : i + block_size] for i in ix])
+    y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
     return x.to(device), y.to(device)
 
 
@@ -48,12 +49,16 @@ def generate(model, idx, max_new_tokens, temperature=0.8, top_k=40):
     """Generate text."""
     model.eval()
     for _ in range(max_new_tokens):
-        idx_cond = idx if idx.size(1) <= model.config.block_size else idx[:, -model.config.block_size:]
+        idx_cond = (
+            idx
+            if idx.size(1) <= model.config.block_size
+            else idx[:, -model.config.block_size :]
+        )
         logits, _, _ = model(idx_cond)
         logits = logits[:, -1, :] / temperature
         if top_k is not None:
             v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-            logits[logits < v[:, [-1]]] = float('-inf')
+            logits[logits < v[:, [-1]]] = float("-inf")
         probs = F.softmax(logits, dim=-1)
         idx_next = torch.multinomial(probs, num_samples=1)
         idx = torch.cat([idx, idx_next], dim=1)
@@ -98,7 +103,9 @@ def main():
         fhn_tau=12.5,
     )
 
-    logger.info(f"Config: mHC={config.use_mhc}, full_mhc={config.use_full_mhc}, streams={config.mhc_n_streams}")
+    logger.info(
+        f"Config: mHC={config.use_mhc}, full_mhc={config.use_full_mhc}, streams={config.mhc_n_streams}"
+    )
     logger.info(f"KAN: type={config.kan_type}, wavelet={config.kan_wavelet}")
     logger.info(f"SDR: {config.use_sdr}")
 
@@ -109,9 +116,7 @@ def main():
 
     # Optimizer
     optimizer = model.configure_optimizers(
-        weight_decay=0.1,
-        learning_rate=3e-4,
-        device_type=device
+        weight_decay=0.1, learning_rate=3e-4, device_type=device
     )
 
     # Training (smaller batch for memory)
@@ -123,6 +128,7 @@ def main():
     model.train()
 
     import time
+
     start_time = time.time()
 
     for it in range(n_iters):
@@ -138,16 +144,18 @@ def main():
         if it % log_interval == 0 or it == n_iters - 1:
             # Generate sample
             model.eval()
-            start_tokens = torch.tensor([[stoi['\n']]], dtype=torch.long, device=device)
+            start_tokens = torch.tensor([[stoi["\n"]]], dtype=torch.long, device=device)
             generated = generate(model, start_tokens, 50, temperature=0.8, top_k=40)
-            sample = ''.join([itos[i.item()] for i in generated[0]])
+            sample = "".join([itos[i.item()] for i in generated[0]])
             model.train()
 
             # Count unique chars in sample
             unique_chars = len(set(sample.strip()))
 
-            ortho_loss = info.get('ortho_loss', torch.tensor(0.0))
-            logger.info(f"iter {it}: loss={loss.item():.4f}, ortho={ortho_loss.item():.4f}, unique_chars={unique_chars}")
+            ortho_loss = info.get("ortho_loss", torch.tensor(0.0))
+            logger.info(
+                f"iter {it}: loss={loss.item():.4f}, ortho={ortho_loss.item():.4f}, unique_chars={unique_chars}"
+            )
             logger.info(f"  Sample: {repr(sample[:60])}")
 
     elapsed = time.time() - start_time
@@ -158,9 +166,11 @@ def main():
     model.eval()
     prompts = ["\nKING:", "\nTo be", "\nO "]
     for prompt in prompts:
-        start_tokens = torch.tensor([[stoi[c] for c in prompt]], dtype=torch.long, device=device)
+        start_tokens = torch.tensor(
+            [[stoi[c] for c in prompt]], dtype=torch.long, device=device
+        )
         generated = generate(model, start_tokens, 100, temperature=0.8, top_k=40)
-        sample = ''.join([itos[i.item()] for i in generated[0]])
+        sample = "".join([itos[i.item()] for i in generated[0]])
         logger.info(f"Prompt: {repr(prompt)}")
         logger.info(f"Output: {repr(sample)}\n")
 

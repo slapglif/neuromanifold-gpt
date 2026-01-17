@@ -1,8 +1,9 @@
 import pytest
 import torch
+
 from neuromanifold_gpt.model.sampling.resolution_invariant import (
-    ResolutionInvariantSampler,
     AdaptiveRateEncoder,
+    ResolutionInvariantSampler,
 )
 
 

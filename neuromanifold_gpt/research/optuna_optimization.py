@@ -10,27 +10,26 @@ Provides automated hyperparameter tuning with:
 
 import os
 import sys
-from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
-import torch
 import optuna
-from optuna.integration import PyTorchLightningPruningCallback
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import WandbLogger
+import torch
 from loguru import logger
+from optuna.integration import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
 
 # Configure loguru
 logger.remove()
 logger.add(sys.stderr, format="{time:HH:mm:ss} | {level} | {message}")
 
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.training.callbacks import MFUCallback
 from neuromanifold_gpt.training.config import TrainConfig
 from neuromanifold_gpt.training.data_modules import StreamingDataModule, TextDataModule
 from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
-from neuromanifold_gpt.training.callbacks import MFUCallback
 
 
 @dataclass
@@ -48,6 +47,7 @@ class OptunaConfig:
         load_if_exists: Load existing study if it exists
         direction: Optimization direction ("minimize" or "maximize")
     """
+
     n_trials: int = 20
     study_name: str = "neuromanifold_optuna"
     storage: Optional[str] = None
@@ -148,15 +148,9 @@ class OptunaTuner:
             Dictionary of suggested hyperparameters
         """
         hyperparams = {
-            "learning_rate": trial.suggest_float(
-                "learning_rate", 1e-5, 1e-3, log=True
-            ),
-            "weight_decay": trial.suggest_float(
-                "weight_decay", 0.0, 0.5
-            ),
-            "warmup_iters": trial.suggest_int(
-                "warmup_iters", 50, 500
-            ),
+            "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
+            "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.5),
+            "warmup_iters": trial.suggest_int("warmup_iters", 50, 500),
         }
 
         return hyperparams
@@ -175,14 +169,13 @@ class OptunaTuner:
 
         # Create config copy with trial-specific values
         from dataclasses import replace
+
         config = replace(
             self.base_config,
             learning_rate=hyperparams["learning_rate"],
             weight_decay=hyperparams["weight_decay"],
             warmup_iters=hyperparams["warmup_iters"],
-            out_dir=os.path.join(
-                self.base_config.out_dir, f"trial_{trial.number}"
-            ),
+            out_dir=os.path.join(self.base_config.out_dir, f"trial_{trial.number}"),
             wandb_log=self.wandb_log,
             wandb_project=self.wandb_project,
             wandb_run_name=f"trial_{trial.number}",
@@ -356,10 +349,12 @@ class OptunaTuner:
 
             # Log final validation loss to WandB
             if self.wandb_log and pl_logger is not None:
-                pl_logger.experiment.log({
-                    "trial/final_val_loss": final_val_loss,
-                    "trial/number": trial.number,
-                })
+                pl_logger.experiment.log(
+                    {
+                        "trial/final_val_loss": final_val_loss,
+                        "trial/number": trial.number,
+                    }
+                )
 
             return final_val_loss
 
@@ -416,29 +411,38 @@ class OptunaTuner:
         complete_trials = study.get_trials(
             deepcopy=False, states=[optuna.trial.TrialState.COMPLETE]
         )
-        logger.info(f"\nStatistics:")
+        logger.info("\nStatistics:")
         logger.info(f"  Complete trials: {len(complete_trials)}")
         logger.info(f"  Pruned trials: {len(pruned_trials)}")
-        logger.info(f"  Failed trials: {len(study.trials) - len(complete_trials) - len(pruned_trials)}")
+        logger.info(
+            f"  Failed trials: {len(study.trials) - len(complete_trials) - len(pruned_trials)}"
+        )
 
         # Log optimization summary to WandB
         if self.wandb_log:
             import wandb
+
             if wandb.run is not None:
-                wandb.log({
-                    "optuna/best_trial_number": study.best_trial.number,
-                    "optuna/best_val_loss": self.best_value,
-                    "optuna/n_complete_trials": len(complete_trials),
-                    "optuna/n_pruned_trials": len(pruned_trials),
-                    "optuna/n_failed_trials": len(study.trials) - len(complete_trials) - len(pruned_trials),
-                })
+                wandb.log(
+                    {
+                        "optuna/best_trial_number": study.best_trial.number,
+                        "optuna/best_val_loss": self.best_value,
+                        "optuna/n_complete_trials": len(complete_trials),
+                        "optuna/n_pruned_trials": len(pruned_trials),
+                        "optuna/n_failed_trials": len(study.trials)
+                        - len(complete_trials)
+                        - len(pruned_trials),
+                    }
+                )
                 # Log best hyperparameters
                 for key, value in self.best_params.items():
                     wandb.log({f"optuna/best_{key}": value})
 
         return study
 
-    def save_best_config(self, output_path: str = "config/optimized_hyperparams.py") -> None:
+    def save_best_config(
+        self, output_path: str = "config/optimized_hyperparams.py"
+    ) -> None:
         """Save best hyperparameters to config file.
 
         Args:
@@ -492,6 +496,7 @@ def get_config() -> TrainConfig:
 def import_datetime_now():
     """Helper to get current datetime string."""
     from datetime import datetime
+
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -503,36 +508,38 @@ def main():
         description="Optuna hyperparameter optimization for NeuroManifoldGPT"
     )
     parser.add_argument(
-        "--n-trials", type=int, default=20,
-        help="Number of optimization trials"
+        "--n-trials", type=int, default=20, help="Number of optimization trials"
     )
     parser.add_argument(
-        "--dataset", type=str, default="shakespeare_char",
-        help="Dataset name"
+        "--dataset", type=str, default="shakespeare_char", help="Dataset name"
     )
     parser.add_argument(
-        "--max-iters", type=int, default=1000,
-        help="Maximum training iterations per trial"
+        "--max-iters",
+        type=int,
+        default=1000,
+        help="Maximum training iterations per trial",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=32,
-        help="Training batch size"
+        "--batch-size", type=int, default=32, help="Training batch size"
     )
     parser.add_argument(
-        "--study-name", type=str, default="neuromanifold_optuna",
-        help="Optuna study name"
+        "--study-name",
+        type=str,
+        default="neuromanifold_optuna",
+        help="Optuna study name",
+    )
+    parser.add_argument("--wandb-log", action="store_true", help="Enable WandB logging")
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default="neuromanifold-optuna",
+        help="WandB project name",
     )
     parser.add_argument(
-        "--wandb-log", action="store_true",
-        help="Enable WandB logging"
-    )
-    parser.add_argument(
-        "--wandb-project", type=str, default="neuromanifold-optuna",
-        help="WandB project name"
-    )
-    parser.add_argument(
-        "--output-config", type=str, default="config/optimized_hyperparams.py",
-        help="Path to save best config"
+        "--output-config",
+        type=str,
+        default="config/optimized_hyperparams.py",
+        help="Path to save best config",
     )
 
     args = parser.parse_args()
@@ -563,7 +570,7 @@ def main():
     )
 
     # Run optimization
-    study = tuner.optimize()
+    tuner.optimize()
 
     # Save best config
     tuner.save_best_config(args.output_config)

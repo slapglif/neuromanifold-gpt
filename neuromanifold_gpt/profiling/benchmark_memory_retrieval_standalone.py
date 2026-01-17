@@ -11,6 +11,7 @@ For production profiling that uses shared utilities, see benchmark_memory_retrie
 """
 
 import time
+
 import torch
 import torch.nn as nn
 
@@ -56,7 +57,9 @@ class SDREngramMemory(nn.Module):
 
         self.sdr_bank.index_copy_(0, ptr, sdr)
         self.content_bank.index_copy_(0, ptr, content)
-        self.valid_mask.index_fill_(0, ptr, torch.tensor(True, device=self.valid_mask.device))
+        self.valid_mask.index_fill_(
+            0, ptr, torch.tensor(True, device=self.valid_mask.device)
+        )
 
         next_ptr = (self.write_ptr + 1) % self.capacity
         self.write_ptr.copy_(next_ptr)
@@ -97,7 +100,9 @@ class SDREngramMemory(nn.Module):
 
         if self.count == 0 or B == 0:
             return (
-                torch.zeros(B, top_k, self.content_dim, device=self.content_bank.device),
+                torch.zeros(
+                    B, top_k, self.content_dim, device=self.content_bank.device
+                ),
                 torch.zeros(B, top_k, device=self.content_bank.device),
             )
 
@@ -128,14 +133,16 @@ class SDREngramMemory(nn.Module):
 
         if k < top_k:
             pad_size = top_k - k
-            contents = torch.cat([
-                contents,
-                torch.zeros(B, pad_size, self.content_dim, device=contents.device)
-            ], dim=1)
-            top_sim = torch.cat([
-                top_sim,
-                torch.zeros(B, pad_size, device=top_sim.device)
-            ], dim=1)
+            contents = torch.cat(
+                [
+                    contents,
+                    torch.zeros(B, pad_size, self.content_dim, device=contents.device),
+                ],
+                dim=1,
+            )
+            top_sim = torch.cat(
+                [top_sim, torch.zeros(B, pad_size, device=top_sim.device)], dim=1
+            )
 
         return contents, top_sim
 
@@ -150,7 +157,9 @@ def populate_memory(memory, n_items):
         memory.store(sdr, content)
 
 
-def benchmark_loop_based(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS):
+def benchmark_loop_based(
+    memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS
+):
     """Benchmark the old loop-based approach (calling retrieve() B times)."""
     B = query_sdrs.shape[0]
 
@@ -177,12 +186,14 @@ def benchmark_loop_based(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_i
         times.append((time.perf_counter() - start) * 1000)
 
     mean_ms = sum(times) / len(times)
-    std_ms = (sum((t - mean_ms)**2 for t in times) / len(times)) ** 0.5
+    std_ms = (sum((t - mean_ms) ** 2 for t in times) / len(times)) ** 0.5
 
     return mean_ms, std_ms, min(times), max(times)
 
 
-def benchmark_vectorized(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS):
+def benchmark_vectorized(
+    memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS
+):
     """Benchmark the new vectorized approach (calling retrieve_batch() once)."""
     # Warmup
     for _ in range(n_warmup):
@@ -205,14 +216,14 @@ def benchmark_vectorized(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_i
         times.append((time.perf_counter() - start) * 1000)
 
     mean_ms = sum(times) / len(times)
-    std_ms = (sum((t - mean_ms)**2 for t in times) / len(times)) ** 0.5
+    std_ms = (sum((t - mean_ms) ** 2 for t in times) / len(times)) ** 0.5
 
     return mean_ms, std_ms, min(times), max(times)
 
 
 def main():
-    print(f"\nMemory Retrieval Benchmark: Loop vs Vectorized")
-    print(f"=" * 60)
+    print("\nMemory Retrieval Benchmark: Loop vs Vectorized")
+    print("=" * 60)
     print(f"Device: {DEVICE}")
     if DEVICE == "cuda":
         print(f"GPU: {torch.cuda.get_device_name()}")
@@ -235,7 +246,9 @@ def main():
 
     # Benchmark across different batch sizes
     print("Running benchmarks...")
-    print(f"{'Batch':>5} | {'Loop (ms)':>15} | {'Vec (ms)':>15} | {'Speedup':>10} | Status")
+    print(
+        f"{'Batch':>5} | {'Loop (ms)':>15} | {'Vec (ms)':>15} | {'Speedup':>10} | Status"
+    )
     print("-" * 70)
 
     results = []
@@ -263,14 +276,18 @@ def main():
         else:
             status = "⚠ Slow"
 
-        print(f"{batch_size:5d} | {loop_mean:7.3f} ± {loop_std:5.3f} | {vec_mean:7.3f} ± {vec_std:5.3f} | {speedup:8.1f}x | {status}")
+        print(
+            f"{batch_size:5d} | {loop_mean:7.3f} ± {loop_std:5.3f} | {vec_mean:7.3f} ± {vec_std:5.3f} | {speedup:8.1f}x | {status}"
+        )
 
-        results.append({
-            "batch_size": batch_size,
-            "loop_mean": loop_mean,
-            "vec_mean": vec_mean,
-            "speedup": speedup,
-        })
+        results.append(
+            {
+                "batch_size": batch_size,
+                "loop_mean": loop_mean,
+                "vec_mean": vec_mean,
+                "speedup": speedup,
+            }
+        )
 
     # Analysis
     print("\n" + "=" * 60)
@@ -279,7 +296,9 @@ def main():
 
     # Find peak speedup
     max_speedup_result = max(results, key=lambda x: x["speedup"])
-    print(f"\nPeak Speedup: {max_speedup_result['speedup']:.1f}x at batch size {max_speedup_result['batch_size']}")
+    print(
+        f"\nPeak Speedup: {max_speedup_result['speedup']:.1f}x at batch size {max_speedup_result['batch_size']}"
+    )
 
     # Speedup trend
     print("\nSpeedup Trend:")
@@ -287,22 +306,30 @@ def main():
         r_small = results[i]
         r_large = results[i + 1]
         increase = r_large["speedup"] - r_small["speedup"]
-        print(f"  B={r_small['batch_size']:2d} -> B={r_large['batch_size']:2d}: {r_small['speedup']:.1f}x -> {r_large['speedup']:.1f}x (+{increase:.1f}x)")
+        print(
+            f"  B={r_small['batch_size']:2d} -> B={r_large['batch_size']:2d}: {r_small['speedup']:.1f}x -> {r_large['speedup']:.1f}x (+{increase:.1f}x)"
+        )
 
     # Training impact
     print("\nImpact on Model Training (B=64):")
     train_result = next(r for r in results if r["batch_size"] == 64)
     saved_per_iter = train_result["loop_mean"] - train_result["vec_mean"]
-    print(f"  Per iteration: saves {saved_per_iter:.2f} ms ({train_result['speedup']:.1f}x speedup)")
+    print(
+        f"  Per iteration: saves {saved_per_iter:.2f} ms ({train_result['speedup']:.1f}x speedup)"
+    )
     print(f"  Per 1000 iterations: saves {saved_per_iter * 1000 / 1000:.1f} seconds")
     print(f"  Per epoch (5000 iters): saves {saved_per_iter * 5000 / 1000:.1f} seconds")
 
     # Success criteria
     print("\nTarget Achievement:")
     if max_speedup_result["speedup"] >= 10:
-        print(f"  ✓ SUCCESS: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)")
+        print(
+            f"  ✓ SUCCESS: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)"
+        )
     else:
-        print(f"  ✗ BELOW TARGET: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)")
+        print(
+            f"  ✗ BELOW TARGET: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)"
+        )
 
     # Key insight
     print("\nKey Optimization:")

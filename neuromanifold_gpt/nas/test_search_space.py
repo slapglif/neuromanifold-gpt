@@ -9,7 +9,8 @@ Tests cover:
 """
 
 import pytest
-from neuromanifold_gpt.nas.search_space import SearchSpace, ArchitectureConfig
+
+from neuromanifold_gpt.nas.search_space import ArchitectureConfig, SearchSpace
 
 
 class TestArchitectureConfigValidation:
@@ -103,8 +104,9 @@ class TestSearchSpaceSampling:
         space = SearchSpace()
         for _ in range(20):
             arch = space.sample()
-            assert arch.n_embd % arch.n_heads == 0, \
-                f"n_embd={arch.n_embd} not divisible by n_heads={arch.n_heads}"
+            assert (
+                arch.n_embd % arch.n_heads == 0
+            ), f"n_embd={arch.n_embd} not divisible by n_heads={arch.n_heads}"
 
     def test_sample_produces_variety(self):
         """Test that sampling produces different architectures."""
@@ -113,18 +115,19 @@ class TestSearchSpaceSampling:
         # Convert to dicts for comparison
         dicts = [arch.to_dict() for arch in architectures]
         # Check that not all are identical
-        assert len(set(tuple(sorted(d.items())) for d in dicts)) > 1, \
-            "All sampled architectures are identical"
+        assert (
+            len(set(tuple(sorted(d.items())) for d in dicts)) > 1
+        ), "All sampled architectures are identical"
 
     def test_sdr_parameters_in_sample(self):
         """Test that sampled architectures include SDR parameters."""
         space = SearchSpace()
         arch = space.sample()
-        assert hasattr(arch, 'use_sdr')
-        assert hasattr(arch, 'sdr_size')
-        assert hasattr(arch, 'sdr_sparsity')
-        assert hasattr(arch, 'engram_capacity')
-        assert hasattr(arch, 'engram_threshold')
+        assert hasattr(arch, "use_sdr")
+        assert hasattr(arch, "sdr_size")
+        assert hasattr(arch, "sdr_sparsity")
+        assert hasattr(arch, "engram_capacity")
+        assert hasattr(arch, "engram_threshold")
 
 
 class TestConfigSerialization:
@@ -162,18 +165,25 @@ class TestConfigSerialization:
 
         # Check essential fields
         required_fields = [
-            'n_layer', 'n_embd', 'n_heads',
-            'attention_type', 'use_kan', 'kan_type',
-            'use_sdr', 'sdr_size', 'sdr_sparsity',
-            'engram_capacity', 'engram_threshold',
-            'dropout'
+            "n_layer",
+            "n_embd",
+            "n_heads",
+            "attention_type",
+            "use_kan",
+            "kan_type",
+            "use_sdr",
+            "sdr_size",
+            "sdr_sparsity",
+            "engram_capacity",
+            "engram_threshold",
+            "dropout",
         ]
         for field in required_fields:
             assert field in dict_repr, f"Missing field: {field}"
 
     def test_from_dict_with_partial_data(self):
         """Test from_dict with partial data uses defaults."""
-        partial = {'n_layer': 10, 'n_embd': 768, 'n_heads': 12}
+        partial = {"n_layer": 10, "n_embd": 768, "n_heads": 12}
         config = ArchitectureConfig.from_dict(partial)
         assert config.n_layer == 10
         assert config.n_embd == 768
@@ -220,7 +230,7 @@ class TestConfigConversion:
         )
         config = arch.to_config(vocab_size=65)
 
-        assert config.use_sdr == True
+        assert config.use_sdr
         assert config.sdr_size == 4096
         assert config.sdr_sparsity == 0.03
         assert config.engram_capacity == 2000
@@ -244,16 +254,16 @@ class TestSearchSpaceDefinition:
         param_space = space.get_parameter_space()
 
         # Check key parameters are present
-        assert 'n_layer' in param_space
-        assert 'n_embd' in param_space
-        assert 'attention_type' in param_space
-        assert 'use_sdr' in param_space
-        assert 'sdr_size' in param_space
+        assert "n_layer" in param_space
+        assert "n_embd" in param_space
+        assert "attention_type" in param_space
+        assert "use_sdr" in param_space
+        assert "sdr_size" in param_space
 
         # Check types
-        assert isinstance(param_space['n_layer'], list)
-        assert isinstance(param_space['attention_type'], list)
-        assert isinstance(param_space['dropout'], tuple)  # Range
+        assert isinstance(param_space["n_layer"], list)
+        assert isinstance(param_space["attention_type"], list)
+        assert isinstance(param_space["dropout"], tuple)  # Range
 
     def test_get_search_space_size(self):
         """Test search space size calculation."""
@@ -268,11 +278,11 @@ class TestSearchSpaceDefinition:
         """Test that search space includes SDR parameter choices."""
         space = SearchSpace()
 
-        assert hasattr(space, 'use_sdr_choices')
-        assert hasattr(space, 'sdr_size_choices')
-        assert hasattr(space, 'sdr_sparsity_choices')
-        assert hasattr(space, 'engram_capacity_choices')
-        assert hasattr(space, 'engram_threshold_choices')
+        assert hasattr(space, "use_sdr_choices")
+        assert hasattr(space, "sdr_size_choices")
+        assert hasattr(space, "sdr_sparsity_choices")
+        assert hasattr(space, "engram_capacity_choices")
+        assert hasattr(space, "engram_threshold_choices")
 
         # Check they're not empty
         assert len(space.use_sdr_choices) > 0

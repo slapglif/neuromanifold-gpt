@@ -8,15 +8,14 @@ Handles:
 - Logging
 """
 
+
 import lightning as L
 import torch
-import torch.nn as nn
 import torch.optim as optim
-import math
-from typing import Optional, Dict, Any
 
-from neuromanifold_gpt.model.wave_manifold_gpt import WaveManifoldGPT
 from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
+from neuromanifold_gpt.model.wave_manifold_gpt import WaveManifoldGPT
+
 
 class WaveManifoldLightning(L.LightningModule):
     def __init__(self, config: WaveManifoldConfig):
@@ -31,14 +30,14 @@ class WaveManifoldLightning(L.LightningModule):
     def training_step(self, batch, batch_idx):
         idx, targets = batch
         logits, loss, info = self.model(idx, targets)
-        
+
         # Log all losses
         self.log("train/loss", loss, prog_bar=True)
-        if 'loss_discrete' in info:
-            self.log("train/loss_discrete", info['loss_discrete'])
-        if 'loss_continuous' in info:
-            self.log("train/loss_continuous", info['loss_continuous'])
-            
+        if "loss_discrete" in info:
+            self.log("train/loss_discrete", info["loss_discrete"])
+        if "loss_continuous" in info:
+            self.log("train/loss_continuous", info["loss_continuous"])
+
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -53,22 +52,22 @@ class WaveManifoldLightning(L.LightningModule):
         no_decay = set()
         whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv1d, torch.nn.Conv2d)
         blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
-        
+
         for mn, m in self.model.named_modules():
             for pn, p in m.named_parameters():
-                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
-                if pn.endswith('bias'):
+                fpn = "%s.%s" % (mn, pn) if mn else pn  # full param name
+                if pn.endswith("bias"):
                     no_decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                elif pn.endswith("weight") and isinstance(m, whitelist_weight_modules):
                     decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                elif pn.endswith("weight") and isinstance(m, blacklist_weight_modules):
                     no_decay.add(fpn)
-                elif 'latents' in pn: # specific to some modules
+                elif "latents" in pn:  # specific to some modules
                     no_decay.add(fpn)
 
         # Validate
         param_dict = {pn: p for pn, p in self.model.named_parameters()}
-        inter_params = decay & no_decay
+        decay & no_decay
         union_params = decay | no_decay
         # Add remaining (like KAN parameters which might not match standard Linear)
         # KAN spline weights should probably decay
@@ -78,13 +77,17 @@ class WaveManifoldLightning(L.LightningModule):
                 decay.add(pn)
 
         optim_groups = [
-            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.config.weight_decay},
-            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+            {
+                "params": [param_dict[pn] for pn in sorted(list(decay))],
+                "weight_decay": self.config.weight_decay,
+            },
+            {
+                "params": [param_dict[pn] for pn in sorted(list(no_decay))],
+                "weight_decay": 0.0,
+            },
         ]
-        
+
         optimizer = optim.AdamW(
-            optim_groups, 
-            lr=self.config.learning_rate, 
-            betas=(0.9, 0.95)
+            optim_groups, lr=self.config.learning_rate, betas=(0.9, 0.95)
         )
         return optimizer

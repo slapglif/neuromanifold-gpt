@@ -1,7 +1,7 @@
 # train a miniature character-level shakespeare model
 # Baseline: Standard NanoGPT architecture (SwiGLU, Softmax Attention)
 
-out_dir = 'out-baseline-shakespeare'
+out_dir = "out-baseline-shakespeare"
 eval_interval = 250
 eval_iters = 200
 log_interval = 10
@@ -9,10 +9,10 @@ log_interval = 10
 always_save_checkpoint = False
 
 wandb_log = False
-wandb_project = 'shakespeare-char'
-wandb_run_name = 'baseline-nano'
+wandb_project = "shakespeare-char"
+wandb_run_name = "baseline-nano"
 
-dataset = 'shakespeare_char'
+dataset = "shakespeare_char"
 gradient_accumulation_steps = 1
 batch_size = 64
 block_size = 256
@@ -36,4 +36,4 @@ warmup_iters = 100
 # compile = True # We'll override this in CLI
 
 # Select model type for train.py
-model_type = 'gpt'
+model_type = "gpt"

@@ -24,16 +24,21 @@ Example:
     >>> print(f"Evaluated {result.n_evaluations} architectures in {result.search_time:.1f}s")
 """
 
-import time
+import json
 import random
-from typing import Any, Optional, List, Dict
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-import json
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
-from neuromanifold_gpt.nas.search_space import SearchSpace, ArchitectureConfig
-from neuromanifold_gpt.nas.evaluator import ArchitectureEvaluator, ComputeBudget, EvaluationResult
+from neuromanifold_gpt.nas.evaluator import (
+    ArchitectureEvaluator,
+    ComputeBudget,
+    EvaluationResult,
+)
+from neuromanifold_gpt.nas.search_space import ArchitectureConfig, SearchSpace
 from neuromanifold_gpt.nas.searcher import Searcher, SearchResult
 
 
@@ -59,6 +64,7 @@ class SearchResults:
         >>> top_3 = results.get_top_k(3)
         >>> results.save_checkpoint("search_checkpoint.json")
     """
+
     architectures: List[ArchitectureConfig] = field(default_factory=list)
     results: List[EvaluationResult] = field(default_factory=list)
     search_time: float = 0.0
@@ -211,10 +217,7 @@ class SearchResults:
         ]
 
         # Reconstruct results
-        results = [
-            EvaluationResult(**res_dict)
-            for res_dict in checkpoint["results"]
-        ]
+        results = [EvaluationResult(**res_dict) for res_dict in checkpoint["results"]]
 
         instance = cls(
             architectures=architectures,
@@ -333,7 +336,9 @@ class RandomSearch(Searcher):
         else:
             # Default to 50 random samples if no budget specified
             n_architectures = 50
-            logger.info(f"No budget specified, defaulting to {n_architectures} evaluations")
+            logger.info(
+                f"No budget specified, defaulting to {n_architectures} evaluations"
+            )
 
         # Sample and evaluate architectures
         for i in range(n_architectures):
@@ -349,7 +354,9 @@ class RandomSearch(Searcher):
             architecture.architecture_id = f"random_{i:04d}"
             architecture.search_iteration = i
 
-            logger.info(f"Evaluating architecture {i+1}/{n_architectures}: {architecture.architecture_id}")
+            logger.info(
+                f"Evaluating architecture {i+1}/{n_architectures}: {architecture.architecture_id}"
+            )
 
             # Evaluate architecture
             result = self.evaluator.evaluate(
@@ -379,7 +386,7 @@ class RandomSearch(Searcher):
 
                 # Update budget even on failure
                 if self.budget is not None:
-                    self.budget.update(float('inf'))
+                    self.budget.update(float("inf"))
 
         # Calculate search time
         search_time = time.time() - self.start_time
@@ -391,10 +398,14 @@ class RandomSearch(Searcher):
 
         best_architecture, best_result = best
 
-        logger.info(f"\n=== Random Search Complete ===")
+        logger.info("\n=== Random Search Complete ===")
         logger.info(f"Total evaluations: {len(self.evaluation_results)}")
-        logger.info(f"Successful: {sum(1 for r in self.evaluation_results if r.success)}")
-        logger.info(f"Failed: {sum(1 for r in self.evaluation_results if not r.success)}")
+        logger.info(
+            f"Successful: {sum(1 for r in self.evaluation_results if r.success)}"
+        )
+        logger.info(
+            f"Failed: {sum(1 for r in self.evaluation_results if not r.success)}"
+        )
         logger.info(f"Search time: {search_time:.1f}s")
         logger.info(f"Best architecture: {best_architecture.architecture_id}")
         logger.info(f"  Perplexity: {best_result.perplexity:.2f}")

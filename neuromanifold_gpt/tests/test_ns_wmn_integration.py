@@ -12,6 +12,7 @@ Tests the complete pipeline as described in the paper:
 import pytest
 import torch
 import torch.nn as nn
+
 from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
 from neuromanifold_gpt.model.wave_manifold_gpt import WaveManifoldGPT
 
@@ -142,9 +143,9 @@ class TestNSWMNBasicIntegration:
         params_with_grad = [p for p in model.parameters() if p.grad is not None]
         total_params = len(list(model.parameters()))
 
-        assert len(params_with_grad) > total_params * 0.5, (
-            f"Too few params have gradients: {len(params_with_grad)}/{total_params}"
-        )
+        assert (
+            len(params_with_grad) > total_params * 0.5
+        ), f"Too few params have gradients: {len(params_with_grad)}/{total_params}"
 
     def test_gradient_flow_through_fno(self, minimal_config, device):
         model = WaveManifoldGPT(minimal_config).to(device)

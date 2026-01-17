@@ -24,12 +24,24 @@ class WaveKANFFN(nn.Module):
         wavelet_type: str = "mexican_hat",
         dropout: float = 0.0,
         use_base_linear: bool = True,
-        use_fast_wavekan: bool = True, # Default to Fast mode as Full is OOM/slow
+        use_fast_wavekan: bool = True,  # Default to Fast mode as Full is OOM/slow
     ):
         super().__init__()
-        self.layer1 = WaveKANLinear(embed_dim, hidden_dim, wavelet_type=wavelet_type, use_base_linear=use_base_linear, use_fast_wavekan=use_fast_wavekan)
+        self.layer1 = WaveKANLinear(
+            embed_dim,
+            hidden_dim,
+            wavelet_type=wavelet_type,
+            use_base_linear=use_base_linear,
+            use_fast_wavekan=use_fast_wavekan,
+        )
         self.dropout = nn.Dropout(dropout)
-        self.layer2 = WaveKANLinear(hidden_dim, embed_dim, wavelet_type=wavelet_type, use_base_linear=use_base_linear, use_fast_wavekan=use_fast_wavekan)
+        self.layer2 = WaveKANLinear(
+            hidden_dim,
+            embed_dim,
+            wavelet_type=wavelet_type,
+            use_base_linear=use_base_linear,
+            use_fast_wavekan=use_fast_wavekan,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.layer1(x)

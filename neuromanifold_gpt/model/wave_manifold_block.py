@@ -10,14 +10,14 @@ Combines:
 
 import torch
 import torch.nn as nn
-from neuromanifold_gpt.model.ssm.mamba import MambaBlock
+
+from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
+from neuromanifold_gpt.model.soliton.attention import SolitonInteractionLayer
 from neuromanifold_gpt.model.ssm.hyena_operator import HyenaOperator
+from neuromanifold_gpt.model.ssm.mamba import MambaBlock
 from neuromanifold_gpt.model.ssm.mixture_of_mamba import (
-    MixtureOfMambaBlock,
     AdaptiveMixtureOfMamba,
 )
-from neuromanifold_gpt.model.soliton.attention import SolitonInteractionLayer
-from neuromanifold_gpt.config.wave_manifold_config import WaveManifoldConfig
 
 
 class WaveManifoldBlock(nn.Module):

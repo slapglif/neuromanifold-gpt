@@ -1,9 +1,11 @@
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat, einsum
+from einops import einsum, rearrange, repeat
 from torch.utils.checkpoint import checkpoint
+
 from .kan.cheby.linear import ChebyKANLinear
 from .kan.wave.ffn import WaveKANFFN
 

@@ -1,11 +1,13 @@
+import time
 
 import torch
-import time
+
 from neuromanifold_gpt.model.mhc import HyperConnections
 from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
 try:
     from neuromanifold_gpt.model.mhc_fused import fused_mhc_width_connection
+
     has_triton = True
 except (ImportError, RuntimeError):
     has_triton = False
@@ -40,7 +42,9 @@ def benchmark_mhc_fusion():
 
         # Precompute matrices for fused path
         with torch.no_grad():
-            h_res = sinkhorn_log(hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau)
+            h_res = sinkhorn_log(
+                hc.H_res_logits, num_iters=hc.sinkhorn_iters, tau=hc.sinkhorn_tau
+            )
             h_pre = hc.H_pre_logits.softmax(dim=-1)
 
         # Warmup
@@ -78,15 +82,23 @@ def benchmark_mhc_fusion():
         # Verify correctness
         with torch.no_grad():
             branch_unfused, residuals_out_unfused, _ = hc.width_connection(residuals)
-            branch_fused, residuals_out_fused = fused_mhc_width_connection(residuals, h_res, h_pre)
+            branch_fused, residuals_out_fused = fused_mhc_width_connection(
+                residuals, h_res, h_pre
+            )
 
-            branch_match = torch.allclose(branch_unfused, branch_fused, rtol=1e-4, atol=1e-5)
-            residuals_match = torch.allclose(residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5)
+            branch_match = torch.allclose(
+                branch_unfused, branch_fused, rtol=1e-4, atol=1e-5
+            )
+            residuals_match = torch.allclose(
+                residuals_out_unfused, residuals_out_fused, rtol=1e-4, atol=1e-5
+            )
 
             if branch_match and residuals_match:
                 print("Correctness:       ✓ PASS")
             else:
-                print(f"Correctness:       ✗ FAIL (branch={branch_match}, residuals={residuals_match})")
+                print(
+                    f"Correctness:       ✗ FAIL (branch={branch_match}, residuals={residuals_match})"
+                )
 
     print("\n" + "=" * 80)
 

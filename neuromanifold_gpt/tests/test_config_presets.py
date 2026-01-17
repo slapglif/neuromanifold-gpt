@@ -1,7 +1,8 @@
 """Tests for config preset discovery utilities."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 class TestExtractDescription:
@@ -46,11 +47,11 @@ class TestExtractKeySettings:
         settings = _extract_key_settings(preset_path)
 
         # Nano preset uses use_nano_config=True, so defaults should be applied
-        assert settings['use_nano_config'] is True
-        assert settings['n_layer'] == 4  # nano default
-        assert settings['n_head'] == 4  # nano default
-        assert settings['n_embd'] == 128  # nano default
-        assert settings['max_iters'] == 5000
+        assert settings["use_nano_config"] is True
+        assert settings["n_layer"] == 4  # nano default
+        assert settings["n_head"] == 4  # nano default
+        assert settings["n_embd"] == 128  # nano default
+        assert settings["max_iters"] == 5000
 
     def test_extract_settings_from_shakespeare(self):
         """Test extracting key settings from shakespeare_char.py (explicit values)."""
@@ -60,11 +61,11 @@ class TestExtractKeySettings:
         settings = _extract_key_settings(preset_path)
 
         # Shakespeare has explicit values
-        assert settings['use_nano_config'] is False
-        assert settings['n_layer'] == 6
-        assert settings['n_head'] == 6
-        assert settings['n_embd'] == 384
-        assert settings['max_iters'] == 5000
+        assert settings["use_nano_config"] is False
+        assert settings["n_layer"] == 6
+        assert settings["n_head"] == 6
+        assert settings["n_embd"] == 384
+        assert settings["max_iters"] == 5000
 
     def test_extract_settings_nonexistent_file(self):
         """Test settings extraction from nonexistent file returns None values."""
@@ -73,10 +74,10 @@ class TestExtractKeySettings:
         preset_path = Path("neuromanifold_gpt/config/presets/nonexistent.py")
         settings = _extract_key_settings(preset_path)
 
-        assert settings['n_layer'] is None
-        assert settings['n_head'] is None
-        assert settings['n_embd'] is None
-        assert settings['max_iters'] is None
+        assert settings["n_layer"] is None
+        assert settings["n_head"] is None
+        assert settings["n_embd"] is None
+        assert settings["max_iters"] is None
 
 
 class TestEstimateModelSize:
@@ -187,20 +188,20 @@ class TestScanPresets:
 
     def test_scan_presets_returns_preset_info(self):
         """Test that scan returns PresetInfo objects with correct structure."""
-        from neuromanifold_gpt.utils.config_presets import _scan_presets, PresetInfo
+        from neuromanifold_gpt.utils.config_presets import PresetInfo, _scan_presets
 
         presets = _scan_presets("neuromanifold_gpt/config/presets")
 
         # Check first preset has all required fields
         preset = presets[0]
         assert isinstance(preset, PresetInfo)
-        assert hasattr(preset, 'name')
-        assert hasattr(preset, 'description')
-        assert hasattr(preset, 'n_layer')
-        assert hasattr(preset, 'n_head')
-        assert hasattr(preset, 'n_embd')
-        assert hasattr(preset, 'max_iters')
-        assert hasattr(preset, 'file_path')
+        assert hasattr(preset, "name")
+        assert hasattr(preset, "description")
+        assert hasattr(preset, "n_layer")
+        assert hasattr(preset, "n_head")
+        assert hasattr(preset, "n_embd")
+        assert hasattr(preset, "max_iters")
+        assert hasattr(preset, "file_path")
 
     def test_scan_presets_skips_init_file(self):
         """Test that __init__.py is not included in scan results."""
@@ -247,8 +248,7 @@ class TestListPresets:
         from neuromanifold_gpt.utils.config_presets import list_presets
 
         preset_names = list_presets(
-            directory="neuromanifold_gpt/config/presets",
-            show_table=False
+            directory="neuromanifold_gpt/config/presets", show_table=False
         )
 
         assert len(preset_names) >= 5
@@ -258,8 +258,7 @@ class TestListPresets:
         from neuromanifold_gpt.utils.config_presets import list_presets
 
         preset_names = list_presets(
-            directory="neuromanifold_gpt/config/nonexistent",
-            show_table=False
+            directory="neuromanifold_gpt/config/nonexistent", show_table=False
         )
 
         assert preset_names == []
@@ -286,14 +285,14 @@ class TestGetPresetInfo:
         info = get_preset_info("nano")
 
         assert info is not None
-        assert info['name'] == "nano"
-        assert info['description'] == "Nano preset for fast experimentation and testing"
-        assert info['n_layer'] == 4
-        assert info['n_head'] == 4
-        assert info['n_embd'] == 128
-        assert info['max_iters'] == 5000
-        assert info['model_size'] == "~786K"
-        assert info['training_time'] == "~1h"
+        assert info["name"] == "nano"
+        assert info["description"] == "Nano preset for fast experimentation and testing"
+        assert info["n_layer"] == 4
+        assert info["n_head"] == 4
+        assert info["n_embd"] == 128
+        assert info["max_iters"] == 5000
+        assert info["model_size"] == "~786K"
+        assert info["training_time"] == "~1h"
 
     def test_get_preset_info_shakespeare(self):
         """Test getting detailed info for shakespeare preset."""
@@ -302,12 +301,12 @@ class TestGetPresetInfo:
         info = get_preset_info("shakespeare_char")
 
         assert info is not None
-        assert info['name'] == "shakespeare_char"
-        assert "Shakespeare" in info['description']
-        assert info['n_layer'] == 6
-        assert info['n_head'] == 6
-        assert info['n_embd'] == 384
-        assert info['max_iters'] == 5000
+        assert info["name"] == "shakespeare_char"
+        assert "Shakespeare" in info["description"]
+        assert info["n_layer"] == 6
+        assert info["n_head"] == 6
+        assert info["n_embd"] == 384
+        assert info["max_iters"] == 5000
 
     def test_get_preset_info_nonexistent(self):
         """Test getting info for nonexistent preset returns None."""
@@ -321,13 +320,10 @@ class TestGetPresetInfo:
         """Test getting preset info with custom directory path."""
         from neuromanifold_gpt.utils.config_presets import get_preset_info
 
-        info = get_preset_info(
-            "nano",
-            directory="neuromanifold_gpt/config/presets"
-        )
+        info = get_preset_info("nano", directory="neuromanifold_gpt/config/presets")
 
         assert info is not None
-        assert info['name'] == "nano"
+        assert info["name"] == "nano"
 
     def test_get_preset_info_contains_all_fields(self):
         """Test that preset info contains all expected fields."""
@@ -336,9 +332,15 @@ class TestGetPresetInfo:
         info = get_preset_info("nano")
 
         required_fields = [
-            'name', 'description', 'file_path',
-            'n_layer', 'n_head', 'n_embd', 'max_iters',
-            'model_size', 'training_time'
+            "name",
+            "description",
+            "file_path",
+            "n_layer",
+            "n_head",
+            "n_embd",
+            "max_iters",
+            "model_size",
+            "training_time",
         ]
 
         for field in required_fields:
@@ -359,7 +361,7 @@ class TestPresetInfoNamedTuple:
             n_head=4,
             n_embd=128,
             max_iters=1000,
-            file_path="/path/to/test.py"
+            file_path="/path/to/test.py",
         )
 
         assert preset.name == "test"
@@ -381,7 +383,7 @@ class TestPresetInfoNamedTuple:
             n_head=None,
             n_embd=None,
             max_iters=None,
-            file_path="/path/to/test.py"
+            file_path="/path/to/test.py",
         )
 
         assert preset.n_layer is None

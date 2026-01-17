@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Test SDR with discrimination loss to prevent mode collapse."""
 
+from collections import Counter
+
 import torch
 import torch.nn.functional as F
-from collections import Counter
 from loguru import logger
 
 torch.backends.cudnn.benchmark = True
@@ -16,19 +17,24 @@ from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 def load_shakespeare():
     data_path = "neuromanifold_gpt/data/input.txt"
-    with open(data_path, 'r') as f:
+    with open(data_path, "r") as f:
         text = f.read()
     chars = sorted(set(text))
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+
+    def encode(s):
+        return [stoi[c] for c in s]
+
+    def decode(l):
+        return "".join([itos[i] for i in l])
+
     data = torch.tensor(encode(text), dtype=torch.long)
     return data, decode, encode
 
 
 def main():
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")
 
     config = NeuroManifoldConfig(
@@ -81,8 +87,8 @@ def main():
     logger.info(f"Training for {n_iters} iterations with discrimination loss...")
     for i in range(n_iters):
         ix = torch.randint(len(data) - block_size, (batch_size,))
-        x = torch.stack([data[j:j+block_size] for j in ix]).to(device)
-        y = torch.stack([data[j+1:j+block_size+1] for j in ix]).to(device)
+        x = torch.stack([data[j : j + block_size] for j in ix]).to(device)
+        y = torch.stack([data[j + 1 : j + block_size + 1] for j in ix]).to(device)
 
         logits, loss, info = model(x, y)
         loss.backward()
@@ -91,17 +97,21 @@ def main():
         optimizer.zero_grad(set_to_none=True)
 
         if i % 200 == 0:
-            discrim = info.get('discrimination_loss', torch.tensor(0.0)).item()
+            discrim = info.get("discrimination_loss", torch.tensor(0.0)).item()
             # Test generation
             model.eval()
             context = torch.zeros((1, 1), dtype=torch.long, device=device)
             with torch.no_grad():
-                generated = model.generate(context, max_new_tokens=50, temperature=0.8, top_k=40)
+                generated = model.generate(
+                    context, max_new_tokens=50, temperature=0.8, top_k=40
+                )
             gen_text = decode(generated[0].tolist())
             char_counts = Counter(generated[0].tolist())
             diversity = len(char_counts)
-            logger.info(f"iter {i}: loss={loss.item():.4f}, discrim={discrim:.4f}, "
-                       f"div={diversity}, sample='{gen_text[:35]}'")
+            logger.info(
+                f"iter {i}: loss={loss.item():.4f}, discrim={discrim:.4f}, "
+                f"div={diversity}, sample='{gen_text[:35]}'"
+            )
             model.train()
 
     logger.info(f"\nFinal loss: {loss.item():.4f}")
@@ -113,7 +123,9 @@ def main():
     for prompt in prompts:
         prompt_ids = torch.tensor([encode(prompt)], dtype=torch.long, device=device)
         with torch.no_grad():
-            generated = model.generate(prompt_ids.clone(), max_new_tokens=100, temperature=0.8, top_k=40)
+            generated = model.generate(
+                prompt_ids.clone(), max_new_tokens=100, temperature=0.8, top_k=40
+            )
         output = decode(generated[0].tolist())
         logger.info(f"\nPrompt '{prompt}': {output[:100]}")
 

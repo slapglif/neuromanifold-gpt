@@ -7,13 +7,15 @@ GPU-accelerated computation with automatic differentiation support.
 Optimized for FHN attention patterns where n_steps is typically small (1-4).
 """
 
+from typing import Optional, Tuple
+
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
 
 try:
     import triton
     import triton.language as tl
+
     TRITON_AVAILABLE = True
 except ImportError:
     TRITON_AVAILABLE = False
@@ -22,18 +24,24 @@ except ImportError:
 
 
 if TRITON_AVAILABLE:
+
     @triton.jit
     def fhn_imex_forward_kernel(
         # Input pointers
-        v_in_ptr, w_in_ptr, I_ptr,
+        v_in_ptr,
+        w_in_ptr,
+        I_ptr,
         # Output pointers
-        v_out_ptr, w_out_ptr,
+        v_out_ptr,
+        w_out_ptr,
         # Parameters
-        dt_ptr, a_ptr, b_ptr,
+        dt_ptr,
+        a_ptr,
+        b_ptr,
         # Constants
         tau: tl.constexpr,
         n_elements: tl.constexpr,
-        BLOCK_SIZE: tl.constexpr
+        BLOCK_SIZE: tl.constexpr,
     ):
         """
         Triton kernel for one FHN IMEX step (forward pass).
@@ -96,21 +104,27 @@ if TRITON_AVAILABLE:
         tl.store(v_out_ptr + offsets, v_new, mask=mask)
         tl.store(w_out_ptr + offsets, w_new, mask=mask)
 
-
     @triton.jit
     def fhn_imex_backward_kernel(
         # Incoming gradients (from next layer)
-        grad_v_out_ptr, grad_w_out_ptr,
+        grad_v_out_ptr,
+        grad_w_out_ptr,
         # Saved states from forward
-        v_ptr, w_ptr, I_ptr,
+        v_ptr,
+        w_ptr,
+        I_ptr,
         # Outgoing gradients (to previous layer)
-        grad_v_in_ptr, grad_w_in_ptr, grad_I_ptr,
+        grad_v_in_ptr,
+        grad_w_in_ptr,
+        grad_I_ptr,
         # Parameters
-        dt_ptr, a_ptr, b_ptr,
+        dt_ptr,
+        a_ptr,
+        b_ptr,
         # Constants
         tau: tl.constexpr,
         n_elements: tl.constexpr,
-        BLOCK_SIZE: tl.constexpr
+        BLOCK_SIZE: tl.constexpr,
     ):
         """
         Triton kernel for FHN backward pass.
@@ -131,7 +145,7 @@ if TRITON_AVAILABLE:
 
         # Load saved states
         v = tl.load(v_ptr + offsets, mask=mask, other=0.0)
-        w = tl.load(w_ptr + offsets, mask=mask, other=0.0)
+        tl.load(w_ptr + offsets, mask=mask, other=0.0)
 
         # Load incoming gradients
         grad_v_new = tl.load(grad_v_out_ptr + offsets, mask=mask, other=0.0)
@@ -139,7 +153,7 @@ if TRITON_AVAILABLE:
 
         # Load parameters
         dt = tl.load(dt_ptr)
-        a = tl.load(a_ptr)
+        tl.load(a_ptr)
         b = tl.load(b_ptr)
 
         # Precompute constants
@@ -227,12 +241,17 @@ class FHNTritonSolver(torch.autograd.Function):
 
         # Launch kernel
         fhn_imex_forward_kernel[grid](
-            v, w, I,
-            v_out, w_out,
-            dt, a, b,
+            v,
+            w,
+            I,
+            v_out,
+            w_out,
+            dt,
+            a,
+            b,
             tau=tau,
             n_elements=n_elements,
-            BLOCK_SIZE=BLOCK_SIZE
+            BLOCK_SIZE=BLOCK_SIZE,
         )
 
         return v_out, w_out
@@ -260,13 +279,20 @@ class FHNTritonSolver(torch.autograd.Function):
 
         # Launch backward kernel
         fhn_imex_backward_kernel[grid](
-            grad_v_out, grad_w_out,
-            v, w, I,
-            grad_v, grad_w, grad_I,
-            dt, a, b,
+            grad_v_out,
+            grad_w_out,
+            v,
+            w,
+            I,
+            grad_v,
+            grad_w,
+            grad_I,
+            dt,
+            a,
+            b,
             tau=tau,
             n_elements=n_elements,
-            BLOCK_SIZE=BLOCK_SIZE
+            BLOCK_SIZE=BLOCK_SIZE,
         )
 
         # Return gradients (None for a, b, tau, dt - not computing parameter grads here)
@@ -282,7 +308,7 @@ def fhn_triton_kernel(
     b: torch.Tensor,
     tau: float,
     dt: torch.Tensor,
-    n_steps: int = 1
+    n_steps: int = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Run FHN dynamics using Triton kernel.
@@ -375,7 +401,7 @@ class FHNTritonAttention(nn.Module):
             - output: Attention output of shape (B, T, embed_dim)
             - info: Dictionary with attention statistics
         """
-        from einops import rearrange, einsum
+        from einops import einsum, rearrange
 
         B, T, D = x.shape
 
@@ -387,7 +413,7 @@ class FHNTritonAttention(nn.Module):
 
         # Standard scaled dot-product attention
         attn_weights = einsum(q, k, "b h t d, b h s d -> b h t s")
-        attn_weights = attn_weights / (self.head_dim ** 0.5)
+        attn_weights = attn_weights / (self.head_dim**0.5)
 
         # Causal mask
         causal_mask = torch.triu(
@@ -419,9 +445,14 @@ class FHNTritonAttention(nn.Module):
 
         # Run Triton kernel
         v_final, w_final = fhn_triton_kernel(
-            v_init, w_init, I,
-            self.a, self.b, self.tau, self.dt,
-            n_steps=self.n_fhn_steps
+            v_init,
+            w_init,
+            I,
+            self.a,
+            self.b,
+            self.tau,
+            self.dt,
+            n_steps=self.n_fhn_steps,
         )
 
         # FHN gate modulation

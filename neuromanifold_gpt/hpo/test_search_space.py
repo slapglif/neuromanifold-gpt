@@ -1,10 +1,11 @@
 """Unit tests for HPO search space configuration."""
 
-import pytest
-import yaml
-import tempfile
 import os
 from unittest.mock import Mock
+
+import pytest
+import yaml
+
 from neuromanifold_gpt.hpo.search_space import SearchSpace
 
 
@@ -69,7 +70,7 @@ def test_suggest_categorical_param(sample_config):
     trial.suggest_float = Mock(return_value=0.0001)
     trial.suggest_categorical = Mock(return_value=True)
 
-    params = ss.suggest_params(trial)
+    ss.suggest_params(trial)
 
     # Verify suggest_categorical called
     assert trial.suggest_categorical.call_count == 2  # batch_size and use_sdr
@@ -96,7 +97,7 @@ def test_invalid_config_missing_search_space():
     config = {"fixed_params": {}}  # Missing search_space
 
     with pytest.raises((KeyError, ValueError)):
-        ss = SearchSpace(config)
+        SearchSpace(config)
 
 
 def test_load_from_yaml_file():

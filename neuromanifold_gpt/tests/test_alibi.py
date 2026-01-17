@@ -1,7 +1,9 @@
 """Tests for Attention with Linear Biases (ALiBi)."""
+import math
+
 import pytest
 import torch
-import math
+
 from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 
 
@@ -67,9 +69,9 @@ def test_alibi_slopes_power_of_2():
     alibi = ALiBiPositionalBias(n_heads, 512)
 
     # For power of 2, slopes should follow: 2^(-8/n), 2^(-16/n), ..., 2^(-8)
-    expected_slopes = torch.tensor([
-        2 ** (-8 * (i + 1) / n_heads) for i in range(n_heads)
-    ])
+    expected_slopes = torch.tensor(
+        [2 ** (-8 * (i + 1) / n_heads) for i in range(n_heads)]
+    )
 
     assert torch.allclose(alibi.slopes, expected_slopes, rtol=1e-5)
 
@@ -177,7 +179,10 @@ def test_alibi_increasing_penalty_with_distance():
         # Values should decrease (become more negative) with index
         # first_row[0] = 0, first_row[1] < 0, first_row[2] < first_row[1], etc.
         for i in range(seq_len - 1):
-            assert first_row[i] > first_row[i + 1] or abs(first_row[i] - first_row[i + 1]) < 1e-6
+            assert (
+                first_row[i] > first_row[i + 1]
+                or abs(first_row[i] - first_row[i + 1]) < 1e-6
+            )
 
 
 def test_alibi_different_slopes_per_head():

@@ -18,7 +18,8 @@ Usage:
 
 import gc
 import time
-from typing import Callable, Optional, Dict, Any
+from typing import Any, Callable, Dict, Optional
+
 import torch
 import torch.nn as nn
 

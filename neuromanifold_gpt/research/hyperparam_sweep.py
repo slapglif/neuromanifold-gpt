@@ -4,14 +4,13 @@
 Quick 200-iteration runs to find optimal architecture settings.
 """
 
-import torch
-import torch.nn.functional as F
-from loguru import logger
-import sys
-from pathlib import Path
-import itertools
 import math
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+
+import torch
+from loguru import logger
 
 # Configure loguru
 logger.remove()
@@ -26,6 +25,7 @@ from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 @dataclass
 class SweepResult:
     """Result from a single hyperparameter configuration."""
+
     config_name: str
     final_loss: float
     perplexity: float
@@ -53,8 +53,8 @@ def load_shakespeare():
 def get_batch(data, block_size, batch_size, device):
     """Get random batch."""
     ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i:i+block_size] for i in ix])
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    x = torch.stack([data[i : i + block_size] for i in ix])
+    y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
     return x.to(device), y.to(device)
 
 
@@ -99,13 +99,12 @@ def evaluate_config(
 
     # Optimizer
     optimizer = model.configure_optimizers(
-        weight_decay=0.1,
-        learning_rate=3e-4,
-        device_type=device
+        weight_decay=0.1, learning_rate=3e-4, device_type=device
     )
 
     # Training
     import time
+
     start_time = time.time()
 
     model.train()
@@ -157,34 +156,36 @@ def main():
         ({"use_mhc": False, "use_full_mhc": False}, "no_mhc"),
         ({"use_mhc": True, "use_full_mhc": False}, "simplified_mhc"),
         ({"use_mhc": True, "use_full_mhc": True, "mhc_n_streams": 2}, "full_mhc_2"),
-
         # KAN variants
         ({"use_kan": False}, "swiglu_mlp"),
         ({"use_kan": True, "kan_type": "wave", "kan_wavelet": "dog"}, "wavekan_dog"),
-        ({"use_kan": True, "kan_type": "wave", "kan_wavelet": "mexican_hat"}, "wavekan_mhat"),
+        (
+            {"use_kan": True, "kan_type": "wave", "kan_wavelet": "mexican_hat"},
+            "wavekan_mhat",
+        ),
         ({"use_kan": True, "kan_type": "cheby", "kan_degree": 4}, "chebykan_d4"),
-
         # FHN steps
         ({"n_fhn_steps": 1}, "fhn_1step"),
         ({"n_fhn_steps": 2}, "fhn_2step"),
         ({"n_fhn_steps": 3}, "fhn_3step"),
-
         # FHN threshold
         ({"fhn_threshold": 0.3}, "fhn_thresh_0.3"),
         ({"fhn_threshold": 0.5}, "fhn_thresh_0.5"),
         ({"fhn_threshold": 0.7}, "fhn_thresh_0.7"),
-
         # Combined best (hypothesis)
-        ({
-            "use_mhc": True,
-            "use_full_mhc": True,
-            "mhc_n_streams": 2,
-            "use_kan": True,
-            "kan_type": "wave",
-            "kan_wavelet": "dog",
-            "n_fhn_steps": 2,
-            "fhn_threshold": 0.5,
-        }, "full_combo"),
+        (
+            {
+                "use_mhc": True,
+                "use_full_mhc": True,
+                "mhc_n_streams": 2,
+                "use_kan": True,
+                "kan_type": "wave",
+                "kan_wavelet": "dog",
+                "n_fhn_steps": 2,
+                "fhn_threshold": 0.5,
+            },
+            "full_combo",
+        ),
     ]
 
     results = []
@@ -202,8 +203,10 @@ def main():
                 batch_size=32,
             )
             results.append(result)
-            logger.info(f"{config_name}: loss={result.final_loss:.4f}, ppl={result.perplexity:.2f}, "
-                       f"params={result.params:,}, time={result.time_per_iter_ms:.1f}ms/iter")
+            logger.info(
+                f"{config_name}: loss={result.final_loss:.4f}, ppl={result.perplexity:.2f}, "
+                f"params={result.params:,}, time={result.time_per_iter_ms:.1f}ms/iter"
+            )
         except Exception as e:
             logger.error(f"Failed {config_name}: {e}")
             continue
@@ -213,8 +216,10 @@ def main():
 
     logger.info("\n\n=== RESULTS (sorted by perplexity) ===")
     for i, r in enumerate(results):
-        logger.info(f"{i+1}. {r.config_name}: ppl={r.perplexity:.2f}, loss={r.final_loss:.4f}, "
-                   f"params={r.params:,}, speed={r.time_per_iter_ms:.1f}ms")
+        logger.info(
+            f"{i+1}. {r.config_name}: ppl={r.perplexity:.2f}, loss={r.final_loss:.4f}, "
+            f"params={r.params:,}, speed={r.time_per_iter_ms:.1f}ms"
+        )
 
     # Best config
     if results:

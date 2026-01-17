@@ -199,7 +199,7 @@ class TopologicalHead(nn.Module):
         Returns:
             Scalar smoothness loss
         """
-        B = coefficients.shape[0]
+        coefficients.shape[0]
 
         # Compute finite differences up to smoothness_order
         diff = coefficients
@@ -231,17 +231,19 @@ class TopologicalHead(nn.Module):
         Returns:
             Scalar consistency loss
         """
-        B = braid_rep.shape[0]
+        braid_rep.shape[0]
 
         # Compute matrix norm
-        rep_norm = torch.linalg.matrix_norm(braid_rep, ord='fro')
+        rep_norm = torch.linalg.matrix_norm(braid_rep, ord="fro")
 
         # Normalize representation
         rep_normalized = braid_rep / (rep_norm.unsqueeze(-1).unsqueeze(-1) + 1e-8)
 
         # Consistency: distance from normalized version
         # This encourages representations close to unit-norm matrices
-        consistency = (braid_rep - rep_normalized * rep_norm.unsqueeze(-1).unsqueeze(-1)).pow(2)
+        consistency = (
+            braid_rep - rep_normalized * rep_norm.unsqueeze(-1).unsqueeze(-1)
+        ).pow(2)
 
         return consistency.mean()
 
@@ -347,16 +349,22 @@ class TopologicalHead(nn.Module):
             # Smoothness loss on polynomial coefficients
             smoothness_loss = self.compute_smoothness_loss(poly_features)
             total_loss = total_loss + self.smoothness_weight * smoothness_loss
-            info['smoothness_loss'] = smoothness_loss.item()
+            info["smoothness_loss"] = smoothness_loss.item()
 
             # Regularity loss on invariants
             regularity_loss = self.compute_regularity_loss(poly_features)
             total_loss = total_loss + self.regularity_weight * regularity_loss
-            info['regularity_loss'] = regularity_loss.item()
+            info["regularity_loss"] = regularity_loss.item()
 
             # Store Jones info
-            info['poly_norm'] = poly_features.norm(dim=-1).mean().item()
-            info.update({f'jones_{k}': v for k, v in jones_info.items() if isinstance(v, (int, float))})
+            info["poly_norm"] = poly_features.norm(dim=-1).mean().item()
+            info.update(
+                {
+                    f"jones_{k}": v
+                    for k, v in jones_info.items()
+                    if isinstance(v, (int, float))
+                }
+            )
 
         # Braid representation computation
         if self.use_braid:
@@ -365,24 +373,26 @@ class TopologicalHead(nn.Module):
             # Consistency loss on braid representation
             consistency_loss = self.compute_consistency_loss(braid_rep)
             total_loss = total_loss + self.consistency_weight * consistency_loss
-            info['consistency_loss'] = consistency_loss.item()
+            info["consistency_loss"] = consistency_loss.item()
 
             # Store braid info
-            info['braid_norm'] = braid_rep.norm(dim=(-2, -1)).mean().item()
-            info['dominant_generator'] = braid_info['dominant_generator'].float().mean().item()
+            info["braid_norm"] = braid_rep.norm(dim=(-2, -1)).mean().item()
+            info["dominant_generator"] = (
+                braid_info["dominant_generator"].float().mean().item()
+            )
 
         # Temporal coherence loss
         if self.use_temporal_coherence:
             coherence_loss = self.compute_coherence_loss(x)
             total_loss = total_loss + self.coherence_weight * coherence_loss
-            info['coherence_loss'] = coherence_loss.item()
+            info["coherence_loss"] = coherence_loss.item()
 
         # Apply temperature scaling
         total_loss = total_loss / temperature
 
         # Store summary statistics
-        info['total_loss'] = total_loss.item()
-        info['temperature'] = temperature.item()
+        info["total_loss"] = total_loss.item()
+        info["temperature"] = temperature.item()
 
         return total_loss, info
 
@@ -410,15 +420,15 @@ class TopologicalHead(nn.Module):
 
         if self.use_jones:
             poly_features, _ = self.jones(x, mask=mask)
-            features['jones_poly'] = poly_features
+            features["jones_poly"] = poly_features
 
         if self.use_braid:
             braid_rep = self.braid_encoder(x, mask=mask, return_info=False)
-            features['braid_rep'] = braid_rep
+            features["braid_rep"] = braid_rep
 
         if self.use_temporal_coherence:
             pos_features = self.position_encoder(x)
-            features['position_features'] = pos_features
+            features["position_features"] = pos_features
 
         return features
 
@@ -446,12 +456,12 @@ class TopologicalHead(nn.Module):
 
         distance = torch.tensor(0.0, device=x1.device)
 
-        if self.use_jones and 'jones_poly' in feat1 and 'jones_poly' in feat2:
-            jones_dist = (feat1['jones_poly'] - feat2['jones_poly']).norm(dim=-1)
+        if self.use_jones and "jones_poly" in feat1 and "jones_poly" in feat2:
+            jones_dist = (feat1["jones_poly"] - feat2["jones_poly"]).norm(dim=-1)
             distance = distance + jones_dist
 
-        if self.use_braid and 'braid_rep' in feat1 and 'braid_rep' in feat2:
-            braid_dist = (feat1['braid_rep'] - feat2['braid_rep']).norm(dim=(-2, -1))
+        if self.use_braid and "braid_rep" in feat1 and "braid_rep" in feat2:
+            braid_dist = (feat1["braid_rep"] - feat2["braid_rep"]).norm(dim=(-2, -1))
             distance = distance + braid_dist
 
         return distance

@@ -31,7 +31,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan, ParallelSelectiveScan
+from neuromanifold_gpt.model.ssm.selective_scan import (
+    ParallelSelectiveScan,
+    SelectiveScan,
+)
 
 
 class MambaBlock(nn.Module):
@@ -254,13 +257,14 @@ class MambaBlock(nn.Module):
         """
         # Initialize states if needed
         if state is None:
-            state = self.ssm.init_state(
-                x.size(0), x.device, x.dtype
-            )
+            state = self.ssm.init_state(x.size(0), x.device, x.dtype)
         if conv_state is None:
             conv_state = torch.zeros(
-                x.size(0), self.inner_dim, self.conv_kernel_size - 1,
-                device=x.device, dtype=x.dtype
+                x.size(0),
+                self.inner_dim,
+                self.conv_kernel_size - 1,
+                device=x.device,
+                dtype=x.dtype,
             )
 
         # Store residual
@@ -295,7 +299,9 @@ class MambaBlock(nn.Module):
         x_branch = F.silu(x_branch)
 
         # SSM step
-        x_branch, new_state = self.ssm.step(x_branch, state)  # (B, inner_dim), (B, D, N)
+        x_branch, new_state = self.ssm.step(
+            x_branch, state
+        )  # (B, inner_dim), (B, D, N)
 
         # Gating
         z_branch = F.silu(z_branch)
@@ -333,8 +339,11 @@ class MambaBlock(nn.Module):
         """
         ssm_state = self.ssm.init_state(batch_size, device, dtype)
         conv_state = torch.zeros(
-            batch_size, self.inner_dim, self.conv_kernel_size - 1,
-            device=device, dtype=dtype
+            batch_size,
+            self.inner_dim,
+            self.conv_kernel_size - 1,
+            device=device,
+            dtype=dtype,
         )
         return ssm_state, conv_state
 
@@ -381,7 +390,7 @@ class MambaResidualBlock(nn.Module):
         super().__init__()
 
         # Disable internal norm since we handle it externally
-        kwargs['use_norm'] = False
+        kwargs["use_norm"] = False
 
         self.norm = nn.LayerNorm(embed_dim)
         self.mamba = MambaBlock(embed_dim, state_dim, **kwargs)

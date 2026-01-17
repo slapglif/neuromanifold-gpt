@@ -7,8 +7,8 @@ Tests cover:
 - Early stopping triggers
 """
 
-import pytest
 import time
+
 from neuromanifold_gpt.nas.evaluator import ComputeBudget, EvaluationResult
 
 
@@ -23,14 +23,14 @@ class TestComputeBudgetInitialization:
         assert budget.min_perplexity_target is None
         assert budget.patience is None
         assert budget.evaluations_done == 0
-        assert budget.best_perplexity == float('inf')
+        assert budget.best_perplexity == float("inf")
 
     def test_initialization_with_max_evaluations(self):
         """Test ComputeBudget initializes correctly with max_evaluations."""
         budget = ComputeBudget(max_evaluations=10)
         assert budget.max_evaluations == 10
         assert budget.evaluations_done == 0
-        assert budget.best_perplexity == float('inf')
+        assert budget.best_perplexity == float("inf")
 
     def test_initialization_with_time_limit(self):
         """Test ComputeBudget initializes correctly with time limit."""
@@ -220,7 +220,7 @@ class TestEvaluationResult:
             error_message=None,
         )
 
-        assert result.success == True
+        assert result.success
         assert result.final_loss == 2.5
         assert result.perplexity == 12.18
         assert result.n_params == 10_000_000
@@ -239,7 +239,7 @@ class TestEvaluationResult:
             error_message="Out of memory",
         )
 
-        assert result.success == False
+        assert not result.success
         assert result.error_message == "Out of memory"
         assert result.final_loss is None
 
@@ -257,14 +257,14 @@ class TestEvaluationResult:
         )
 
         # Check all fields are accessible
-        assert hasattr(result, 'success')
-        assert hasattr(result, 'final_loss')
-        assert hasattr(result, 'perplexity')
-        assert hasattr(result, 'n_params')
-        assert hasattr(result, 'training_time')
-        assert hasattr(result, 'tokens_per_second')
-        assert hasattr(result, 'architecture_id')
-        assert hasattr(result, 'error_message')
+        assert hasattr(result, "success")
+        assert hasattr(result, "final_loss")
+        assert hasattr(result, "perplexity")
+        assert hasattr(result, "n_params")
+        assert hasattr(result, "training_time")
+        assert hasattr(result, "tokens_per_second")
+        assert hasattr(result, "architecture_id")
+        assert hasattr(result, "error_message")
 
 
 class TestComputeBudgetIntegration:

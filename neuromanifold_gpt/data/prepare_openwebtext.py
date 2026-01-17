@@ -11,10 +11,11 @@ Requirements:
     pip install datasets tiktoken tqdm
 """
 import os
-from tqdm import tqdm
+
 import numpy as np
 import tiktoken
 from datasets import load_dataset
+from tqdm import tqdm
 
 OUT_DIR = "data/openwebtext"
 NUM_PROC = 8  # Number of workers for tokenization
@@ -66,7 +67,9 @@ def main():
         idx = 0
         for batch_idx in tqdm(range(total_batches), desc=f"Writing {split}"):
             # Shard the dataset into batches
-            batch = dset.shard(num_shards=total_batches, index=batch_idx, contiguous=True).with_format("numpy")
+            batch = dset.shard(
+                num_shards=total_batches, index=batch_idx, contiguous=True
+            ).with_format("numpy")
             arr_batch = np.concatenate(batch["ids"])
             arr[idx : idx + len(arr_batch)] = arr_batch
             idx += len(arr_batch)

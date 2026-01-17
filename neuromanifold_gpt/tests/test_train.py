@@ -22,8 +22,8 @@ def test_training_step():
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLightning(config)
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
     loss = module.training_step(batch, 0)
     assert loss.ndim == 0
@@ -38,7 +38,7 @@ def test_configure_optimizers():
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLightning(config)
     result = module.configure_optimizers()
-    assert 'optimizer' in result
+    assert "optimizer" in result
 
 
 def test_validation_step():
@@ -49,8 +49,8 @@ def test_validation_step():
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLightning(config)
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
     loss = module.validation_step(batch, 0)
     assert loss.ndim == 0
@@ -65,13 +65,13 @@ def test_optimizer_has_weight_decay_groups():
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLightning(config)
     result = module.configure_optimizers()
-    optimizer = result['optimizer']
+    optimizer = result["optimizer"]
 
     # Should have 2 param groups: decay and no_decay
     assert len(optimizer.param_groups) == 2
 
     # Check weight decay values
-    weight_decays = [g['weight_decay'] for g in optimizer.param_groups]
+    weight_decays = [g["weight_decay"] for g in optimizer.param_groups]
     assert config.weight_decay in weight_decays
     assert 0.0 in weight_decays
 
@@ -85,24 +85,25 @@ def test_scheduler_is_cosine():
     module = NeuroManifoldLightning(config)
     result = module.configure_optimizers()
 
-    assert 'lr_scheduler' in result
-    scheduler_config = result['lr_scheduler']
-    assert 'scheduler' in scheduler_config
+    assert "lr_scheduler" in result
+    scheduler_config = result["lr_scheduler"]
+    assert "scheduler" in scheduler_config
 
 
 def test_training_step_logs_metrics():
     """Training step should log train_loss."""
+    from unittest.mock import MagicMock
+
     from neuromanifold_gpt.config import NeuroManifoldConfigNano
     from neuromanifold_gpt.train import NeuroManifoldLightning
-    from unittest.mock import MagicMock
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLightning(config)
     module.log = MagicMock()
 
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
     module.training_step(batch, 0)
 
@@ -110,7 +111,7 @@ def test_training_step_logs_metrics():
     module.log.assert_called()
     call_args = [call[0] for call in module.log.call_args_list]
     logged_names = [args[0] for args in call_args]
-    assert 'train_loss' in logged_names
+    assert "train_loss" in logged_names
 
 
 def test_config_has_training_params():
@@ -119,11 +120,11 @@ def test_config_has_training_params():
 
     config = NeuroManifoldConfig()
 
-    assert hasattr(config, 'learning_rate')
-    assert hasattr(config, 'weight_decay')
-    assert hasattr(config, 'beta1')
-    assert hasattr(config, 'beta2')
-    assert hasattr(config, 'grad_clip')
+    assert hasattr(config, "learning_rate")
+    assert hasattr(config, "weight_decay")
+    assert hasattr(config, "beta1")
+    assert hasattr(config, "beta2")
+    assert hasattr(config, "grad_clip")
 
     # Check default values
     assert config.learning_rate == 3e-4
@@ -147,13 +148,13 @@ def test_train_smoke():
 
     # Configure optimizer
     optimizer_config = module.configure_optimizers()
-    assert 'optimizer' in optimizer_config
-    assert 'lr_scheduler' in optimizer_config
+    assert "optimizer" in optimizer_config
+    assert "lr_scheduler" in optimizer_config
 
     # Create batch
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
 
     # Run training step
@@ -177,6 +178,7 @@ class TestCosineWarmupLR:
     def test_lr_at_zero_is_small(self):
         """LR at iter 0 should be small (warming up)."""
         import math
+
         learning_rate = 6e-4
         warmup_iters = 2000
         min_lr = 6e-5
@@ -193,6 +195,7 @@ class TestCosineWarmupLR:
     def test_lr_at_warmup_end(self):
         """LR should be close to max at end of warmup."""
         import math
+
         learning_rate = 6e-4
         warmup_iters = 2000
         lr_decay_iters = 600000
@@ -214,6 +217,7 @@ class TestCosineWarmupLR:
     def test_lr_after_decay(self):
         """LR after decay should be min_lr."""
         import math
+
         learning_rate = 6e-4
         warmup_iters = 2000
         lr_decay_iters = 600000
@@ -234,6 +238,7 @@ class TestCosineWarmupLR:
     def test_lr_monotonically_increases_during_warmup(self):
         """LR should increase during warmup."""
         import math
+
         learning_rate = 6e-4
         warmup_iters = 2000
 
@@ -260,10 +265,7 @@ class TestGPTConfigureOptimizers:
         config = NeuroManifoldConfigNano()
         model = NeuroManifoldGPT(config)
         optimizer = model.configure_optimizers(
-            weight_decay=0.1,
-            learning_rate=3e-4,
-            betas=(0.9, 0.95),
-            device_type="cpu"
+            weight_decay=0.1, learning_rate=3e-4, betas=(0.9, 0.95), device_type="cpu"
         )
         assert optimizer is not None
         assert isinstance(optimizer, torch.optim.AdamW)
@@ -278,7 +280,7 @@ class TestGPTConfigureOptimizers:
         optimizer = model.configure_optimizers()
 
         assert len(optimizer.param_groups) == 2
-        weight_decays = {g['weight_decay'] for g in optimizer.param_groups}
+        weight_decays = {g["weight_decay"] for g in optimizer.param_groups}
         assert 0.0 in weight_decays  # No decay group exists
 
     def test_num_parameters(self):
@@ -312,10 +314,10 @@ class TestNanoGPTTrainingLoop:
 
         logits, loss, info = model(x, y)
 
-        assert 'sdr' in info
-        assert 'sdr_scores' in info
-        assert 'block_infos' in info
-        assert 'memory_size' in info
+        assert "sdr" in info
+        assert "sdr_scores" in info
+        assert "block_infos" in info
+        assert "memory_size" in info
 
     def test_model_gradient_flow(self):
         """Gradients should flow through entire model."""
@@ -352,7 +354,7 @@ class TestNanoGPTTrainingLoop:
         y = torch.randint(0, config.vocab_size, (2, 32))
 
         # Simulate mixed precision
-        with torch.amp.autocast('cpu', dtype=torch.bfloat16):
+        with torch.amp.autocast("cpu", dtype=torch.bfloat16):
             logits, loss, info = model(x, y)
 
         assert logits is not None
@@ -396,22 +398,22 @@ class TestCheckpointing:
 
         # Save checkpoint
         checkpoint = {
-            'model': model1.state_dict(),
-            'model_config': {
-                'vocab_size': config.vocab_size,
-                'block_size': config.block_size,
-                'n_layer': config.n_layer,
-                'n_heads': config.n_heads,
-                'n_embd': config.n_embd,
-                'sdr_size': config.sdr_size,
-                'sdr_sparsity': config.sdr_sparsity,
-                'manifold_dim': config.manifold_dim,
-                'n_eigenvectors': config.n_eigenvectors,
-                'dropout': config.dropout,
-                'bias': config.bias,
+            "model": model1.state_dict(),
+            "model_config": {
+                "vocab_size": config.vocab_size,
+                "block_size": config.block_size,
+                "n_layer": config.n_layer,
+                "n_heads": config.n_heads,
+                "n_embd": config.n_embd,
+                "sdr_size": config.sdr_size,
+                "sdr_sparsity": config.sdr_sparsity,
+                "manifold_dim": config.manifold_dim,
+                "n_eigenvectors": config.n_eigenvectors,
+                "dropout": config.dropout,
+                "bias": config.bias,
             },
-            'iter_num': 100,
-            'best_val_loss': 4.5,
+            "iter_num": 100,
+            "best_val_loss": 4.5,
         }
         ckpt_path = tmp_path / "ckpt.pt"
         torch.save(checkpoint, ckpt_path)
@@ -419,15 +421,14 @@ class TestCheckpointing:
         # Load checkpoint
         loaded = torch.load(ckpt_path)
         model2 = NeuroManifoldGPT(config)
-        model2.load_state_dict(loaded['model'])
+        model2.load_state_dict(loaded["model"])
 
         # Compare parameters
         for (n1, p1), (n2, p2) in zip(
-            model1.named_parameters(),
-            model2.named_parameters()
+            model1.named_parameters(), model2.named_parameters()
         ):
             assert n1 == n2
             assert torch.allclose(p1, p2)
 
-        assert loaded['iter_num'] == 100
-        assert loaded['best_val_loss'] == 4.5
+        assert loaded["iter_num"] == 100
+        assert loaded["best_val_loss"] == 4.5

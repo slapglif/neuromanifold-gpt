@@ -1,8 +1,9 @@
 """Tests for unified logging module with rich-formatted output."""
 
 import os
-import pytest
 from io import StringIO
+
+import pytest
 
 
 class TestRichLogger:
@@ -132,7 +133,7 @@ class TestGetLogger:
 
     def test_get_logger_returns_rich_logger(self):
         """Test get_logger() returns RichLogger instance."""
-        from neuromanifold_gpt.utils.logging import get_logger, RichLogger
+        from neuromanifold_gpt.utils.logging import RichLogger, get_logger
 
         logger = get_logger("test_module")
         assert isinstance(logger, RichLogger)
@@ -225,7 +226,7 @@ class TestLoggingIntegration:
 
     def test_logger_workflow(self):
         """Test typical logging workflow."""
-        from neuromanifold_gpt.utils.logging import get_logger, configure_logging
+        from neuromanifold_gpt.utils.logging import configure_logging, get_logger
 
         # Configure logging
         configure_logging(level="INFO")

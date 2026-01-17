@@ -14,14 +14,14 @@ Spectral Embeddings:
 """
 
 # Position embeddings
+from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 from neuromanifold_gpt.model.embeddings.ramanujan import RamanujanPositionalEmbedding
 from neuromanifold_gpt.model.embeddings.rotary import RotaryPositionalEmbedding
-from neuromanifold_gpt.model.embeddings.alibi import ALiBiPositionalBias
 
 # Spectral embeddings
 from neuromanifold_gpt.model.embeddings.spectral import (
-    SpectralTokenEmbedding,
     AFNOTokenMixer,
+    SpectralTokenEmbedding,
     WaveInputEncoder,
 )
 

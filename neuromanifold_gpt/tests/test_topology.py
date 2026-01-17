@@ -22,24 +22,24 @@ import torch
 import torch.nn as nn
 
 from neuromanifold_gpt.model.topology import (
-    BraidGroup,
-    BraidEncoder,
-    BraidCrossing,
     BraidConfig,
-    TemperleyLiebAlgebra,
+    BraidCrossing,
+    BraidEncoder,
+    BraidGroup,
     JonesApproximator,
     JonesConfig,
     JonesEvaluator,
     JonesLoss,
     KauffmanBracketNetwork,
+    TemperleyLiebAlgebra,
     TopologicalHead,
     TopologicalHeadConfig,
 )
 
-
 # ==============================================================================
 # Fixtures
 # ==============================================================================
+
 
 @pytest.fixture
 def device():
@@ -99,6 +99,7 @@ def small_input(device, dtype):
 # BraidConfig Tests
 # ==============================================================================
 
+
 class TestBraidConfig:
     """Tests for BraidConfig dataclass."""
 
@@ -129,12 +130,14 @@ class TestBraidConfig:
     def test_config_is_dataclass(self):
         """Test that BraidConfig is a proper dataclass."""
         from dataclasses import is_dataclass
+
         assert is_dataclass(BraidConfig)
 
 
 # ==============================================================================
 # BraidGroup Tests
 # ==============================================================================
+
 
 class TestBraidGroup:
     """Tests for BraidGroup mathematical structure."""
@@ -238,13 +241,14 @@ class TestBraidGroup:
         """Test string representation."""
         bg = BraidGroup(n_strands=n_strands, t_param=-1.0, use_reduced=True)
         repr_str = repr(bg)
-        assert f'n_strands={n_strands}' in repr_str
-        assert 't=-1.0' in repr_str
+        assert f"n_strands={n_strands}" in repr_str
+        assert "t=-1.0" in repr_str
 
 
 # ==============================================================================
 # BraidEncoder Tests
 # ==============================================================================
+
 
 class TestBraidEncoder:
     """Tests for BraidEncoder neural network."""
@@ -281,8 +285,10 @@ class TestBraidEncoder:
     def test_forward_with_mask(self, sample_input, embed_dim, n_strands):
         """Test forward pass with attention mask."""
         encoder = BraidEncoder(embed_dim=embed_dim, n_strands=n_strands)
-        mask = torch.ones(sample_input.shape[0], sample_input.shape[1], dtype=torch.bool)
-        mask[:, sample_input.shape[1] // 2:] = False
+        mask = torch.ones(
+            sample_input.shape[0], sample_input.shape[1], dtype=torch.bool
+        )
+        mask[:, sample_input.shape[1] // 2 :] = False
         rep = encoder(sample_input, mask=mask)
         rep_dim = n_strands - 1
         assert rep.shape == (sample_input.shape[0], rep_dim, rep_dim)
@@ -292,10 +298,10 @@ class TestBraidEncoder:
         encoder = BraidEncoder(embed_dim=embed_dim, n_strands=n_strands)
         rep, info = encoder(sample_input, return_info=True)
 
-        assert 'generator_weights' in info
-        assert 'crossing_logits' in info
-        assert 'dominant_generator' in info
-        assert info['generator_weights'].shape[0] == sample_input.shape[0]
+        assert "generator_weights" in info
+        assert "crossing_logits" in info
+        assert "dominant_generator" in info
+        assert info["generator_weights"].shape[0] == sample_input.shape[0]
 
     def test_forward_without_attention(self, sample_input, embed_dim, n_strands):
         """Test forward pass without attention weighting."""
@@ -313,7 +319,9 @@ class TestBraidEncoder:
         encoder = BraidEncoder(embed_dim=embed_dim, n_strands=n_strands)
         # Create fake generator weights
         n_gens = n_strands - 1
-        weights = torch.softmax(torch.randn(2, 2 * n_gens, device=device, dtype=dtype), dim=-1)
+        weights = torch.softmax(
+            torch.randn(2, 2 * n_gens, device=device, dtype=dtype), dim=-1
+        )
         writhe = encoder.compute_writhe(weights)
         assert writhe.shape == (2,)
 
@@ -321,13 +329,14 @@ class TestBraidEncoder:
         """Test string representation."""
         encoder = BraidEncoder(embed_dim=embed_dim, n_strands=n_strands)
         repr_str = encoder.extra_repr()
-        assert f'embed_dim={embed_dim}' in repr_str
-        assert f'n_strands={n_strands}' in repr_str
+        assert f"embed_dim={embed_dim}" in repr_str
+        assert f"n_strands={n_strands}" in repr_str
 
 
 # ==============================================================================
 # BraidCrossing Tests
 # ==============================================================================
+
 
 class TestBraidCrossing:
     """Tests for BraidCrossing layer."""
@@ -360,12 +369,13 @@ class TestBraidCrossing:
         """Test string representation."""
         crossing = BraidCrossing(embed_dim=embed_dim, n_strands=n_strands)
         repr_str = crossing.extra_repr()
-        assert f'embed_dim={embed_dim}' in repr_str
+        assert f"embed_dim={embed_dim}" in repr_str
 
 
 # ==============================================================================
 # TemperleyLiebAlgebra Tests
 # ==============================================================================
+
 
 class TestTemperleyLiebAlgebra:
     """Tests for TemperleyLiebAlgebra."""
@@ -399,13 +409,14 @@ class TestTemperleyLiebAlgebra:
         """Test string representation."""
         tl = TemperleyLiebAlgebra(n=n_strands)
         repr_str = repr(tl)
-        assert f'n={n_strands}' in repr_str
-        assert 'dim=' in repr_str
+        assert f"n={n_strands}" in repr_str
+        assert "dim=" in repr_str
 
 
 # ==============================================================================
 # JonesConfig Tests
 # ==============================================================================
+
 
 class TestJonesConfig:
     """Tests for JonesConfig dataclass."""
@@ -440,12 +451,14 @@ class TestJonesConfig:
     def test_config_is_dataclass(self):
         """Test that JonesConfig is a proper dataclass."""
         from dataclasses import is_dataclass
+
         assert is_dataclass(JonesConfig)
 
 
 # ==============================================================================
 # KauffmanBracketNetwork Tests
 # ==============================================================================
+
 
 class TestKauffmanBracketNetwork:
     """Tests for KauffmanBracketNetwork."""
@@ -491,13 +504,14 @@ class TestKauffmanBracketNetwork:
             n_coefficients=n_coefficients,
         )
         repr_str = kb.extra_repr()
-        assert 'rep_dim=3' in repr_str
-        assert f'n_coefficients={n_coefficients}' in repr_str
+        assert "rep_dim=3" in repr_str
+        assert f"n_coefficients={n_coefficients}" in repr_str
 
 
 # ==============================================================================
 # JonesEvaluator Tests
 # ==============================================================================
+
 
 class TestJonesEvaluator:
     """Tests for JonesEvaluator."""
@@ -535,12 +549,13 @@ class TestJonesEvaluator:
         """Test string representation."""
         evaluator = JonesEvaluator(n_coefficients=n_coefficients)
         repr_str = evaluator.extra_repr()
-        assert f'n_coefficients={n_coefficients}' in repr_str
+        assert f"n_coefficients={n_coefficients}" in repr_str
 
 
 # ==============================================================================
 # JonesApproximator Tests
 # ==============================================================================
+
 
 class TestJonesApproximator:
     """Tests for JonesApproximator."""
@@ -581,16 +596,18 @@ class TestJonesApproximator:
         jones = JonesApproximator(embed_dim=embed_dim, n_strands=n_strands)
         _, info = jones(sample_input)
 
-        assert 'braid_rep' in info
-        assert 'generator_weights' in info
-        assert 'dominant_generator' in info
-        assert 'writhe' in info
+        assert "braid_rep" in info
+        assert "generator_weights" in info
+        assert "dominant_generator" in info
+        assert "writhe" in info
 
     def test_forward_with_mask(self, sample_input, embed_dim, n_strands):
         """Test forward pass with attention mask."""
         jones = JonesApproximator(embed_dim=embed_dim, n_strands=n_strands)
-        mask = torch.ones(sample_input.shape[0], sample_input.shape[1], dtype=torch.bool)
-        mask[:, sample_input.shape[1] // 2:] = False
+        mask = torch.ones(
+            sample_input.shape[0], sample_input.shape[1], dtype=torch.bool
+        )
+        mask[:, sample_input.shape[1] // 2 :] = False
         poly, _ = jones(sample_input, mask=mask)
         assert poly.shape[0] == sample_input.shape[0]
 
@@ -644,13 +661,14 @@ class TestJonesApproximator:
         """Test string representation."""
         jones = JonesApproximator(embed_dim=embed_dim, n_strands=n_strands)
         repr_str = jones.extra_repr()
-        assert f'embed_dim={embed_dim}' in repr_str
-        assert f'n_strands={n_strands}' in repr_str
+        assert f"embed_dim={embed_dim}" in repr_str
+        assert f"n_strands={n_strands}" in repr_str
 
 
 # ==============================================================================
 # JonesLoss Tests
 # ==============================================================================
+
 
 class TestJonesLoss:
     """Tests for JonesLoss."""
@@ -679,8 +697,8 @@ class TestJonesLoss:
         loss_fn = JonesLoss(embed_dim=embed_dim)
         loss, info = loss_fn(sample_input)
         assert loss.dim() == 0  # Scalar
-        assert 'total_loss' in info
-        assert 'reg_loss' in info
+        assert "total_loss" in info
+        assert "reg_loss" in info
 
     def test_forward_with_augmented(self, sample_input, embed_dim):
         """Test forward pass with augmented sample."""
@@ -688,7 +706,7 @@ class TestJonesLoss:
         x_aug = sample_input + 0.1 * torch.randn_like(sample_input)
         loss, info = loss_fn(sample_input, x_aug=x_aug)
         assert loss.dim() == 0
-        assert 'invariance_loss' in info
+        assert "invariance_loss" in info
 
     def test_forward_with_negative(self, sample_input, embed_dim):
         """Test forward pass with negative sample."""
@@ -696,7 +714,7 @@ class TestJonesLoss:
         x_neg = torch.randn_like(sample_input)  # Different sample
         loss, info = loss_fn(sample_input, x_neg=x_neg)
         assert loss.dim() == 0
-        assert 'distinctiveness_loss' in info
+        assert "distinctiveness_loss" in info
 
     def test_forward_with_both(self, sample_input, embed_dim):
         """Test forward pass with augmented and negative samples."""
@@ -705,19 +723,20 @@ class TestJonesLoss:
         x_neg = torch.randn_like(sample_input)
         loss, info = loss_fn(sample_input, x_aug=x_aug, x_neg=x_neg)
         assert loss.dim() == 0
-        assert 'invariance_loss' in info
-        assert 'distinctiveness_loss' in info
+        assert "invariance_loss" in info
+        assert "distinctiveness_loss" in info
 
     def test_extra_repr(self, embed_dim):
         """Test string representation."""
         loss_fn = JonesLoss(embed_dim=embed_dim)
         repr_str = loss_fn.extra_repr()
-        assert 'margin=' in repr_str
+        assert "margin=" in repr_str
 
 
 # ==============================================================================
 # TopologicalHeadConfig Tests
 # ==============================================================================
+
 
 class TestTopologicalHeadConfig:
     """Tests for TopologicalHeadConfig dataclass."""
@@ -756,12 +775,14 @@ class TestTopologicalHeadConfig:
     def test_config_is_dataclass(self):
         """Test that TopologicalHeadConfig is a proper dataclass."""
         from dataclasses import is_dataclass
+
         assert is_dataclass(TopologicalHeadConfig)
 
 
 # ==============================================================================
 # TopologicalHead Tests
 # ==============================================================================
+
 
 class TestTopologicalHead:
     """Tests for TopologicalHead."""
@@ -808,18 +829,20 @@ class TestTopologicalHead:
         head = TopologicalHead(embed_dim=embed_dim, n_strands=n_strands)
         _, info = head(sample_input)
 
-        assert 'total_loss' in info
-        assert 'temperature' in info
-        assert 'smoothness_loss' in info
-        assert 'regularity_loss' in info
-        assert 'consistency_loss' in info
-        assert 'coherence_loss' in info
+        assert "total_loss" in info
+        assert "temperature" in info
+        assert "smoothness_loss" in info
+        assert "regularity_loss" in info
+        assert "consistency_loss" in info
+        assert "coherence_loss" in info
 
     def test_forward_with_mask(self, sample_input, embed_dim, n_strands):
         """Test forward pass with attention mask."""
         head = TopologicalHead(embed_dim=embed_dim, n_strands=n_strands)
-        mask = torch.ones(sample_input.shape[0], sample_input.shape[1], dtype=torch.bool)
-        mask[:, sample_input.shape[1] // 2:] = False
+        mask = torch.ones(
+            sample_input.shape[0], sample_input.shape[1], dtype=torch.bool
+        )
+        mask[:, sample_input.shape[1] // 2 :] = False
         loss, _ = head(sample_input, mask=mask)
         assert loss.dim() == 0
 
@@ -855,7 +878,9 @@ class TestTopologicalHead:
         assert loss.dim() == 0
         assert loss >= 0
 
-    def test_compute_coherence_loss_short_sequence(self, embed_dim, n_strands, device, dtype):
+    def test_compute_coherence_loss_short_sequence(
+        self, embed_dim, n_strands, device, dtype
+    ):
         """Test coherence loss with sequence length 1."""
         head = TopologicalHead(embed_dim=embed_dim, n_strands=n_strands)
         x = torch.randn(2, 1, embed_dim, device=device, dtype=dtype)
@@ -867,10 +892,14 @@ class TestTopologicalHead:
         head = TopologicalHead(embed_dim=embed_dim, n_strands=n_strands)
         features = head.get_topological_features(sample_input)
 
-        assert 'jones_poly' in features
-        assert 'braid_rep' in features
-        assert 'position_features' in features
-        assert features['braid_rep'].shape == (sample_input.shape[0], n_strands - 1, n_strands - 1)
+        assert "jones_poly" in features
+        assert "braid_rep" in features
+        assert "position_features" in features
+        assert features["braid_rep"].shape == (
+            sample_input.shape[0],
+            n_strands - 1,
+            n_strands - 1,
+        )
 
     def test_topological_distance(self, sample_input, embed_dim, n_strands):
         """Test topological distance computation."""
@@ -891,9 +920,9 @@ class TestTopologicalHead:
             use_temporal_coherence=False,
         )
         loss, info = head(sample_input)
-        assert 'smoothness_loss' in info
-        assert 'consistency_loss' not in info
-        assert 'coherence_loss' not in info
+        assert "smoothness_loss" in info
+        assert "consistency_loss" not in info
+        assert "coherence_loss" not in info
 
     def test_braid_only(self, sample_input, embed_dim, n_strands):
         """Test with only braid enabled."""
@@ -905,9 +934,9 @@ class TestTopologicalHead:
             use_temporal_coherence=False,
         )
         loss, info = head(sample_input)
-        assert 'smoothness_loss' not in info
-        assert 'consistency_loss' in info
-        assert 'coherence_loss' not in info
+        assert "smoothness_loss" not in info
+        assert "consistency_loss" in info
+        assert "coherence_loss" not in info
 
     def test_coherence_only(self, sample_input, embed_dim, n_strands):
         """Test with only temporal coherence enabled."""
@@ -919,21 +948,22 @@ class TestTopologicalHead:
             use_temporal_coherence=True,
         )
         loss, info = head(sample_input)
-        assert 'smoothness_loss' not in info
-        assert 'consistency_loss' not in info
-        assert 'coherence_loss' in info
+        assert "smoothness_loss" not in info
+        assert "consistency_loss" not in info
+        assert "coherence_loss" in info
 
     def test_extra_repr(self, embed_dim, n_strands):
         """Test string representation."""
         head = TopologicalHead(embed_dim=embed_dim, n_strands=n_strands)
         repr_str = head.extra_repr()
-        assert f'embed_dim={embed_dim}' in repr_str
-        assert f'n_strands={n_strands}' in repr_str
+        assert f"embed_dim={embed_dim}" in repr_str
+        assert f"n_strands={n_strands}" in repr_str
 
 
 # ==============================================================================
 # Edge Cases and Numerical Stability Tests
 # ==============================================================================
+
 
 class TestTopologyEdgeCases:
     """Tests for edge cases and numerical stability."""
@@ -984,6 +1014,7 @@ class TestTopologyEdgeCases:
 # ==============================================================================
 # Gradient Flow Tests
 # ==============================================================================
+
 
 class TestTopologyGradientFlow:
     """Tests for gradient flow through topology components."""
@@ -1051,6 +1082,7 @@ class TestTopologyGradientFlow:
 # Parameter Learning Tests
 # ==============================================================================
 
+
 class TestTopologyParameterLearning:
     """Tests for learnable parameter behavior."""
 
@@ -1059,43 +1091,44 @@ class TestTopologyParameterLearning:
         encoder = BraidEncoder(embed_dim=embed_dim, n_strands=n_strands)
         params = list(encoder.parameters())
         assert len(params) > 0
-        assert any('crossing_proj' in name for name, _ in encoder.named_parameters())
+        assert any("crossing_proj" in name for name, _ in encoder.named_parameters())
 
     def test_kauffman_bracket_learnable_params(self):
         """Test KauffmanBracketNetwork has learnable parameters."""
         kb = KauffmanBracketNetwork(embed_dim=384, rep_dim=3, n_coefficients=8)
         params = list(kb.parameters())
         assert len(params) > 0
-        assert any('output_scale' in name for name, _ in kb.named_parameters())
+        assert any("output_scale" in name for name, _ in kb.named_parameters())
 
     def test_jones_evaluator_learnable_params(self):
         """Test JonesEvaluator has learnable parameters."""
         evaluator = JonesEvaluator(n_coefficients=8)
         params = list(evaluator.parameters())
         assert len(params) > 0
-        assert any('refine' in name for name, _ in evaluator.named_parameters())
+        assert any("refine" in name for name, _ in evaluator.named_parameters())
 
     def test_jones_approximator_learnable_params(self, embed_dim, n_strands):
         """Test JonesApproximator has learnable parameters."""
         jones = JonesApproximator(embed_dim=embed_dim, n_strands=n_strands)
         params = list(jones.parameters())
         assert len(params) > 0
-        assert any('braid_encoder' in name for name, _ in jones.named_parameters())
-        assert any('output_proj' in name for name, _ in jones.named_parameters())
+        assert any("braid_encoder" in name for name, _ in jones.named_parameters())
+        assert any("output_proj" in name for name, _ in jones.named_parameters())
 
     def test_topological_head_learnable_params(self, embed_dim, n_strands):
         """Test TopologicalHead has learnable parameters."""
         head = TopologicalHead(embed_dim=embed_dim, n_strands=n_strands)
         params = list(head.parameters())
         assert len(params) > 0
-        assert any('log_temperature' in name for name, _ in head.named_parameters())
-        assert any('jones' in name for name, _ in head.named_parameters())
-        assert any('braid_encoder' in name for name, _ in head.named_parameters())
+        assert any("log_temperature" in name for name, _ in head.named_parameters())
+        assert any("jones" in name for name, _ in head.named_parameters())
+        assert any("braid_encoder" in name for name, _ in head.named_parameters())
 
 
 # ==============================================================================
 # Integration Tests
 # ==============================================================================
+
 
 class TestTopologyIntegration:
     """Integration tests for topology components working together."""
@@ -1122,16 +1155,18 @@ class TestTopologyIntegration:
 
         # Check all components present
         assert loss.dim() == 0
-        assert 'smoothness_loss' in info
-        assert 'consistency_loss' in info
-        assert 'regularity_loss' in info
-        assert 'coherence_loss' in info
-        assert 'total_loss' in info
+        assert "smoothness_loss" in info
+        assert "consistency_loss" in info
+        assert "regularity_loss" in info
+        assert "coherence_loss" in info
+        assert "total_loss" in info
 
         # Check loss is non-negative
         assert loss >= 0
 
-    def test_braid_group_to_encoder_consistency(self, embed_dim, n_strands, device, dtype):
+    def test_braid_group_to_encoder_consistency(
+        self, embed_dim, n_strands, device, dtype
+    ):
         """Test that BraidEncoder uses BraidGroup correctly."""
         encoder = BraidEncoder(embed_dim=embed_dim, n_strands=n_strands)
         bg = BraidGroup(n_strands=n_strands)
@@ -1141,7 +1176,7 @@ class TestTopologyIntegration:
         assert encoder.braid_group.rep_dim == bg.rep_dim
 
         # Check generator matrices are registered as buffers
-        assert hasattr(encoder, 'generators')
+        assert hasattr(encoder, "generators")
         assert encoder.generators.shape[0] == 2 * (n_strands - 1)
 
 

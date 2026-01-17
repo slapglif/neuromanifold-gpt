@@ -2,11 +2,12 @@
 """Integration tests for all position embedding types in NeuroManifoldGPT."""
 import pytest
 import torch
+
 from neuromanifold_gpt.config import NeuroManifoldConfigNano
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 
-@pytest.fixture(params=['learned', 'ramanujan', 'rotary', 'alibi'])
+@pytest.fixture(params=["learned", "ramanujan", "rotary", "alibi"])
 def pos_emb_type(request):
     """Parametrized fixture for all position embedding types."""
     return request.param
@@ -14,7 +15,7 @@ def pos_emb_type(request):
 
 def test_learned_pos_emb_forward():
     """Learned position embeddings should work in forward pass."""
-    config = NeuroManifoldConfigNano(pos_emb_type='learned')
+    config = NeuroManifoldConfigNano(pos_emb_type="learned")
     model = NeuroManifoldGPT(config)
 
     tokens = torch.randint(0, config.vocab_size, (2, 50))
@@ -26,7 +27,7 @@ def test_learned_pos_emb_forward():
 
 def test_ramanujan_pos_emb_forward():
     """Ramanujan position embeddings should work in forward pass."""
-    config = NeuroManifoldConfigNano(pos_emb_type='ramanujan')
+    config = NeuroManifoldConfigNano(pos_emb_type="ramanujan")
     model = NeuroManifoldGPT(config)
 
     tokens = torch.randint(0, config.vocab_size, (2, 50))
@@ -38,7 +39,7 @@ def test_ramanujan_pos_emb_forward():
 
 def test_rotary_pos_emb_forward():
     """Rotary position embeddings should work in forward pass."""
-    config = NeuroManifoldConfigNano(pos_emb_type='rotary')
+    config = NeuroManifoldConfigNano(pos_emb_type="rotary")
     model = NeuroManifoldGPT(config)
 
     tokens = torch.randint(0, config.vocab_size, (2, 50))
@@ -50,7 +51,7 @@ def test_rotary_pos_emb_forward():
 
 def test_alibi_pos_emb_forward():
     """ALiBi position embeddings should work in forward pass."""
-    config = NeuroManifoldConfigNano(pos_emb_type='alibi')
+    config = NeuroManifoldConfigNano(pos_emb_type="alibi")
     model = NeuroManifoldGPT(config)
 
     tokens = torch.randint(0, config.vocab_size, (2, 50))
@@ -101,8 +102,8 @@ def test_all_pos_emb_types_produce_different_outputs(pos_emb_type):
         logits1, _, _ = model(tokens)
 
     # Compare with learned embeddings (baseline)
-    if pos_emb_type != 'learned':
-        config2 = NeuroManifoldConfigNano(pos_emb_type='learned')
+    if pos_emb_type != "learned":
+        config2 = NeuroManifoldConfigNano(pos_emb_type="learned")
         model2 = NeuroManifoldGPT(config2)
         model2.eval()
 
@@ -130,8 +131,8 @@ def test_all_pos_emb_types_info_dict(pos_emb_type):
 
 def test_learned_vs_ramanujan_different_positions():
     """Learned and Ramanujan embeddings should encode position differently."""
-    config_learned = NeuroManifoldConfigNano(pos_emb_type='learned')
-    config_ramanujan = NeuroManifoldConfigNano(pos_emb_type='ramanujan')
+    config_learned = NeuroManifoldConfigNano(pos_emb_type="learned")
+    config_ramanujan = NeuroManifoldConfigNano(pos_emb_type="ramanujan")
 
     model_learned = NeuroManifoldGPT(config_learned)
     model_ramanujan = NeuroManifoldGPT(config_ramanujan)
@@ -151,8 +152,8 @@ def test_learned_vs_ramanujan_different_positions():
 
 def test_rotary_vs_alibi_different_mechanisms():
     """RoPE and ALiBi should use different position encoding mechanisms."""
-    config_rotary = NeuroManifoldConfigNano(pos_emb_type='rotary')
-    config_alibi = NeuroManifoldConfigNano(pos_emb_type='alibi')
+    config_rotary = NeuroManifoldConfigNano(pos_emb_type="rotary")
+    config_alibi = NeuroManifoldConfigNano(pos_emb_type="alibi")
 
     model_rotary = NeuroManifoldGPT(config_rotary)
     model_alibi = NeuroManifoldGPT(config_alibi)
@@ -191,12 +192,12 @@ def test_all_pos_emb_types_gradient_flow(pos_emb_type):
         assert model.token_embedding.weight.grad is not None
 
     # For learned and ramanujan, check position embedding gradients
-    if pos_emb_type in ['learned', 'ramanujan']:
+    if pos_emb_type in ["learned", "ramanujan"]:
         # These add embeddings, so should have parameter gradients
-        if hasattr(model.position_embedding, 'weight'):
+        if hasattr(model.position_embedding, "weight"):
             # Learned embeddings
             assert model.position_embedding.weight.grad is not None
-        elif hasattr(model.position_embedding, 'pe'):
+        elif hasattr(model.position_embedding, "pe"):
             # Ramanujan embeddings (buffer, no grad expected)
             # But model should still train
             pass
@@ -242,56 +243,56 @@ def test_sequence_length_independence(pos_emb_type):
 
 def test_learned_pos_emb_initialization():
     """Learned position embeddings should be properly initialized."""
-    config = NeuroManifoldConfigNano(pos_emb_type='learned')
+    config = NeuroManifoldConfigNano(pos_emb_type="learned")
     model = NeuroManifoldGPT(config)
 
     # Check position embedding exists and has correct shape
-    assert hasattr(model, 'position_embedding')
-    assert hasattr(model.position_embedding, 'weight')
+    assert hasattr(model, "position_embedding")
+    assert hasattr(model.position_embedding, "weight")
     assert model.position_embedding.weight.shape == (config.block_size, config.n_embd)
 
 
 def test_ramanujan_pos_emb_initialization():
     """Ramanujan position embeddings should be properly initialized."""
-    config = NeuroManifoldConfigNano(pos_emb_type='ramanujan')
+    config = NeuroManifoldConfigNano(pos_emb_type="ramanujan")
     model = NeuroManifoldGPT(config)
 
     # Check position embedding exists and has precomputed buffer
-    assert hasattr(model, 'position_embedding')
-    assert hasattr(model.position_embedding, 'pe')
+    assert hasattr(model, "position_embedding")
+    assert hasattr(model.position_embedding, "pe")
     assert model.position_embedding.pe.shape == (config.block_size, config.n_embd)
 
 
 def test_rotary_pos_emb_initialization():
     """Rotary position embeddings should be properly initialized."""
-    config = NeuroManifoldConfigNano(pos_emb_type='rotary')
+    config = NeuroManifoldConfigNano(pos_emb_type="rotary")
     model = NeuroManifoldGPT(config)
 
     # Check position embedding exists
-    assert hasattr(model, 'position_embedding')
-    assert hasattr(model.position_embedding, 'inv_freq')
-    assert hasattr(model.position_embedding, 'cos_cached')
-    assert hasattr(model.position_embedding, 'sin_cached')
+    assert hasattr(model, "position_embedding")
+    assert hasattr(model.position_embedding, "inv_freq")
+    assert hasattr(model.position_embedding, "cos_cached")
+    assert hasattr(model.position_embedding, "sin_cached")
 
 
 def test_alibi_pos_emb_initialization():
     """ALiBi position embeddings should be properly initialized."""
-    config = NeuroManifoldConfigNano(pos_emb_type='alibi')
+    config = NeuroManifoldConfigNano(pos_emb_type="alibi")
     model = NeuroManifoldGPT(config)
 
     # Check position embedding exists
-    assert hasattr(model, 'position_embedding')
-    assert hasattr(model.position_embedding, 'slopes')
-    assert hasattr(model.position_embedding, 'bias_cached')
+    assert hasattr(model, "position_embedding")
+    assert hasattr(model.position_embedding, "slopes")
+    assert hasattr(model.position_embedding, "bias_cached")
     assert model.position_embedding.slopes.shape[0] == config.n_heads
 
 
 def test_invalid_pos_emb_type():
     """Should raise error for invalid position embedding type."""
-    config = NeuroManifoldConfigNano(pos_emb_type='invalid')
+    config = NeuroManifoldConfigNano(pos_emb_type="invalid")
 
     with pytest.raises(ValueError, match="Unknown pos_emb_type"):
-        model = NeuroManifoldGPT(config)
+        NeuroManifoldGPT(config)
 
 
 def test_all_pos_emb_types_deterministic(pos_emb_type):
@@ -334,7 +335,7 @@ def test_all_pos_emb_types_memory_efficiency(pos_emb_type):
 
 def test_rotary_extrapolation_capability():
     """RoPE should enable better extrapolation to longer sequences."""
-    config = NeuroManifoldConfigNano(pos_emb_type='rotary', block_size=128)
+    config = NeuroManifoldConfigNano(pos_emb_type="rotary", block_size=128)
     model = NeuroManifoldGPT(config)
     model.eval()
 
@@ -356,7 +357,7 @@ def test_rotary_extrapolation_capability():
 
 def test_alibi_extrapolation_capability():
     """ALiBi should enable better extrapolation to longer sequences."""
-    config = NeuroManifoldConfigNano(pos_emb_type='alibi', block_size=128)
+    config = NeuroManifoldConfigNano(pos_emb_type="alibi", block_size=128)
     model = NeuroManifoldGPT(config)
     model.eval()
 
@@ -390,7 +391,7 @@ def test_all_pos_emb_types_with_sdr(pos_emb_type):
 
 def test_pos_emb_type_saved_in_config():
     """Position embedding type should be saved in model config."""
-    for pos_emb_type in ['learned', 'ramanujan', 'rotary', 'alibi']:
+    for pos_emb_type in ["learned", "ramanujan", "rotary", "alibi"]:
         config = NeuroManifoldConfigNano(pos_emb_type=pos_emb_type)
         model = NeuroManifoldGPT(config)
 

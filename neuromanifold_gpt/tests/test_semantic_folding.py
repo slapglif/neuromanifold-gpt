@@ -225,8 +225,7 @@ class TestEncoderComponents:
     def test_context_encoder_integration(self):
         """Context encoder should modulate embeddings."""
         encoder = SemanticFoldingEncoder(
-            vocab_size=1000, sdr_size=2048, n_active=40, embed_dim=256,
-            context_size=5
+            vocab_size=1000, sdr_size=2048, n_active=40, embed_dim=256, context_size=5
         )
         encoder.eval()
 
@@ -241,12 +240,11 @@ class TestEncoderComponents:
     def test_retina_integration(self):
         """Semantic retina should be part of pipeline."""
         encoder = SemanticFoldingEncoder(
-            vocab_size=1000, sdr_size=2048, n_active=40, embed_dim=256,
-            grid_size=64
+            vocab_size=1000, sdr_size=2048, n_active=40, embed_dim=256, grid_size=64
         )
 
         # Verify retina exists and has expected properties
-        assert hasattr(encoder, 'retina')
+        assert hasattr(encoder, "retina")
         assert encoder.retina.grid_size == 64
 
 

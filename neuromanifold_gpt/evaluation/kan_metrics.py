@@ -13,8 +13,9 @@ Reference: KAN layers use learnable spline basis functions instead of
 fixed activation functions, enabling more expressive function approximation.
 """
 
+from typing import Any, Dict
+
 import torch
-from typing import Dict, Any
 
 
 class KANMetrics:
@@ -25,7 +26,9 @@ class KANMetrics:
     """
 
     @staticmethod
-    def compute_activation_statistics(kan_activations: torch.Tensor) -> Dict[str, float]:
+    def compute_activation_statistics(
+        kan_activations: torch.Tensor,
+    ) -> Dict[str, float]:
         """Compute statistics of KAN layer activations.
 
         KAN activations should remain bounded and stable during training.
@@ -45,12 +48,12 @@ class KANMetrics:
                 - activation_abs_mean: Mean absolute activation (activity level)
         """
         return {
-            'activation_mean': kan_activations.mean().item(),
-            'activation_std': kan_activations.std().item(),
-            'activation_min': kan_activations.min().item(),
-            'activation_max': kan_activations.max().item(),
-            'activation_range': (kan_activations.max() - kan_activations.min()).item(),
-            'activation_abs_mean': kan_activations.abs().mean().item(),
+            "activation_mean": kan_activations.mean().item(),
+            "activation_std": kan_activations.std().item(),
+            "activation_min": kan_activations.min().item(),
+            "activation_max": kan_activations.max().item(),
+            "activation_range": (kan_activations.max() - kan_activations.min()).item(),
+            "activation_abs_mean": kan_activations.abs().mean().item(),
         }
 
     @staticmethod
@@ -79,10 +82,10 @@ class KANMetrics:
         basis_variance = basis_output.var(dim=-1).mean().item()
 
         return {
-            'grid_utilization_mean': basis_output.mean().item(),
-            'grid_utilization_std': basis_output.std().item(),
-            'grid_basis_variance': basis_variance,
-            'grid_basis_mean_abs': basis_output.abs().mean().item(),
+            "grid_utilization_mean": basis_output.mean().item(),
+            "grid_utilization_std": basis_output.std().item(),
+            "grid_basis_variance": basis_variance,
+            "grid_basis_mean_abs": basis_output.abs().mean().item(),
         }
 
     @staticmethod
@@ -106,11 +109,11 @@ class KANMetrics:
                 - spline_weight_abs_mean: Mean absolute weight magnitude
         """
         return {
-            'spline_weight_mean': spline_weights.mean().item(),
-            'spline_weight_std': spline_weights.std().item(),
-            'spline_weight_min': spline_weights.min().item(),
-            'spline_weight_max': spline_weights.max().item(),
-            'spline_weight_abs_mean': spline_weights.abs().mean().item(),
+            "spline_weight_mean": spline_weights.mean().item(),
+            "spline_weight_std": spline_weights.std().item(),
+            "spline_weight_min": spline_weights.min().item(),
+            "spline_weight_max": spline_weights.max().item(),
+            "spline_weight_abs_mean": spline_weights.abs().mean().item(),
         }
 
     @staticmethod
@@ -144,9 +147,9 @@ class KANMetrics:
         metrics = {}
 
         # Extract tensors from info dict
-        kan_activations = info.get('kan_activations')
-        basis_output = info.get('kan_basis_output')
-        spline_weights = info.get('kan_spline_weights')
+        kan_activations = info.get("kan_activations")
+        basis_output = info.get("kan_basis_output")
+        spline_weights = info.get("kan_spline_weights")
 
         # Compute activation statistics
         if kan_activations is not None:

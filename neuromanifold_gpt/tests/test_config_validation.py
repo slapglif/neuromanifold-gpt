@@ -41,7 +41,9 @@ class TestConfigDependencyValidation:
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
         # Should raise error when memory_active_retrieval=True and use_sdr=False
-        with pytest.raises(ValueError, match="memory_active_retrieval=True requires use_sdr=True"):
+        with pytest.raises(
+            ValueError, match="memory_active_retrieval=True requires use_sdr=True"
+        ):
             NeuroManifoldConfig(memory_active_retrieval=True, use_sdr=False)
 
     def test_memory_active_retrieval_with_use_sdr_valid(self):
@@ -123,7 +125,9 @@ class TestConfigNanoValidation:
         """Test that nano config enforces memory_active_retrieval dependency."""
         from neuromanifold_gpt.config.base import NeuroManifoldConfigNano
 
-        with pytest.raises(ValueError, match="memory_active_retrieval=True requires use_sdr=True"):
+        with pytest.raises(
+            ValueError, match="memory_active_retrieval=True requires use_sdr=True"
+        ):
             NeuroManifoldConfigNano(memory_active_retrieval=True, use_sdr=False)
 
     def test_nano_config_sdr_n_active_computed(self):
@@ -179,7 +183,7 @@ class TestMultiscaleManifoldValidation:
             manifold_dim=128,
             multiscale_coarse_dim=32,
             multiscale_medium_dim=64,
-            multiscale_fine_dim=128
+            multiscale_fine_dim=128,
         )
         assert config.multiscale_coarse_dim == 32
         assert config.multiscale_medium_dim == 64
@@ -194,11 +198,7 @@ class TestAdvancedFeatureValidation:
         """Test that MoE configuration has valid parameters."""
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-        config = NeuroManifoldConfig(
-            use_moe=True,
-            moe_n_experts=8,
-            moe_n_active=2
-        )
+        config = NeuroManifoldConfig(use_moe=True, moe_n_experts=8, moe_n_active=2)
         assert config.use_moe is True
         assert config.moe_n_experts == 8
         assert config.moe_n_active == 2
@@ -208,11 +208,7 @@ class TestAdvancedFeatureValidation:
         """Test that MLA configuration has valid parameters."""
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-        config = NeuroManifoldConfig(
-            use_mla=True,
-            mla_latent_dim=64,
-            mla_rope_dim=32
-        )
+        config = NeuroManifoldConfig(use_mla=True, mla_latent_dim=64, mla_rope_dim=32)
         assert config.use_mla is True
         assert config.mla_latent_dim == 64
         assert config.mla_rope_dim == 32
@@ -221,11 +217,7 @@ class TestAdvancedFeatureValidation:
         """Test that MTP configuration has valid parameters."""
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-        config = NeuroManifoldConfig(
-            use_mtp=True,
-            mtp_n_predict=4,
-            mtp_loss_weight=0.1
-        )
+        config = NeuroManifoldConfig(use_mtp=True, mtp_n_predict=4, mtp_loss_weight=0.1)
         assert config.use_mtp is True
         assert config.mtp_n_predict == 4
         assert config.mtp_loss_weight == 0.1
@@ -235,9 +227,7 @@ class TestAdvancedFeatureValidation:
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
         config = NeuroManifoldConfig(
-            use_hybrid_reasoning=True,
-            n_thinking_layers=2,
-            thinking_threshold=0.5
+            use_hybrid_reasoning=True, n_thinking_layers=2, thinking_threshold=0.5
         )
         assert config.use_hybrid_reasoning is True
         assert config.n_thinking_layers == 2
@@ -248,9 +238,7 @@ class TestAdvancedFeatureValidation:
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
         config = NeuroManifoldConfig(
-            use_dag_planner=True,
-            dag_max_nodes=32,
-            dag_min_nodes=3
+            use_dag_planner=True, dag_max_nodes=32, dag_min_nodes=3
         )
         assert config.use_dag_planner is True
         assert config.dag_max_nodes == 32
@@ -265,7 +253,7 @@ class TestAdvancedFeatureValidation:
             use_hierarchical_memory=True,
             hierarchical_l1_capacity=64,
             hierarchical_l2_capacity=512,
-            hierarchical_l3_capacity=4096
+            hierarchical_l3_capacity=4096,
         )
         assert config.use_hierarchical_memory is True
         assert config.hierarchical_l1_capacity == 64
@@ -277,9 +265,7 @@ class TestAdvancedFeatureValidation:
         from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
         config = NeuroManifoldConfig(
-            use_imagination=True,
-            imagination_steps=4,
-            imagination_n_alternatives=4
+            use_imagination=True, imagination_steps=4, imagination_n_alternatives=4
         )
         assert config.use_imagination is True
         assert config.imagination_steps == 4
@@ -376,7 +362,7 @@ class TestMHCConfigValidation:
             use_full_mhc=True,
             mhc_n_streams=2,
             mhc_residual_weight=0.9,
-            mhc_sinkhorn_iters=5
+            mhc_sinkhorn_iters=5,
         )
         assert config.use_mhc is True
         assert config.use_full_mhc is True

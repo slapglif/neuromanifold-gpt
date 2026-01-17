@@ -98,17 +98,14 @@ class SelectiveScan(nn.Module):
         if use_hippo_init:
             hippo = DiagonalHiPPO(state_dim, hippo_type=hippo_type, learnable=False)
             A_diag, _ = hippo.get_matrices()
-            # Use log parameterization: A = -exp(log_A) ensures negative eigenvalues
-            self.log_A = nn.Parameter(torch.log(-A_diag.clamp(max=-1e-8).abs() + 1e-8))
+            self.log_A = nn.Parameter(torch.log((-A_diag).clamp(min=1e-8)))
         else:
             # Random initialization with proper scaling
             self.log_A = nn.Parameter(torch.log(torch.rand(state_dim) * 0.5 + 0.5))
 
         # Expand log_A to (embed_dim, state_dim) for per-channel dynamics
         # This allows each feature dimension to have its own state dynamics
-        self.log_A = nn.Parameter(
-            self.log_A.unsqueeze(0).expand(embed_dim, -1).clone()
-        )
+        self.log_A = nn.Parameter(self.log_A.unsqueeze(0).expand(embed_dim, -1).clone())
 
         # Selective projections: x -> (B, C, dt)
         # B: input projection (embed_dim -> state_dim)
@@ -137,20 +134,22 @@ class SelectiveScan(nn.Module):
         dt_init_floor: float,
     ):
         """Initialize dt projection for proper timestep range."""
-        # Initialize dt bias to achieve desired dt range
         dt_init_value = torch.exp(
             torch.rand(self.embed_dim) * (math.log(self.dt_max) - math.log(self.dt_min))
             + math.log(self.dt_min)
         ).clamp(min=dt_init_floor)
 
-        # Inverse of softplus to set initial dt values
-        inv_dt = dt_init_value + torch.log(-torch.expm1(-dt_init_value))
+        # Stable inverse softplus: softplus^{-1}(y) = log(exp(y) - 1)
+        # For large y: ≈ y. For small y: y + log(1 - exp(-y))
+        inv_dt = torch.where(
+            dt_init_value > 20.0,
+            dt_init_value,
+            dt_init_value + torch.log1p(-torch.exp(-dt_init_value)),
+        )
 
-        # Set bias of the last linear layer
         with torch.no_grad():
             self.dt_proj[-1].bias.copy_(inv_dt)
 
-        # Initialize weights with proper scaling
         nn.init.kaiming_uniform_(self.dt_proj[0].weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.dt_proj[-1].weight, a=math.sqrt(5))
 
@@ -256,8 +255,7 @@ class SelectiveScan(nn.Module):
 
         # Initialize state
         h = torch.zeros(
-            batch_size, embed_dim, state_dim,
-            device=A_bar.device, dtype=A_bar.dtype
+            batch_size, embed_dim, state_dim, device=A_bar.device, dtype=A_bar.dtype
         )
 
         # Sequential scan (fallback for correctness)
@@ -348,8 +346,7 @@ class SelectiveScan(nn.Module):
             Zero-initialized state of shape (B, D, N)
         """
         return torch.zeros(
-            batch_size, self.embed_dim, self.state_dim,
-            device=device, dtype=dtype
+            batch_size, self.embed_dim, self.state_dim, device=device, dtype=dtype
         )
 
     def extra_repr(self) -> str:
@@ -503,10 +500,7 @@ class ParallelSelectiveScan(SelectiveScan):
         # Trades compute for memory by recomputing activations during backward pass
         if self.gradient_checkpointing and self.training:
             h = checkpoint(
-                self._parallel_associative_scan,
-                A_bar,
-                B_bar,
-                use_reentrant=False
+                self._parallel_associative_scan, A_bar, B_bar, use_reentrant=False
             )  # (B, T, D, N)
         else:
             h = self._parallel_associative_scan(A_bar, B_bar)  # (B, T, D, N)
@@ -543,7 +537,7 @@ class ParallelSelectiveScan(SelectiveScan):
 
         # Pad to power of 2 for efficient parallel scan
         log_T = math.ceil(math.log2(max(seq_len, 1)))
-        padded_len = 2 ** log_T
+        padded_len = 2**log_T
 
         if seq_len < padded_len:
             pad_len = padded_len - seq_len
@@ -561,7 +555,7 @@ class ParallelSelectiveScan(SelectiveScan):
             if len(indices) == 0:
                 break
 
-            left_indices = indices - 2 ** d
+            left_indices = indices - 2**d
 
             # (a_left, b_left) * (a_right, b_right)
             a_left = a[:, left_indices]
@@ -576,12 +570,14 @@ class ParallelSelectiveScan(SelectiveScan):
         # Down-sweep phase
         for d in range(log_T - 2, -1, -1):
             stride = 2 ** (d + 1)
-            indices = torch.arange(stride + 2**d - 1, padded_len, stride, device=A_bar.device)
+            indices = torch.arange(
+                stride + 2**d - 1, padded_len, stride, device=A_bar.device
+            )
 
             if len(indices) == 0:
                 continue
 
-            left_indices = indices - 2 ** d
+            left_indices = indices - 2**d
 
             a_left = a[:, left_indices]
             b_left = b[:, left_indices]

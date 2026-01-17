@@ -7,13 +7,15 @@ Adapted from Andrej Karpathy's nanoGPT.
 """
 
 import math
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
 from neuromanifold_gpt.utils.logging import get_logger
 
 try:
-    from .memory_efficient import xformers_attention, XFORMERS_AVAILABLE
+    from .memory_efficient import XFORMERS_AVAILABLE, xformers_attention
 except ImportError:
     XFORMERS_AVAILABLE = False
     xformers_attention = None
@@ -58,15 +60,19 @@ class StandardAttention(nn.Module):
         self.resid_dropout = nn.Dropout(dropout)
 
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
-        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
         # xformers memory-efficient attention as fallback
         self.xformers = XFORMERS_AVAILABLE
 
         # Log available backend
         if self.flash:
-            logger.info("StandardAttention: Using Flash Attention backend (PyTorch >= 2.0)")
+            logger.info(
+                "StandardAttention: Using Flash Attention backend (PyTorch >= 2.0)"
+            )
         elif self.xformers:
-            logger.info("StandardAttention: Using xformers memory-efficient attention backend")
+            logger.info(
+                "StandardAttention: Using xformers memory-efficient attention backend"
+            )
         else:
             logger.info("StandardAttention: Using manual attention implementation")
 
@@ -75,10 +81,14 @@ class StandardAttention(nn.Module):
             # causal mask to ensure that attention is only applied to the left in the input sequence
             self.register_buffer(
                 "bias",
-                torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size)
+                torch.tril(torch.ones(block_size, block_size)).view(
+                    1, 1, block_size, block_size
+                ),
             )
 
-    def forward(self, x: torch.Tensor, spectral_basis: torch.Tensor = None) -> tuple[torch.Tensor, dict]:
+    def forward(
+        self, x: torch.Tensor, spectral_basis: torch.Tensor = None
+    ) -> tuple[torch.Tensor, dict]:
         """
         Forward pass with causal masking.
 
@@ -96,9 +106,15 @@ class StandardAttention(nn.Module):
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         q, k, v = self.c_attn(x).split(self.embed_dim, dim=2)
-        k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
-        q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
-        v = v.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
+        k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
+        q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
+        v = v.view(B, T, self.n_heads, C // self.n_heads).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         attn_probs = None
@@ -107,16 +123,20 @@ class StandardAttention(nn.Module):
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
             y = torch.nn.functional.scaled_dot_product_attention(
-                q, k, v,
+                q,
+                k,
+                v,
                 attn_mask=None,
                 dropout_p=self.dropout if self.training else 0,
-                is_causal=True
+                is_causal=True,
             )
             backend = "flash"
         elif self.xformers:
             # fallback to xformers memory-efficient attention
             y = xformers_attention(
-                q, k, v,
+                q,
+                k,
+                v,
                 dropout_p=self.dropout if self.training else 0.0,
                 is_causal=True,
             )
@@ -124,14 +144,16 @@ class StandardAttention(nn.Module):
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
             att = F.softmax(att, dim=-1)
             attn_probs = att
             att = self.attn_dropout(att)
             y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
             backend = "manual"
 
-        y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
+        y = (
+            y.transpose(1, 2).contiguous().view(B, T, C)
+        )  # re-assemble all head outputs side by side
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))

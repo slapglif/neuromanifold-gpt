@@ -4,6 +4,7 @@ Isolate the JIT bug - step by step.
 """
 
 import time
+
 import torch
 from rich.console import Console
 
@@ -22,7 +23,7 @@ def fhn_update_step_fixed(
     b: torch.Tensor,
     tau: float,
     dt: torch.Tensor,
-    n_steps: int
+    n_steps: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Fixed JIT script - use scalar values properly."""
     dt_val = dt.item()
@@ -50,7 +51,7 @@ def fhn_update_step_fixed(
 
 
 def main():
-    console.print(f"[bold]JIT Bug Isolation[/bold]")
+    console.print("[bold]JIT Bug Isolation[/bold]")
     console.print(f"Device: {DEVICE}\n")
 
     # Create inputs
@@ -88,7 +89,9 @@ def main():
     for _ in range(10):
         start = time.perf_counter()
         with torch.no_grad():
-            v3, w3 = fhn_update_step_fixed(v.clone(), w.clone(), I, a, b, tau, dt, n_steps)
+            v3, w3 = fhn_update_step_fixed(
+                v.clone(), w.clone(), I, a, b, tau, dt, n_steps
+            )
         if DEVICE == "cuda":
             torch.cuda.synchronize()
         times.append((time.perf_counter() - start) * 1000)
@@ -103,7 +106,7 @@ def main():
 
     # Scale estimates
     mean_time = sum(times) / len(times)
-    console.print(f"\n[bold]FHN Dynamics @ B=4, H=8, K=32, D=48:[/bold]")
+    console.print("\n[bold]FHN Dynamics @ B=4, H=8, K=32, D=48:[/bold]")
     console.print(f"   Time: {mean_time:.2f} ms")
 
     # Now let's profile the full attention pipeline

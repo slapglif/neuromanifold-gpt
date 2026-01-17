@@ -10,8 +10,8 @@ These utilities are extracted from mhc.py to improve modularity and code organiz
 Author: DeepSeek Team (original), adapted for NeuroManifold GPT
 """
 
-from torch import nn
 from einops.layers.torch import Reduce
+from torch import nn
 
 
 def exists(v):
@@ -52,11 +52,7 @@ def get_expand_reduce_stream_functions(num_streams: int, disable: bool = False):
     if num_streams == 1 or disable:
         return (nn.Identity(), nn.Identity())
 
-    expand_fn = Reduce(
-        pattern="b ... -> (b s) ...", reduction="repeat", s=num_streams
-    )
-    reduce_fn = Reduce(
-        pattern="(b s) ... -> b ...", reduction="sum", s=num_streams
-    )
+    expand_fn = Reduce(pattern="b ... -> (b s) ...", reduction="repeat", s=num_streams)
+    reduce_fn = Reduce(pattern="(b s) ... -> b ...", reduction="sum", s=num_streams)
 
     return expand_fn, reduce_fn

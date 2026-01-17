@@ -99,26 +99,34 @@ def heimburg_jackson_rk4_step(
     """
     # k1
     k1_rho = rho_t
-    k1_v = _compute_hj_rhs(rho, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp)
+    k1_v = _compute_hj_rhs(
+        rho, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp
+    )
 
     # k2 (midpoint using k1)
     rho_mid1 = rho + 0.5 * dt * k1_rho
     v_mid1 = rho_t + 0.5 * dt * k1_v
     k2_rho = v_mid1
     # Derivatives approx same at midpoint
-    k2_v = _compute_hj_rhs(rho_mid1, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp)
+    k2_v = _compute_hj_rhs(
+        rho_mid1, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp
+    )
 
     # k3 (midpoint using k2)
     rho_mid2 = rho + 0.5 * dt * k2_rho
     v_mid2 = rho_t + 0.5 * dt * k2_v
     k3_rho = v_mid2
-    k3_v = _compute_hj_rhs(rho_mid2, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp)
+    k3_v = _compute_hj_rhs(
+        rho_mid2, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp
+    )
 
     # k4 (endpoint using k3)
     rho_end = rho + dt * k3_rho
     v_end = rho_t + dt * k3_v
     k4_rho = v_end
-    k4_v = _compute_hj_rhs(rho_end, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp)
+    k4_v = _compute_hj_rhs(
+        rho_end, rho_x, rho_xx, rho_xxxx, c0_sq, p_coeff, q_coeff, h_disp
+    )
 
     # Combine (RK4 formula)
     rho_new = rho + (dt / 6.0) * (k1_rho + 2.0 * k2_rho + 2.0 * k3_rho + k4_rho)
@@ -230,7 +238,7 @@ class HeimburgJacksonSolver(PDESolver):
         Returns:
             Local wave speed c(ρ)
         """
-        c_sq = self.c0_squared + self.p_coeff * rho + self.q_coeff * rho ** 2
+        c_sq = self.c0_squared + self.p_coeff * rho + self.q_coeff * rho**2
         # Ensure positive for stability
         c_sq = c_sq.clamp(min=1e-6)
         return torch.sqrt(c_sq)
@@ -255,17 +263,19 @@ class HeimburgJacksonSolver(PDESolver):
         rho_xx = self.spatial_derivative(rho, order=2)
 
         # Fourth-order derivative for dispersion
-        rho_xxxx = self.spatial_derivative(self.spatial_derivative(rho, order=2), order=2)
+        rho_xxxx = self.spatial_derivative(
+            self.spatial_derivative(rho, order=2), order=2
+        )
 
         # State-dependent sound speed squared
-        c_sq = self.c0_squared + self.p_coeff * rho + self.q_coeff * rho ** 2
+        c_sq = self.c0_squared + self.p_coeff * rho + self.q_coeff * rho**2
 
         # Derivative of c² with respect to ρ
         dc_sq_drho = self.p_coeff + 2.0 * self.q_coeff * rho
 
         # RHS = ∂/∂x[c²·ρ_x] - h·ρ_xxxx
         #     = c²·ρ_xx + dc²/dρ·ρ_x² - h·ρ_xxxx
-        rhs = c_sq * rho_xx + dc_sq_drho * rho_x ** 2 - self.h_disp * rho_xxxx
+        rhs = c_sq * rho_xx + dc_sq_drho * rho_x**2 - self.h_disp * rho_xxxx
 
         # Optional damping: -γ·ρ_t
         if self.damping > 0 and rho_t is not None:
@@ -291,9 +301,9 @@ class HeimburgJacksonSolver(PDESolver):
         # Integrate c²(ρ) = c₀² + p·ρ + q·ρ² to get potential
         # U = ½c₀²·ρ² + (p/3)·ρ³ + (q/4)·ρ⁴
         potential = (
-            0.5 * self.c0_squared * rho ** 2
-            + (self.p_coeff / 3) * rho ** 3
-            + (self.q_coeff / 4) * rho ** 4
+            0.5 * self.c0_squared * rho**2
+            + (self.p_coeff / 3) * rho**3
+            + (self.q_coeff / 4) * rho**4
         )
         return potential.sum(dim=(-2, -1))
 
@@ -320,7 +330,7 @@ class HeimburgJacksonSolver(PDESolver):
         """
         # Kinetic energy
         if rho_t is not None:
-            kinetic = 0.5 * (rho_t ** 2).sum(dim=(-2, -1))
+            kinetic = 0.5 * (rho_t**2).sum(dim=(-2, -1))
         else:
             kinetic = torch.zeros(rho.shape[:-2], device=rho.device, dtype=rho.dtype)
             if kinetic.numel() == 0:
@@ -331,11 +341,11 @@ class HeimburgJacksonSolver(PDESolver):
 
         # Gradient energy (elastic)
         rho_x = self.spatial_derivative(rho, order=1)
-        gradient = 0.5 * (rho_x ** 2).sum(dim=(-2, -1))
+        gradient = 0.5 * (rho_x**2).sum(dim=(-2, -1))
 
         # Dispersion energy (fourth-order term)
         rho_xx = self.spatial_derivative(rho, order=2)
-        dispersion = 0.5 * self.h_disp.abs() * (rho_xx ** 2).sum(dim=(-2, -1))
+        dispersion = 0.5 * self.h_disp.abs() * (rho_xx**2).sum(dim=(-2, -1))
 
         return kinetic + potential + gradient + dispersion
 
@@ -442,19 +452,21 @@ class HeimburgJacksonSolver(PDESolver):
         wave_speed = self.compute_state_dependent_speed(rho).mean()
 
         info = {
-            'enthalpy': enthalpy_final.mean().item(),
-            'enthalpy_initial': enthalpy_initial.mean().item(),
-            'enthalpy_conservation': (
-                (enthalpy_final - enthalpy_initial).abs() /
-                (enthalpy_initial.abs() + 1e-8)
-            ).mean().item(),
-            'compression': compression.mean().item(),
-            'wave_speed': wave_speed.item(),
-            'rho_t': rho_t,  # Return velocity for chaining
+            "enthalpy": enthalpy_final.mean().item(),
+            "enthalpy_initial": enthalpy_initial.mean().item(),
+            "enthalpy_conservation": (
+                (enthalpy_final - enthalpy_initial).abs()
+                / (enthalpy_initial.abs() + 1e-8)
+            )
+            .mean()
+            .item(),
+            "compression": compression.mean().item(),
+            "wave_speed": wave_speed.item(),
+            "rho_t": rho_t,  # Return velocity for chaining
         }
 
         if return_trajectory:
-            info['trajectory'] = torch.stack(trajectory, dim=0)
+            info["trajectory"] = torch.stack(trajectory, dim=0)
 
         return rho, info
 
@@ -495,22 +507,34 @@ class HeimburgJacksonSolver(PDESolver):
         # β ≈ √(|p|·A / (12·h)) for small q contribution
         h_val = self.h_disp.abs().item() + 1e-6
         p_val = self.p_coeff.abs().item() + 1e-6
-        beta = torch.sqrt(torch.tensor(p_val * abs(amplitude) / (12 * h_val), device=device, dtype=dtype))
+        beta = torch.sqrt(
+            torch.tensor(
+                p_val * abs(amplitude) / (12 * h_val), device=device, dtype=dtype
+            )
+        )
 
         # Scale for sequence length
         beta_scaled = beta * seq_len * self.dx
 
         # Soliton profile: ρ = A · sech²(β·x)
         sech_val = 1.0 / torch.cosh(beta_scaled * x)
-        rho_profile = amplitude * sech_val ** 2
+        rho_profile = amplitude * sech_val**2
 
         # Initial velocity: moving soliton has ρ_t = -v · ρ_x
         # For stationary soliton, start with zero velocity
         rho_t_profile = torch.zeros_like(rho_profile)
 
         # Expand to full shape
-        rho = rho_profile.view(*([1] * (len(shape) - 2)), seq_len, 1).expand(shape).clone()
-        rho_t = rho_t_profile.view(*([1] * (len(shape) - 2)), seq_len, 1).expand(shape).clone()
+        rho = (
+            rho_profile.view(*([1] * (len(shape) - 2)), seq_len, 1)
+            .expand(shape)
+            .clone()
+        )
+        rho_t = (
+            rho_t_profile.view(*([1] * (len(shape) - 2)), seq_len, 1)
+            .expand(shape)
+            .clone()
+        )
 
         return rho, rho_t
 

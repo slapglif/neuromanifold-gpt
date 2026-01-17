@@ -14,11 +14,12 @@ Tests at different:
 - Batch sizes: 1, 4, 8, 16
 """
 
-import time
 import argparse
-import torch
+import time
 from contextlib import nullcontext
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
+
+import torch
 
 from neuromanifold_gpt.model.sinkhorn import sinkhorn_log
 
@@ -61,7 +62,9 @@ def measure_convergence_iterations(
     return torch.exp(Z + u.unsqueeze(-1) + v.unsqueeze(-2)), num_iters
 
 
-def check_doubly_stochastic(matrix: torch.Tensor, tol: float = 1e-4) -> Dict[str, float]:
+def check_doubly_stochastic(
+    matrix: torch.Tensor, tol: float = 1e-4
+) -> Dict[str, float]:
     """Check if matrix is doubly stochastic.
 
     Args:
@@ -117,7 +120,9 @@ def benchmark_sinkhorn(
     # Warmup
     for _ in range(warmup):
         with ctx:
-            _ = sinkhorn_log(logits, num_iters=max_sinkhorn_iters, convergence_tol=convergence_tol)
+            _ = sinkhorn_log(
+                logits, num_iters=max_sinkhorn_iters, convergence_tol=convergence_tol
+            )
 
     if device.type == "cuda":
         torch.cuda.synchronize()
@@ -132,7 +137,9 @@ def benchmark_sinkhorn(
     start = time.perf_counter()
     for _ in range(n_iters):
         with ctx:
-            result = sinkhorn_log(logits, num_iters=max_sinkhorn_iters, convergence_tol=convergence_tol)
+            result = sinkhorn_log(
+                logits, num_iters=max_sinkhorn_iters, convergence_tol=convergence_tol
+            )
     if device.type == "cuda":
         torch.cuda.synchronize()
     elapsed_time = (time.perf_counter() - start) / n_iters * 1000  # ms per call
@@ -166,10 +173,22 @@ def run_benchmarks(quick_test: bool = False):
         torch.cuda.reset_peak_memory_stats()
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    dtype = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
+    device_type = "cuda" if "cuda" in str(device) else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    )
 
     # Test configurations
     if quick_test:
@@ -210,8 +229,10 @@ def run_benchmarks(quick_test: bool = False):
                 max_sinkhorn_iters=max_sinkhorn_iters,
             )
 
-            print(f"  Fixed Iterations (baseline):")
-            print(f"    Iterations:  {baseline['iterations_used']}/{max_sinkhorn_iters}")
+            print("  Fixed Iterations (baseline):")
+            print(
+                f"    Iterations:  {baseline['iterations_used']}/{max_sinkhorn_iters}"
+            )
             print(f"    Time:        {baseline['time_ms']:.3f} ms")
             print(f"    Max Error:   {baseline['max_error']:.2e}")
 
@@ -228,11 +249,15 @@ def run_benchmarks(quick_test: bool = False):
                     max_sinkhorn_iters=max_sinkhorn_iters,
                 )
 
-                speedup = baseline['time_ms'] / results['time_ms']
-                iter_reduction = (1 - results['iterations_used'] / baseline['iterations_used']) * 100
+                speedup = baseline["time_ms"] / results["time_ms"]
+                iter_reduction = (
+                    1 - results["iterations_used"] / baseline["iterations_used"]
+                ) * 100
 
                 print(f"\n  Early Stopping (tol={tol:.0e}):")
-                print(f"    Iterations:  {results['iterations_used']}/{max_sinkhorn_iters} ({iter_reduction:+.1f}%)")
+                print(
+                    f"    Iterations:  {results['iterations_used']}/{max_sinkhorn_iters} ({iter_reduction:+.1f}%)"
+                )
                 print(f"    Time:        {results['time_ms']:.3f} ms")
                 print(f"    Speedup:     {speedup:.2f}x")
                 print(f"    Max Error:   {results['max_error']:.2e}")
@@ -249,13 +274,17 @@ def run_benchmarks(quick_test: bool = False):
     print("  • Convergence quality is maintained (max error < 1e-4)")
     print("  • Batch size has minimal impact on iteration count")
     print("\nRecommendation:")
-    print("  • Use convergence_tol=1e-6 for production (best speedup/accuracy tradeoff)")
+    print(
+        "  • Use convergence_tol=1e-6 for production (best speedup/accuracy tradeoff)"
+    )
     print("  • For training: convergence_tol=1e-4 for faster iterations")
     print("  • For inference: convergence_tol=1e-8 for maximum accuracy")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark Sinkhorn-Knopp early stopping")
+    parser = argparse.ArgumentParser(
+        description="Benchmark Sinkhorn-Knopp early stopping"
+    )
     parser.add_argument(
         "--quick",
         action="store_true",

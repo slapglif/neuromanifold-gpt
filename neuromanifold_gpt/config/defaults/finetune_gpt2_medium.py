@@ -1,13 +1,13 @@
 import time
 
-out_dir = 'out-finetune-gpt2-medium'
+out_dir = "out-finetune-gpt2-medium"
 eval_interval = 5
 eval_iters = 40
-wandb_log = False # feel free to turn on
-wandb_project = 'gpt2-finetune'
-wandb_run_name = 'ft-gpt2-medium-' + str(time.time())
+wandb_log = False  # feel free to turn on
+wandb_project = "gpt2-finetune"
+wandb_run_name = "ft-gpt2-medium-" + str(time.time())
 
-init_from = 'gpt2-medium' # 345M parameter model
+init_from = "gpt2-medium"  # 345M parameter model
 
 # only save checkpoints if the validation loss improves
 always_save_checkpoint = False

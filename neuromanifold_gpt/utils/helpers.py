@@ -5,10 +5,9 @@ Provides basic utility functions for value checking and defaults:
 - exists(): Check if a value is not None
 - default(): Return value or default if None
 """
-from typing import TypeVar, Optional
+from typing import Optional, TypeVar
 
-
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def exists(v) -> bool:

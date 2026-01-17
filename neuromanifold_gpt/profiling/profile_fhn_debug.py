@@ -4,8 +4,8 @@ Debug FHNDynamics to find the exact bottleneck.
 """
 
 import time
+
 import torch
-import torch.nn as nn
 from rich.console import Console
 
 console = Console()
@@ -19,7 +19,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def main():
-    console.print(f"[bold]FHN Dynamics Debug Profiler[/bold]")
+    console.print("[bold]FHN Dynamics Debug Profiler[/bold]")
     console.print(f"Device: {DEVICE}")
     console.print(f"Shape: ({BATCH_SIZE}, {N_HEADS}, {N_EIG}, {HEAD_DIM})")
     console.print()
@@ -66,9 +66,7 @@ def main():
     # This is the suspected bottleneck - the JIT compiled update
     with torch.no_grad():
         v_out, w_out = fhn_update_step(
-            v, w, I,
-            fhn.a, fhn.b, fhn.tau, fhn.dt,
-            n_steps=2
+            v, w, I, fhn.a, fhn.b, fhn.tau, fhn.dt, n_steps=2
         )
 
     torch.cuda.synchronize() if DEVICE == "cuda" else None
@@ -89,9 +87,7 @@ def main():
     start = time.perf_counter()
     with torch.no_grad():
         v_out2, w_out2 = fhn_update_step(
-            v, w, I,
-            fhn.a, fhn.b, fhn.tau, fhn.dt,
-            n_steps=2
+            v, w, I, fhn.a, fhn.b, fhn.tau, fhn.dt, n_steps=2
         )
     torch.cuda.synchronize() if DEVICE == "cuda" else None
     t_warm = (time.perf_counter() - start) * 1000
@@ -119,7 +115,9 @@ def main():
     console.print("First call incurs JIT compilation overhead.")
     console.print("If t_warm << t4, JIT compilation is the bottleneck.")
     if t4 > 10 * t_warm:
-        console.print(f"[bold red]JIT compilation is {t4/t_warm:.1f}x slower than runtime![/bold red]")
+        console.print(
+            f"[bold red]JIT compilation is {t4/t_warm:.1f}x slower than runtime![/bold red]"
+        )
     else:
         console.print(f"JIT overhead is {t4/t_warm:.1f}x runtime")
 

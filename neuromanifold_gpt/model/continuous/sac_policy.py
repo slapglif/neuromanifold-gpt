@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -48,6 +48,7 @@ class SACConfig:
         dropout: Dropout rate
         use_layer_norm: Whether to use layer normalization
     """
+
     state_dim: int = 384
     action_dim: int = 384
     hidden_dim: int = 512
@@ -212,8 +213,7 @@ class GaussianPolicy(nn.Module):
         # where u is the pre-tanh action
         if deterministic:
             log_prob = torch.zeros(
-                *action.shape[:-1], 1,
-                device=action.device, dtype=action.dtype
+                *action.shape[:-1], 1, device=action.device, dtype=action.dtype
             )
         else:
             normal = Normal(mean, std)
@@ -421,7 +421,7 @@ class SACPolicy(nn.Module):
         else:
             self.register_buffer(
                 "log_alpha",
-                torch.tensor(math.log(init_temperature), dtype=torch.float32)
+                torch.tensor(math.log(init_temperature), dtype=torch.float32),
             )
 
         # Target entropy (typically -action_dim for continuous spaces)
@@ -550,8 +550,7 @@ class SACPolicy(nn.Module):
         τ * θ_target + (1 - τ) * θ
         """
         for target_param, param in zip(
-            self.target_q_networks.parameters(),
-            self.q_networks.parameters()
+            self.target_q_networks.parameters(), self.q_networks.parameters()
         ):
             target_param.data.copy_(
                 self.tau * param.data + (1 - self.tau) * target_param.data

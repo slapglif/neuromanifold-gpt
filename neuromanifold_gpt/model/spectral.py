@@ -8,7 +8,7 @@ The learned basis approximates graph Laplacian eigenvectors without O(n³) cost.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, einsum
+from einops import rearrange
 
 
 def _spectral_forward(
@@ -53,11 +53,15 @@ def _spectral_forward(
     if use_learned_basis:
         # Inline spectral_proj Sequential(Linear -> SiLU -> Linear)
         # Layer 1: Linear(manifold_dim, manifold_dim * 2)
-        h = F.linear(coords, spectral_proj_w1, spectral_proj_b1)  # (B, T, manifold_dim*2)
+        h = F.linear(
+            coords, spectral_proj_w1, spectral_proj_b1
+        )  # (B, T, manifold_dim*2)
         # Activation: SiLU
         h = F.silu(h)
         # Layer 2: Linear(manifold_dim * 2, n_eig)
-        spectral_proj_output = F.linear(h, spectral_proj_w2, spectral_proj_b2)  # (B, T, n_eig)
+        spectral_proj_output = F.linear(
+            h, spectral_proj_w2, spectral_proj_b2
+        )  # (B, T, n_eig)
 
         # Softmax for normalized coefficients (sum to 1 per position)
         spectral_basis = F.softmax(spectral_proj_output, dim=-1)
@@ -81,9 +85,11 @@ def _spectral_forward(
         # cos(W @ x) approximates spectral structure
         proj = coords @ random_features  # (B, T, n_eig)
         spectral_basis = torch.cos(proj * sigma)
-        spectral_freqs = torch.arange(
-            n_eig, device=coords.device, dtype=coords.dtype
-        ).unsqueeze(0).expand(B, -1)
+        spectral_freqs = (
+            torch.arange(n_eig, device=coords.device, dtype=coords.dtype)
+            .unsqueeze(0)
+            .expand(B, -1)
+        )
         # No ortho loss for random features (they're not learned)
         ortho_loss = torch.tensor(0.0, device=coords.device, dtype=coords.dtype)
 
@@ -97,9 +103,9 @@ import sys
 
 # Check if we should skip compilation (for testing or environments without CUDA)
 skip_compile = (
-    os.environ.get("TORCH_COMPILE_DISABLE") == "1" or
-    sys.version_info >= (3, 12) or
-    not torch.cuda.is_available()
+    os.environ.get("TORCH_COMPILE_DISABLE") == "1"
+    or sys.version_info >= (3, 12)
+    or not torch.cuda.is_available()
 )
 
 if skip_compile:
@@ -107,11 +113,8 @@ if skip_compile:
     spectral_forward = _spectral_forward
 else:
     try:
-        spectral_forward = torch.compile(
-            _spectral_forward,
-            mode="reduce-overhead"
-        )
-    except (RuntimeError, Exception) as e:
+        spectral_forward = torch.compile(_spectral_forward, mode="reduce-overhead")
+    except (RuntimeError, Exception):
         # Fall back to uncompiled version if compilation fails
         spectral_forward = _spectral_forward
 
@@ -192,10 +195,12 @@ class SpectralDecomposition(nn.Module):
         if self.use_learned_basis:
             # Extract weight/bias from spectral_proj Sequential for compilation
             # spectral_proj is: Sequential(Linear, SiLU, Linear)
-            spectral_proj_w1 = self.spectral_proj[0].weight  # (manifold_dim*2, manifold_dim)
-            spectral_proj_b1 = self.spectral_proj[0].bias    # (manifold_dim*2,)
+            spectral_proj_w1 = self.spectral_proj[
+                0
+            ].weight  # (manifold_dim*2, manifold_dim)
+            spectral_proj_b1 = self.spectral_proj[0].bias  # (manifold_dim*2,)
             spectral_proj_w2 = self.spectral_proj[2].weight  # (n_eig, manifold_dim*2)
-            spectral_proj_b2 = self.spectral_proj[2].bias    # (n_eig,)
+            spectral_proj_b2 = self.spectral_proj[2].bias  # (n_eig,)
             freq_embed = self.freq_embed
             random_features = None
         else:
@@ -262,7 +267,13 @@ class FastSpectralAttention(nn.Module):
     - For T=8192, k=32, chunk_size=256: ~32x memory reduction
     """
 
-    def __init__(self, embed_dim: int, n_eigenvectors: int = 32, n_heads: int = 8, chunk_size: int = 256):
+    def __init__(
+        self,
+        embed_dim: int,
+        n_eigenvectors: int = 32,
+        n_heads: int = 8,
+        chunk_size: int = 256,
+    ):
         """
         Initialize FastSpectralAttention.
 
@@ -325,7 +336,7 @@ class FastSpectralAttention(nn.Module):
             # Chunk boundaries
             start_t = chunk_idx * self.chunk_size
             end_t = min(start_t + self.chunk_size, T)
-            chunk_len = end_t - start_t
+            end_t - start_t
 
             # Extract chunk: (B, H, chunk_len, K)
             k_chunk = k[:, :, start_t:end_t, :]
@@ -372,7 +383,9 @@ class FastSpectralAttention(nn.Module):
 
         # Project to spectral QKV
         qkv = self.to_qkv(x)  # (B, T, 3 * n_eig * heads)
-        qkv = rearrange(qkv, "b t (three h k) -> three b h t k", three=3, h=self.n_heads)
+        qkv = rearrange(
+            qkv, "b t (three h k) -> three b h t k", three=3, h=self.n_heads
+        )
         q, k, v = qkv[0], qkv[1], qkv[2]  # Each: (B, heads, T, n_eig)
 
         # Modulate by spectral basis
@@ -387,13 +400,13 @@ class FastSpectralAttention(nn.Module):
         # Dimensions: k=(B, H, T, n_eig), v=(B, H, T, n_eig)
         # Output: kv_causal=(B, H, T, n_eig, n_eig) where kv_causal[t] = sum_{i<=t} k_i^T v_i
         kv_causal = self._chunked_causal_cumsum(k, v)
-        
+
         # 3. Apply query
         # q: (B, H, T, n_eig) -> (B, H, T, 1, n_eig)
         # attn_out = q @ kv_causal
         # (B, H, T, 1, n_eig) @ (B, H, T, n_eig, n_eig) -> (B, H, T, 1, n_eig)
         attn_out = torch.matmul(q.unsqueeze(-2), kv_causal).squeeze(-2)
-        
+
         # Scale
         attn_out = attn_out * self.scale
 

@@ -8,7 +8,8 @@ This module defines the search space for HPO, supporting various parameter types
 The search space is configured via YAML files and used with Optuna trials.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
+
 import optuna
 
 
@@ -72,9 +73,7 @@ class SearchSpace:
 
         for param_name, param_config in self.search_params.items():
             if not isinstance(param_config, dict):
-                raise ValueError(
-                    f"Parameter '{param_name}' must be a dictionary"
-                )
+                raise ValueError(f"Parameter '{param_name}' must be a dictionary")
 
             param_type = param_config.get("type")
             if param_type not in ["float", "int", "categorical"]:
@@ -127,21 +126,15 @@ class SearchSpace:
             if param_type == "float":
                 log_scale = param_config.get("log", False)
                 params[param_name] = trial.suggest_float(
-                    param_name,
-                    param_config["low"],
-                    param_config["high"],
-                    log=log_scale
+                    param_name, param_config["low"], param_config["high"], log=log_scale
                 )
             elif param_type == "int":
                 params[param_name] = trial.suggest_int(
-                    param_name,
-                    param_config["low"],
-                    param_config["high"]
+                    param_name, param_config["low"], param_config["high"]
                 )
             elif param_type == "categorical":
                 params[param_name] = trial.suggest_categorical(
-                    param_name,
-                    param_config["choices"]
+                    param_name, param_config["choices"]
                 )
 
         # Add fixed parameters
@@ -196,9 +189,7 @@ class SearchSpace:
                     f"{param_config['high']}]{log_info}"
                 )
             else:
-                lines.append(
-                    f"    {param_name}: {param_config['choices']}"
-                )
+                lines.append(f"    {param_name}: {param_config['choices']}")
 
         if self.fixed_params:
             lines.append(f"  Fixed parameters: {len(self.fixed_params)}")

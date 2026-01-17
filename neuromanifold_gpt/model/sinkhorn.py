@@ -42,10 +42,16 @@ Author: DeepSeek Team (original), adapted for NeuroManifold GPT
 """
 
 from typing import Optional
+
 import torch
 
 
-def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = 1e-6) -> torch.Tensor:
+def sinkhorn_log(
+    logits: torch.Tensor,
+    num_iters: int = 10,
+    tau: float = 0.05,
+    convergence_tol: Optional[float] = 1e-6,
+) -> torch.Tensor:
     """Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.
 
     The Birkhoff polytope is the set of doubly stochastic matrices:

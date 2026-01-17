@@ -30,12 +30,12 @@ Example:
     >>> results = evaluator.compare_architectures(architectures, data, budget=budget)
 """
 
-import torch
-import torch.nn as nn
+import math
+import time
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
-import time
-import math
+
+import torch
 from loguru import logger
 
 
@@ -67,6 +67,7 @@ class ComputeBudget:
         >>> if budget.should_stop():
         ...     print("Budget exhausted")
     """
+
     max_evaluations: Optional[int] = None
     max_time_seconds: Optional[float] = None
     min_perplexity_target: Optional[float] = None
@@ -75,7 +76,7 @@ class ComputeBudget:
     # Tracking fields (not set in constructor)
     evaluations_done: int = field(default=0, init=False)
     time_spent: float = field(default=0.0, init=False)
-    best_perplexity: float = field(default=float('inf'), init=False)
+    best_perplexity: float = field(default=float("inf"), init=False)
     iterations_since_improvement: int = field(default=0, init=False)
     start_time: Optional[float] = field(default=None, init=False)
 
@@ -84,7 +85,7 @@ class ComputeBudget:
         self.start_time = time.time()
         self.evaluations_done = 0
         self.time_spent = 0.0
-        self.best_perplexity = float('inf')
+        self.best_perplexity = float("inf")
         self.iterations_since_improvement = 0
 
     def update(self, perplexity: float) -> None:
@@ -114,19 +115,31 @@ class ComputeBudget:
             - reason: Human-readable reason for stopping (None if continuing)
         """
         # Check max evaluations
-        if self.max_evaluations is not None and self.evaluations_done >= self.max_evaluations:
+        if (
+            self.max_evaluations is not None
+            and self.evaluations_done >= self.max_evaluations
+        ):
             return True, f"Reached max evaluations ({self.max_evaluations})"
 
         # Check max time
-        if self.max_time_seconds is not None and self.time_spent >= self.max_time_seconds:
+        if (
+            self.max_time_seconds is not None
+            and self.time_spent >= self.max_time_seconds
+        ):
             return True, f"Reached max time ({self.max_time_seconds:.1f}s)"
 
         # Check target perplexity
-        if self.min_perplexity_target is not None and self.best_perplexity <= self.min_perplexity_target:
+        if (
+            self.min_perplexity_target is not None
+            and self.best_perplexity <= self.min_perplexity_target
+        ):
             return True, f"Reached target perplexity ({self.min_perplexity_target:.2f})"
 
         # Check patience
-        if self.patience is not None and self.iterations_since_improvement >= self.patience:
+        if (
+            self.patience is not None
+            and self.iterations_since_improvement >= self.patience
+        ):
             return True, f"No improvement for {self.patience} evaluations"
 
         return False, None
@@ -148,7 +161,7 @@ class ComputeBudget:
                 time_str += f"/{self.max_time_seconds:.1f}s"
             status_parts.append(time_str)
 
-        if self.best_perplexity < float('inf'):
+        if self.best_perplexity < float("inf"):
             status_parts.append(f"Best PPL: {self.best_perplexity:.2f}")
 
         return ", ".join(status_parts)
@@ -168,6 +181,7 @@ class EvaluationResult:
         success: Whether evaluation completed successfully
         error_message: Error message if evaluation failed (None if success)
     """
+
     architecture_id: Optional[str]
     final_loss: float
     perplexity: float
@@ -251,8 +265,8 @@ class ArchitectureEvaluator:
             if not is_valid:
                 return EvaluationResult(
                     architecture_id=architecture.architecture_id,
-                    final_loss=float('inf'),
-                    perplexity=float('inf'),
+                    final_loss=float("inf"),
+                    perplexity=float("inf"),
                     n_params=0,
                     time_per_iter_ms=0.0,
                     n_iters=0,
@@ -277,7 +291,7 @@ class ArchitectureEvaluator:
             optimizer = model.configure_optimizers(
                 weight_decay=self.weight_decay,
                 learning_rate=self.learning_rate,
-                device_type=self.device
+                device_type=self.device,
             )
 
             # Training loop
@@ -328,7 +342,9 @@ class ArchitectureEvaluator:
 
         except Exception as e:
             # Log error and return failure result
-            logger.error(f"Evaluation failed for architecture {architecture.architecture_id}: {e}")
+            logger.error(
+                f"Evaluation failed for architecture {architecture.architecture_id}: {e}"
+            )
 
             # Cleanup on error
             if self.device == "cuda":
@@ -336,8 +352,8 @@ class ArchitectureEvaluator:
 
             return EvaluationResult(
                 architecture_id=architecture.architecture_id,
-                final_loss=float('inf'),
-                perplexity=float('inf'),
+                final_loss=float("inf"),
+                perplexity=float("inf"),
                 n_params=0,
                 time_per_iter_ms=0.0,
                 n_iters=0,
@@ -363,8 +379,8 @@ class ArchitectureEvaluator:
         ix = torch.randint(len(data) - self.block_size, (batch_size,))
 
         # Stack sequences
-        x = torch.stack([data[i:i+self.block_size] for i in ix])
-        y = torch.stack([data[i+1:i+self.block_size+1] for i in ix])
+        x = torch.stack([data[i : i + self.block_size] for i in ix])
+        y = torch.stack([data[i + 1 : i + self.block_size + 1] for i in ix])
 
         return x.to(self.device), y.to(self.device)
 
@@ -417,7 +433,9 @@ class ArchitectureEvaluator:
                     logger.info(f"Budget status: {budget.get_status()}")
                     break
 
-            logger.info(f"Evaluating architecture {i+1}/{len(architectures)}: {arch.architecture_id}")
+            logger.info(
+                f"Evaluating architecture {i+1}/{len(architectures)}: {arch.architecture_id}"
+            )
 
             result = self.evaluate(arch, data, n_iters, batch_size)
             results.append(result)
@@ -440,7 +458,7 @@ class ArchitectureEvaluator:
 
                 # Update budget even on failure (count as infinite perplexity)
                 if budget is not None:
-                    budget.update(float('inf'))
+                    budget.update(float("inf"))
 
         # Final budget status
         if budget is not None:

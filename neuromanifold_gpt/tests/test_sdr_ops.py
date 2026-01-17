@@ -8,6 +8,7 @@ SDRs are the foundation of semantic folding. These tests verify:
 """
 import pytest
 import torch
+
 from neuromanifold_gpt.model.sdr_ops import SDROperations
 
 
@@ -200,7 +201,7 @@ class TestSoftTopK:
         n_active = 40
         sdr = SDROperations.soft_topk(scores, n_active, temperature=1.0)
         # The hard component should give exactly n_active
-        hard = SDROperations.hard_topk(scores, n_active)
+        SDROperations.hard_topk(scores, n_active)
         # soft_topk = hard + (soft - soft.detach())
         # so in forward pass, output = hard + soft - soft = hard
         # This test verifies the STE (straight-through estimator) pattern

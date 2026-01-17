@@ -5,8 +5,8 @@ Provides utilities to scan directories for PyTorch checkpoint files
 with progress feedback using rich.progress.
 """
 import os
-from typing import List, Optional, Tuple
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 from .progress import create_progress_bar
 
@@ -99,7 +99,9 @@ def find_latest_checkpoint(
         >>> if latest:
         ...     checkpoint = torch.load(latest)
     """
-    checkpoints = scan_checkpoints(directory, pattern, recursive=True, show_progress=show_progress)
+    checkpoints = scan_checkpoints(
+        directory, pattern, recursive=True, show_progress=show_progress
+    )
 
     if not checkpoints:
         return None

@@ -6,12 +6,14 @@ Wrapper for xformers memory_efficient_attention that provides reduced memory
 footprint during attention computation while maintaining quality.
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional
 
 try:
     from xformers.ops import memory_efficient_attention
+
     XFORMERS_AVAILABLE = True
 except ImportError:
     XFORMERS_AVAILABLE = False
@@ -59,11 +61,14 @@ def xformers_attention(
     if is_causal:
         # Create causal attention bias if needed
         from xformers.ops import LowerTriangularMask
+
         attn_bias = LowerTriangularMask()
 
     # Apply memory-efficient attention
     out = memory_efficient_attention(
-        q, k, v,
+        q,
+        k,
+        v,
         attn_bias=attn_bias,
         p=dropout_p,
     )
@@ -131,18 +136,28 @@ class MemoryEfficientAttention(nn.Module):
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         q, k, v = self.c_attn(x).split(self.embed_dim, dim=2)
-        k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
-        q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
-        v = v.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)  # (B, nh, T, hs)
+        k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
+        q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
+        v = v.view(B, T, self.n_heads, C // self.n_heads).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
 
         # efficient attention using xformers memory_efficient_attention
         y = xformers_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             dropout_p=self.dropout if self.training else 0.0,
             is_causal=True,
         )
 
-        y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
+        y = (
+            y.transpose(1, 2).contiguous().view(B, T, C)
+        )  # re-assemble all head outputs side by side
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
