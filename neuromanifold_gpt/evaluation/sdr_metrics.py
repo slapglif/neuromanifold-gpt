@@ -8,8 +8,9 @@ This module provides metrics for evaluating SDR quality and behavior:
 These metrics help monitor whether SDRs maintain proper sparsity constraints
 and whether semantic relationships are encoded via bit overlap as expected.
 """
-import torch
 from typing import Dict
+
+import torch
 
 
 class SDRMetrics:
@@ -64,9 +65,7 @@ class SDRMetrics:
         # Shannon entropy: -sum(p * log(p))
         # Only compute for active bits (probs > 0)
         log_probs = torch.where(
-            probs > 0,
-            torch.log(probs + eps),
-            torch.zeros_like(probs)
+            probs > 0, torch.log(probs + eps), torch.zeros_like(probs)
         )
         entropy = -(probs * log_probs).sum(dim=-1)
 
@@ -79,7 +78,9 @@ class SDRMetrics:
         return normalized_entropy
 
     @staticmethod
-    def compute_overlap_statistics(sdr: torch.Tensor, n_active: int) -> Dict[str, float]:
+    def compute_overlap_statistics(
+        sdr: torch.Tensor, n_active: int
+    ) -> Dict[str, float]:
         """Compute pairwise overlap statistics across a batch of SDRs.
 
         Overlap = number of shared active bits between two SDRs.
@@ -104,11 +105,11 @@ class SDRMetrics:
         if n_sdrs < 2:
             # Need at least 2 SDRs for overlap statistics
             return {
-                'overlap_mean': 0.0,
-                'overlap_std': 0.0,
-                'overlap_min': 0.0,
-                'overlap_max': 0.0,
-                'overlap_mean_norm': 0.0,
+                "overlap_mean": 0.0,
+                "overlap_std": 0.0,
+                "overlap_min": 0.0,
+                "overlap_max": 0.0,
+                "overlap_mean_norm": 0.0,
             }
 
         # Compute pairwise overlaps using matrix multiplication
@@ -120,11 +121,11 @@ class SDRMetrics:
         unique_overlaps = overlaps[mask]
 
         return {
-            'overlap_mean': unique_overlaps.mean().item(),
-            'overlap_std': unique_overlaps.std().item(),
-            'overlap_min': unique_overlaps.min().item(),
-            'overlap_max': unique_overlaps.max().item(),
-            'overlap_mean_norm': (unique_overlaps.mean() / n_active).item(),
+            "overlap_mean": unique_overlaps.mean().item(),
+            "overlap_std": unique_overlaps.std().item(),
+            "overlap_min": unique_overlaps.min().item(),
+            "overlap_max": unique_overlaps.max().item(),
+            "overlap_mean_norm": (unique_overlaps.mean() / n_active).item(),
         }
 
     @staticmethod
@@ -158,10 +159,10 @@ class SDRMetrics:
 
         # Aggregate metrics
         metrics = {
-            'sparsity': sparsity.mean().item(),
-            'sparsity_std': sparsity.std().item(),
-            'entropy': entropy.mean().item(),
-            'entropy_std': entropy.std().item(),
+            "sparsity": sparsity.mean().item(),
+            "sparsity_std": sparsity.std().item(),
+            "entropy": entropy.mean().item(),
+            "entropy_std": entropy.std().item(),
             **overlap_stats,
         }
 

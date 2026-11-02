@@ -1,13 +1,15 @@
+import math
+from functools import lru_cache
 
 import torch
 import torch.nn as nn
-import math
-from functools import lru_cache
+
 
 def gcd(a, b):
     while b:
         a, b = b, a % b
     return a
+
 
 @lru_cache(maxsize=None)
 def ramanujan_sum(q, n):
@@ -15,12 +17,14 @@ def ramanujan_sum(q, n):
     Compute Ramanujan sum c_q(n).
     c_q(n) = sum_{k=1, gcd(k,q)=1}^q cos(2*pi*k*n/q)
     """
-    if q == 0: return 0
+    if q == 0:
+        return 0
     val = 0.0
     for k in range(1, q + 1):
         if gcd(k, q) == 1:
             val += math.cos(2.0 * math.pi * k * n / q)
     return val
+
 
 class RamanujanPositionalEmbedding(nn.Module):
     def __init__(self, block_size, embed_dim):
@@ -30,7 +34,7 @@ class RamanujanPositionalEmbedding(nn.Module):
 
         # We compute periods q for each dimension
         qs = torch.arange(1, embed_dim + 1)
-        self.register_buffer('qs', qs)
+        self.register_buffer("qs", qs)
 
         # Precompute positional embeddings for block_size
         self._build_cache(block_size)
@@ -47,7 +51,7 @@ class RamanujanPositionalEmbedding(nn.Module):
         # phi(q) is the max value. Normalize by sqrt(q) roughly.
         pe = pe / (self.qs.float().unsqueeze(0) ** 0.5)
 
-        self.register_buffer('pe', pe, persistent=False)
+        self.register_buffer("pe", pe, persistent=False)
         self.cached_seq_len = seq_len
 
     def forward(self, idx):

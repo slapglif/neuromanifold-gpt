@@ -1,6 +1,5 @@
-
-import subprocess
 import os
+import subprocess
 
 try:
     print("Trying to execute nvcc --version")

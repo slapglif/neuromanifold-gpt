@@ -23,13 +23,14 @@ Usage:
     print(metrics['memory']['memory_size'])
 """
 
-import torch
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
+import torch
+
 from neuromanifold_gpt.evaluation.fhn_metrics import FHNMetrics
-from neuromanifold_gpt.evaluation.mtp_metrics import MTPMetrics
 from neuromanifold_gpt.evaluation.memory_metrics import MemoryMetrics
+from neuromanifold_gpt.evaluation.mtp_metrics import MTPMetrics
+from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
 
 
 class ComponentMetricsAggregator:
@@ -107,39 +108,38 @@ class ComponentMetricsAggregator:
         metrics = {}
 
         # SDR Metrics
-        if config.use_sdr and 'sdr' in info and info['sdr'] is not None:
-            sdr = info['sdr']
+        if config.use_sdr and "sdr" in info and info["sdr"] is not None:
+            sdr = info["sdr"]
             sdr_metrics = SDRMetrics.compute_all(sdr, n_active=config.sdr_n_active)
-            metrics['sdr'] = sdr_metrics
+            metrics["sdr"] = sdr_metrics
 
         # FHN Metrics - aggregate from block_infos
-        if 'block_infos' in info and len(info['block_infos']) > 0:
-            fhn_metrics = self._aggregate_fhn_metrics(info['block_infos'])
+        if "block_infos" in info and len(info["block_infos"]) > 0:
+            fhn_metrics = self._aggregate_fhn_metrics(info["block_infos"])
             if fhn_metrics:  # Only add if we found FHN data
-                metrics['fhn'] = fhn_metrics
+                metrics["fhn"] = fhn_metrics
 
         # MTP Metrics - compute from logits if provided
         if logits is not None and targets is not None:
             # Check if MTP is enabled
-            use_mtp = getattr(config, 'use_mtp', False)
+            use_mtp = getattr(config, "use_mtp", False)
             if use_mtp:
                 # For multi-token prediction, we could have multiple heads
                 # For now, compute metrics from main logits
                 # (per-depth accuracy would require separate logits per depth)
                 mtp_metrics = MTPMetrics.compute_all(logits, targets)
-                metrics['mtp'] = mtp_metrics
+                metrics["mtp"] = mtp_metrics
 
         # Memory Metrics
-        if 'memory_stats' in info:
-            memory_stats = info['memory_stats']
+        if "memory_stats" in info:
+            memory_stats = info["memory_stats"]
             memory_metrics = MemoryMetrics.compute_all(memory_stats)
-            metrics['memory'] = memory_metrics
+            metrics["memory"] = memory_metrics
 
         return metrics
 
     def _aggregate_fhn_metrics(
-        self,
-        block_infos: List[Dict[str, Any]]
+        self, block_infos: List[Dict[str, Any]]
     ) -> Dict[str, float]:
         """Aggregate FHN metrics from multiple transformer blocks.
 
@@ -158,8 +158,8 @@ class ComponentMetricsAggregator:
         all_pulse_widths: List[torch.Tensor] = []
 
         for block_info in block_infos:
-            if 'fhn_state' in block_info and block_info['fhn_state'] is not None:
-                fhn_state = block_info['fhn_state']
+            if "fhn_state" in block_info and block_info["fhn_state"] is not None:
+                fhn_state = block_info["fhn_state"]
                 # Handle scalar tensors
                 if isinstance(fhn_state, torch.Tensor):
                     if fhn_state.dim() == 0:
@@ -169,8 +169,8 @@ class ComponentMetricsAggregator:
                     # Scalar value
                     all_fhn_states.append(torch.tensor([fhn_state]))
 
-            if 'pulse_widths' in block_info and block_info['pulse_widths'] is not None:
-                pulse_widths = block_info['pulse_widths']
+            if "pulse_widths" in block_info and block_info["pulse_widths"] is not None:
+                pulse_widths = block_info["pulse_widths"]
                 # Handle scalar tensors
                 if isinstance(pulse_widths, torch.Tensor):
                     if pulse_widths.dim() == 0:
@@ -190,12 +190,12 @@ class ComponentMetricsAggregator:
         if all_fhn_states:
             # Flatten all states into a single tensor for aggregate statistics
             combined_fhn_states = torch.cat([s.flatten() for s in all_fhn_states])
-            aggregated_info['fhn_state'] = combined_fhn_states
+            aggregated_info["fhn_state"] = combined_fhn_states
 
         if all_pulse_widths:
             # Flatten all pulse widths into a single tensor
             combined_pulse_widths = torch.cat([p.flatten() for p in all_pulse_widths])
-            aggregated_info['pulse_widths'] = combined_pulse_widths
+            aggregated_info["pulse_widths"] = combined_pulse_widths
 
         # Compute metrics using FHNMetrics.compute_all
         fhn_metrics = FHNMetrics.compute_all(aggregated_info)

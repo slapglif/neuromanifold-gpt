@@ -10,11 +10,11 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Prompt
+from rich.table import Table
 
 console = Console()
 
@@ -54,17 +54,17 @@ def _extract_val_loss(filename: str) -> Optional[float]:
     - checkpoint_loss_1.2345.pt
     """
     # Try Lightning format: ckpt-{step}-{val_loss}.ckpt
-    match = re.search(r'ckpt-\d+-(\d+\.\d+)\.ckpt', filename)
+    match = re.search(r"ckpt-\d+-(\d+\.\d+)\.ckpt", filename)
     if match:
         return float(match.group(1))
 
     # Try alternative format: loss_1.2345
-    match = re.search(r'loss[_-](\d+\.\d+)', filename, re.IGNORECASE)
+    match = re.search(r"loss[_-](\d+\.\d+)", filename, re.IGNORECASE)
     if match:
         return float(match.group(1))
 
     # Try format with val in name: val_1.2345 or val-1.2345
-    match = re.search(r'val[_-](\d+\.\d+)', filename, re.IGNORECASE)
+    match = re.search(r"val[_-](\d+\.\d+)", filename, re.IGNORECASE)
     if match:
         return float(match.group(1))
 
@@ -81,17 +81,17 @@ def _extract_training_step(filename: str) -> Optional[int]:
     - iter_12345.pt
     """
     # Try Lightning format: ckpt-{step}-{val_loss}.ckpt
-    match = re.search(r'ckpt-(\d+)-\d+\.\d+\.ckpt', filename)
+    match = re.search(r"ckpt-(\d+)-\d+\.\d+\.ckpt", filename)
     if match:
         return int(match.group(1))
 
     # Try step in name: step_12345 or step-12345
-    match = re.search(r'step[_-](\d+)', filename, re.IGNORECASE)
+    match = re.search(r"step[_-](\d+)", filename, re.IGNORECASE)
     if match:
         return int(match.group(1))
 
     # Try iter in name: iter_12345 or iter-12345
-    match = re.search(r'iter[_-](\d+)', filename, re.IGNORECASE)
+    match = re.search(r"iter[_-](\d+)", filename, re.IGNORECASE)
     if match:
         return int(match.group(1))
 
@@ -120,7 +120,7 @@ def _scan_checkpoints(directory: str) -> List[Tuple[str, Optional[float], float,
     seen_separated = set()  # Track separated checkpoints we've already added
 
     # Find all checkpoint files
-    patterns = ['*.pt', '*.ckpt', '*.pth']
+    patterns = ["*.pt", "*.ckpt", "*.pth"]
     for pattern in patterns:
         for ckpt_file in dir_path.glob(pattern):
             if not ckpt_file.is_file():
@@ -129,11 +129,11 @@ def _scan_checkpoints(directory: str) -> List[Tuple[str, Optional[float], float,
             filename = ckpt_file.name
 
             # Skip optimizer files - they'll be handled with their model files
-            if filename.endswith('-optimizer.pt'):
+            if filename.endswith("-optimizer.pt"):
                 continue
 
             # Handle separated checkpoint format
-            if filename.endswith('-model.pt'):
+            if filename.endswith("-model.pt"):
                 # Get the base name (without -model.pt)
                 base_name = filename[:-9]  # Remove '-model.pt'
 
@@ -154,17 +154,14 @@ def _scan_checkpoints(directory: str) -> List[Tuple[str, Optional[float], float,
                     total_size += optimizer_stat.st_size
 
                 val_loss = _extract_val_loss(filename)
-                checkpoints.append((
-                    filename,  # Return the model filename
-                    val_loss,
-                    mtime,
-                    total_size
-                ))
+                checkpoints.append(
+                    (filename, val_loss, mtime, total_size)  # Return the model filename
+                )
 
             # Handle unified checkpoint format
             else:
                 # Skip if this looks like it's part of a separated checkpoint
-                base_name = filename.rsplit('.', 1)[0]
+                base_name = filename.rsplit(".", 1)[0]
                 model_file = dir_path / f"{base_name}-model.pt"
                 if model_file.exists():
                     # This is a base file that has separated versions, skip it
@@ -172,20 +169,13 @@ def _scan_checkpoints(directory: str) -> List[Tuple[str, Optional[float], float,
 
                 stat = ckpt_file.stat()
                 val_loss = _extract_val_loss(filename)
-                checkpoints.append((
-                    filename,
-                    val_loss,
-                    stat.st_mtime,
-                    stat.st_size
-                ))
+                checkpoints.append((filename, val_loss, stat.st_mtime, stat.st_size))
 
     return checkpoints
 
 
 def select_checkpoint(
-    directory: str = "out",
-    auto_select_best: bool = False,
-    show_table: bool = True
+    directory: str = "out", auto_select_best: bool = False, show_table: bool = True
 ) -> Optional[str]:
     """Interactively select a checkpoint file from a directory.
 
@@ -204,17 +194,21 @@ def select_checkpoint(
         return None
 
     # Sort by val_loss (None values last), then by age (newest first)
-    checkpoints.sort(key=lambda x: (
-        x[1] if x[1] is not None else float('inf'),  # val_loss
-        -x[2]  # negative age for newest first
-    ))
+    checkpoints.sort(
+        key=lambda x: (
+            x[1] if x[1] is not None else float("inf"),  # val_loss
+            -x[2],  # negative age for newest first
+        )
+    )
 
     # Auto-select best checkpoint if requested
     if auto_select_best:
         best_ckpt = checkpoints[0]
         ckpt_path = os.path.join(directory, best_ckpt[0])
         if show_table:
-            console.print(f"[green]Auto-selected best checkpoint:[/green] {best_ckpt[0]}")
+            console.print(
+                f"[green]Auto-selected best checkpoint:[/green] {best_ckpt[0]}"
+            )
         return ckpt_path
 
     # Display table
@@ -231,27 +225,20 @@ def select_checkpoint(
             age_str = _format_age(mtime)
             size_str = _format_size(size)
 
-            table.add_row(
-                str(idx),
-                filename,
-                loss_str,
-                age_str,
-                size_str
-            )
+            table.add_row(str(idx), filename, loss_str, age_str, size_str)
 
         console.print(table)
 
     # Prompt for selection
     if len(checkpoints) == 1:
-        console.print(f"[green]Using only available checkpoint:[/green] {checkpoints[0][0]}")
+        console.print(
+            f"[green]Using only available checkpoint:[/green] {checkpoints[0][0]}"
+        )
         return os.path.join(directory, checkpoints[0][0])
 
     # Interactive selection
     while True:
-        choice = Prompt.ask(
-            f"\nSelect checkpoint [1-{len(checkpoints)}]",
-            default="1"
-        )
+        choice = Prompt.ask(f"\nSelect checkpoint [1-{len(checkpoints)}]", default="1")
 
         try:
             idx = int(choice) - 1
@@ -261,9 +248,11 @@ def select_checkpoint(
                 console.print(f"[green]Selected:[/green] {selected[0]}")
                 return ckpt_path
             else:
-                console.print(f"[red]Invalid choice. Please enter 1-{len(checkpoints)}[/red]")
+                console.print(
+                    f"[red]Invalid choice. Please enter 1-{len(checkpoints)}[/red]"
+                )
         except ValueError:
-            console.print(f"[red]Invalid input. Please enter a number[/red]")
+            console.print("[red]Invalid input. Please enter a number[/red]")
 
 
 def find_best_checkpoint(directory: str = "out") -> Optional[str]:
@@ -291,7 +280,9 @@ def list_checkpoints(directory: str = "out") -> List[str]:
     return [ckpt[0] for ckpt in checkpoints]
 
 
-def export_checkpoints_metadata(directory: str = "out", output_file: str = "checkpoints_metadata.json") -> None:
+def export_checkpoints_metadata(
+    directory: str = "out", output_file: str = "checkpoints_metadata.json"
+) -> None:
     """Export checkpoint metadata to a JSON file.
 
     Scans the directory for checkpoint files and exports their metadata including

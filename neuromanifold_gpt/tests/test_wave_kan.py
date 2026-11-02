@@ -1,7 +1,9 @@
+import unittest
 
 import torch
-import unittest
-from neuromanifold_gpt.model.kan.wave import WaveKANLinear, WaveKANFFN
+
+from neuromanifold_gpt.model.kan.wave import WaveKANFFN, WaveKANLinear
+
 
 class TestWaveKAN(unittest.TestCase):
     def setUp(self):
@@ -13,7 +15,7 @@ class TestWaveKAN(unittest.TestCase):
         """Test forward pass shapes for WaveKANLinear"""
         model = WaveKANLinear(self.D, self.H).to(self.device)
         x = torch.randn(self.B, self.T, self.D).to(self.device)
-        
+
         y = model(x)
         self.assertEqual(y.shape, (self.B, self.T, self.H))
 
@@ -21,7 +23,7 @@ class TestWaveKAN(unittest.TestCase):
         """Test forward pass shapes for WaveKANFFN"""
         model = WaveKANFFN(self.D, self.H).to(self.device)
         x = torch.randn(self.B, self.T, self.D).to(self.device)
-        
+
         y = model(x)
         self.assertEqual(y.shape, (self.B, self.T, self.D))
 
@@ -32,7 +34,7 @@ class TestWaveKAN(unittest.TestCase):
             x = torch.randn(self.B, self.T, self.D).to(self.device)
             y = model(x)
             self.assertEqual(y.shape, (self.B, self.T, self.H))
-            
+
             # Check for NaNs
             self.assertFalse(torch.isnan(y).any(), f"NaNs found in {wavelet}")
 
@@ -41,11 +43,11 @@ class TestWaveKAN(unittest.TestCase):
         model = WaveKANLinear(self.D, self.H).to(self.device)
         # Proper initialization for leaf tensor requiring grad
         x = torch.randn(self.B, self.T, self.D, device=self.device, requires_grad=True)
-        
+
         y = model(x)
         loss = y.sum()
         loss.backward()
-        
+
         self.assertIsNotNone(x.grad)
         self.assertIsNotNone(model.wavelet_weights.grad)
         self.assertIsNotNone(model.scale.grad)
@@ -54,12 +56,12 @@ class TestWaveKAN(unittest.TestCase):
     def test_numerical_stability(self):
         """Test with large/small inputs"""
         model = WaveKANLinear(self.D, self.H).to(self.device)
-        
+
         # Large inputs
         x_large = torch.randn(self.B, self.T, self.D).to(self.device) * 100
         y_large = model(x_large)
         self.assertFalse(torch.isnan(y_large).any(), "NaNs with large inputs")
-        
+
         # Small inputs
         x_small = torch.randn(self.B, self.T, self.D).to(self.device) * 1e-5
         y_small = model(x_small)
@@ -69,21 +71,22 @@ class TestWaveKAN(unittest.TestCase):
         """Verify causality is preserved (changing future tokens doesn't affect past)"""
         model = WaveKANLinear(self.D, self.H).to(self.device)
         x = torch.randn(self.B, self.T, self.D).to(self.device)
-        
+
         # Original output
         y1 = model(x)
-        
+
         # Modify last token
         x_mod = x.clone()
         x_mod[:, -1, :] = torch.randn(self.B, self.D).to(self.device)
         y2 = model(x_mod)
-        
+
         # Output for first token should be identical
         # Using a slightly larger tolerance because of potential numerical noise in sums
         self.assertTrue(torch.allclose(y1[:, 0, :], y2[:, 0, :], atol=1e-6))
-        
+
         # Output for last token should be different
         self.assertFalse(torch.allclose(y1[:, -1, :], y2[:, -1, :]))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

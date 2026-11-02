@@ -1,6 +1,7 @@
 """Test topographic loss implementation."""
 
 import torch
+
 from neuromanifold_gpt.model.semantic_folding import SemanticFoldingEncoder
 
 
@@ -86,8 +87,8 @@ def test_topographic_loss_inference():
 
 
 def test_full_model_integration():
-    from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
     from neuromanifold_gpt.config import NeuroManifoldConfig
+    from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
     config = NeuroManifoldConfig(
         vocab_size=100,

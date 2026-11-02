@@ -25,11 +25,9 @@ References:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from neuromanifold_gpt.model.fno.spectral_conv import SpectralConv1d
 
@@ -71,7 +69,9 @@ def get_activation(name: str) -> nn.Module:
         "tanh": nn.Tanh(),
     }
     if name.lower() not in activations:
-        raise ValueError(f"Unknown activation: {name}. Choose from {list(activations.keys())}")
+        raise ValueError(
+            f"Unknown activation: {name}. Choose from {list(activations.keys())}"
+        )
     return activations[name.lower()]
 
 
@@ -161,7 +161,9 @@ class FNOBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # Post-normalization (if not prenorm)
-        self.norm2 = nn.LayerNorm(embed_dim, eps=layer_norm_eps) if not prenorm else None
+        self.norm2 = (
+            nn.LayerNorm(embed_dim, eps=layer_norm_eps) if not prenorm else None
+        )
 
     def forward(
         self,
@@ -288,19 +290,21 @@ class FNOEncoder(nn.Module):
         self.modes = modes
 
         # Stack of FNO blocks
-        self.blocks = nn.ModuleList([
-            FNOBlock(
-                embed_dim=embed_dim,
-                modes=modes,
-                dropout=dropout,
-                activation=activation,
-                residual=residual,
-                prenorm=prenorm,
-                layer_norm_eps=layer_norm_eps,
-                bias=bias,
-            )
-            for _ in range(n_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                FNOBlock(
+                    embed_dim=embed_dim,
+                    modes=modes,
+                    dropout=dropout,
+                    activation=activation,
+                    residual=residual,
+                    prenorm=prenorm,
+                    layer_norm_eps=layer_norm_eps,
+                    bias=bias,
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
         # Final layer normalization
         self.final_norm = nn.LayerNorm(embed_dim, eps=layer_norm_eps)

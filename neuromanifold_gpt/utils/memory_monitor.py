@@ -5,9 +5,9 @@ Provides real-time GPU memory tracking during training for consumer GPUs.
 Tracks current, peak, and reserved memory with formatting utilities.
 """
 
-import torch
 from collections import deque
-from typing import Optional
+
+import torch
 
 
 class GPUMemoryMonitor:
@@ -165,7 +165,7 @@ class GPUMemoryMonitor:
             return False
 
         stats = self.get_memory_stats()
-        return stats['free_gb'] >= required_gb
+        return stats["free_gb"] >= required_gb
 
     def get_device_name(self) -> str:
         """
@@ -226,9 +226,9 @@ class GPUMemoryMonitor:
         sample_count = len(history_list)
 
         # Extract individual metric lists
-        allocated_values = [sample['allocated_gb'] for sample in history_list]
-        reserved_values = [sample['reserved_gb'] for sample in history_list]
-        utilization_values = [sample['utilization'] for sample in history_list]
+        allocated_values = [sample["allocated_gb"] for sample in history_list]
+        reserved_values = [sample["reserved_gb"] for sample in history_list]
+        utilization_values = [sample["utilization"] for sample in history_list]
 
         # Calculate statistics for each metric
         return {

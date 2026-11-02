@@ -23,11 +23,9 @@ References:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 @dataclass
@@ -147,13 +145,11 @@ class SpectralConv1d(nn.Module):
         # Complex multiplication via einsum
         # (batch, in_channels, modes) x (in_channels, out_channels, modes)
         # -> (batch, out_channels, modes)
-        out_real = (
-            torch.einsum("bim,iom->bom", x_real, weight_real)
-            - torch.einsum("bim,iom->bom", x_imag, weight_imag)
+        out_real = torch.einsum("bim,iom->bom", x_real, weight_real) - torch.einsum(
+            "bim,iom->bom", x_imag, weight_imag
         )
-        out_imag = (
-            torch.einsum("bim,iom->bom", x_real, weight_imag)
-            + torch.einsum("bim,iom->bom", x_imag, weight_real)
+        out_imag = torch.einsum("bim,iom->bom", x_real, weight_imag) + torch.einsum(
+            "bim,iom->bom", x_imag, weight_real
         )
 
         # Handle bfloat16 for torch.complex (requires float/double)
@@ -319,13 +315,11 @@ class SpectralConv2d(nn.Module):
         x_imag = x_hat.imag
 
         # Complex multiplication via einsum
-        out_real = (
-            torch.einsum("bijk,iojk->bojk", x_real, weight_real)
-            - torch.einsum("bijk,iojk->bojk", x_imag, weight_imag)
+        out_real = torch.einsum("bijk,iojk->bojk", x_real, weight_real) - torch.einsum(
+            "bijk,iojk->bojk", x_imag, weight_imag
         )
-        out_imag = (
-            torch.einsum("bijk,iojk->bojk", x_real, weight_imag)
-            + torch.einsum("bijk,iojk->bojk", x_imag, weight_real)
+        out_imag = torch.einsum("bijk,iojk->bojk", x_real, weight_imag) + torch.einsum(
+            "bijk,iojk->bojk", x_imag, weight_real
         )
 
         return torch.complex(out_real, out_imag)
@@ -464,7 +458,7 @@ class SpectralConvNd(nn.Module):
         Returns:
             Output tensor of same spatial shape
         """
-        batch_size = x.shape[0]
+        x.shape[0]
         spatial_shape = x.shape[2:]
 
         # N-dimensional real FFT
@@ -473,7 +467,9 @@ class SpectralConvNd(nn.Module):
         # Truncate to modes
         slices = [slice(None), slice(None)]  # batch, channels
         for i, m in enumerate(self.modes):
-            max_mode = min(m, spatial_shape[i] // 2 + 1 if i == self.ndim - 1 else spatial_shape[i])
+            max_mode = min(
+                m, spatial_shape[i] // 2 + 1 if i == self.ndim - 1 else spatial_shape[i]
+            )
             slices.append(slice(0, max_mode))
 
         x_truncated = x_hat[tuple(slices)]
@@ -495,8 +491,12 @@ class SpectralConvNd(nn.Module):
         out_dims = in_dims
         ein_str = f"bi{in_dims},io{in_dims}->bo{out_dims}"
 
-        out_real = torch.einsum(ein_str, x_real, w_real) - torch.einsum(ein_str, x_imag, w_imag)
-        out_imag = torch.einsum(ein_str, x_real, w_imag) + torch.einsum(ein_str, x_imag, w_real)
+        out_real = torch.einsum(ein_str, x_real, w_real) - torch.einsum(
+            ein_str, x_imag, w_imag
+        )
+        out_imag = torch.einsum(ein_str, x_real, w_imag) + torch.einsum(
+            ein_str, x_imag, w_real
+        )
 
         out_hat_truncated = torch.complex(out_real, out_imag)
 
@@ -511,7 +511,9 @@ class SpectralConvNd(nn.Module):
         out_hat[tuple(out_slices)] = out_hat_truncated
 
         # Inverse FFT
-        out = torch.fft.irfftn(out_hat, s=spatial_shape, dim=tuple(range(2, 2 + self.ndim)))
+        out = torch.fft.irfftn(
+            out_hat, s=spatial_shape, dim=tuple(range(2, 2 + self.ndim))
+        )
 
         # Bias and dropout
         if self.bias is not None:

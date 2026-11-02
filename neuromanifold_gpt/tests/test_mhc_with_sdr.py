@@ -1,30 +1,36 @@
 #!/usr/bin/env python3
 """Test mHC with SDR to see if it helps mode collapse."""
 
+from collections import Counter
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections import Counter
 from loguru import logger
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-from neuromanifold_gpt.model.mhc import SimplifiedMHC
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+from neuromanifold_gpt.model.mhc import SimplifiedMHC
 
 
 def load_shakespeare():
     data_path = "neuromanifold_gpt/data/input.txt"
-    with open(data_path, 'r') as f:
+    with open(data_path, "r") as f:
         text = f.read()
     chars = sorted(set(text))
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+
+    def encode(s):
+        return [stoi[c] for c in s]
+
+    def decode(l):
+        return "".join([itos[i] for i in l])
+
     data = torch.tensor(encode(text), dtype=torch.long)
     return data, decode, encode
 
@@ -39,10 +45,12 @@ class MHCNeuroManifoldGPT(nn.Module):
 
         # Add mHC to each block's residual connections
         # Strong identity bias (0.95) to preserve information flow
-        self.block_mhc = nn.ModuleList([
-            SimplifiedMHC(self.config.n_embd, init_residual_weight=0.95)
-            for _ in range(self.config.n_layer)
-        ])
+        self.block_mhc = nn.ModuleList(
+            [
+                SimplifiedMHC(self.config.n_embd, init_residual_weight=0.95)
+                for _ in range(self.config.n_layer)
+            ]
+        )
 
     def forward(self, tokens, targets=None):
         B, T = tokens.shape
@@ -53,11 +61,12 @@ class MHCNeuroManifoldGPT(nn.Module):
             x = None
         else:
             tok_emb = self.base.token_embedding(tokens)
-            pos_emb = self.base.position_embedding(torch.arange(T, device=device).unsqueeze(0))
+            pos_emb = self.base.position_embedding(
+                torch.arange(T, device=device).unsqueeze(0)
+            )
             x = tok_emb + pos_emb
             sdr = torch.zeros(B, T, self.config.sdr_size, device=device)
-            sdr_scores = None
-            topo_loss = torch.tensor(0.0, device=device)
+            torch.tensor(0.0, device=device)
             discrim_loss = torch.tensor(0.0, device=device)
 
         total_ortho_loss = torch.tensor(0.0, device=device)
@@ -85,7 +94,9 @@ class MHCNeuroManifoldGPT(nn.Module):
 
         loss = None
         if targets is not None:
-            ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            ce_loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1
+            )
             # Stronger discrimination loss weight with mHC
             loss = ce_loss + total_ortho_loss + 1.0 * discrim_loss
 
@@ -100,7 +111,11 @@ class MHCNeuroManifoldGPT(nn.Module):
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
         for _ in range(max_new_tokens):
-            idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
+            idx_cond = (
+                idx
+                if idx.size(1) <= self.config.block_size
+                else idx[:, -self.config.block_size :]
+            )
             logits, _, _ = self(idx_cond)
             logits = logits[:, -1, :] / temperature
 
@@ -122,7 +137,7 @@ class MHCNeuroManifoldGPT(nn.Module):
 
 
 def main():
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")
     logger.info("Testing mHC + SDR + WaveKAN combination...")
 
@@ -176,8 +191,8 @@ def main():
     logger.info(f"Training for {n_iters} iterations...")
     for i in range(n_iters):
         ix = torch.randint(len(data) - block_size, (batch_size,))
-        x = torch.stack([data[j:j+block_size] for j in ix]).to(device)
-        y = torch.stack([data[j+1:j+block_size+1] for j in ix]).to(device)
+        x = torch.stack([data[j : j + block_size] for j in ix]).to(device)
+        y = torch.stack([data[j + 1 : j + block_size + 1] for j in ix]).to(device)
 
         logits, loss, info = model(x, y)
         loss.backward()
@@ -186,15 +201,19 @@ def main():
         optimizer.zero_grad(set_to_none=True)
 
         if i % 400 == 0:
-            discrim = info.get('discrimination_loss', torch.tensor(0.0)).item()
+            discrim = info.get("discrimination_loss", torch.tensor(0.0)).item()
             model.eval()
             context = torch.zeros((1, 1), dtype=torch.long, device=device)
             with torch.no_grad():
-                generated = model.generate(context, max_new_tokens=50, temperature=0.8, top_k=40)
+                generated = model.generate(
+                    context, max_new_tokens=50, temperature=0.8, top_k=40
+                )
             gen_text = decode(generated[0].tolist())
             char_counts = Counter(generated[0].tolist())
             diversity = len(char_counts)
-            logger.info(f"iter {i}: loss={loss.item():.4f}, discrim={discrim:.4f}, div={diversity}")
+            logger.info(
+                f"iter {i}: loss={loss.item():.4f}, discrim={discrim:.4f}, div={diversity}"
+            )
             logger.info(f"  '{gen_text[:45]}'")
             model.train()
 
@@ -204,7 +223,9 @@ def main():
     for prompt in ["ROMEO:", "To be or ", "First"]:
         prompt_ids = torch.tensor([encode(prompt)], dtype=torch.long, device=device)
         with torch.no_grad():
-            generated = model.generate(prompt_ids.clone(), max_new_tokens=80, temperature=0.8, top_k=40)
+            generated = model.generate(
+                prompt_ids.clone(), max_new_tokens=80, temperature=0.8, top_k=40
+            )
         output = decode(generated[0].tolist())
         logger.info(f"\n'{prompt}': {output[:100]}")
 

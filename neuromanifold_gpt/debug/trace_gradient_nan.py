@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 torch.manual_seed(42)
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
@@ -13,22 +13,31 @@ from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 # Track NaN
 nan_sources = []
 
+
 def make_hook(name):
     def hook(grad):
         if grad is not None:
             has_nan = torch.isnan(grad).any().item()
             has_inf = torch.isinf(grad).any().item()
             if has_nan or has_inf:
-                nan_sources.append({
-                    'name': name,
-                    'nan': has_nan,
-                    'inf': has_inf,
-                    'shape': tuple(grad.shape),
-                    'min': grad[~torch.isnan(grad)].min().item() if (~torch.isnan(grad)).any() else float('nan'),
-                    'max': grad[~torch.isnan(grad)].max().item() if (~torch.isnan(grad)).any() else float('nan'),
-                })
+                nan_sources.append(
+                    {
+                        "name": name,
+                        "nan": has_nan,
+                        "inf": has_inf,
+                        "shape": tuple(grad.shape),
+                        "min": grad[~torch.isnan(grad)].min().item()
+                        if (~torch.isnan(grad)).any()
+                        else float("nan"),
+                        "max": grad[~torch.isnan(grad)].max().item()
+                        if (~torch.isnan(grad)).any()
+                        else float("nan"),
+                    }
+                )
         return grad
+
     return hook
+
 
 # Config
 B, T = 4, 256
@@ -62,15 +71,20 @@ model.train()
 hooks = []
 activation_grads = {}
 
+
 def register_activation_hook(module, name):
     def forward_hook(module, input, output):
         if isinstance(output, torch.Tensor) and output.requires_grad:
             output.register_hook(make_hook(f"activation:{name}"))
+
     hooks.append(module.register_forward_hook(forward_hook))
+
 
 # Register on key modules
 for name, module in model.named_modules():
-    if isinstance(module, (nn.Linear, nn.LayerNorm, nn.Embedding, nn.MultiheadAttention)):
+    if isinstance(
+        module, (nn.Linear, nn.LayerNorm, nn.Embedding, nn.MultiheadAttention)
+    ):
         register_activation_hook(module, name)
 
 # Forward + backward
@@ -83,9 +97,9 @@ print(f"Loss: {loss.item():.4f}")
 loss.backward()
 
 # Report findings
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("NaN/Inf GRADIENT SOURCES (first appearance order)")
-print("="*60)
+print("=" * 60)
 
 for i, src in enumerate(nan_sources[:20]):  # First 20
     print(f"{i+1}. {src['name']}")
@@ -97,9 +111,9 @@ for h in hooks:
     h.remove()
 
 # Also check parameter gradients in order
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("PARAMETER GRADIENTS WITH NaN (order of definition)")
-print("="*60)
+print("=" * 60)
 for name, param in model.named_parameters():
     if param.grad is not None and torch.isnan(param.grad).any():
         pct = torch.isnan(param.grad).float().mean().item() * 100

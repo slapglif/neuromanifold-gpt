@@ -2,6 +2,7 @@
 """Tests for SDREngramMemory - breadcrumb trail for infinite context."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.memory.engram import SDREngramMemory
 
 
@@ -163,11 +164,13 @@ def test_engram_batch_retrieve():
         memory.store(sdr, content)
 
     # Create batch of 3 queries
-    query_batch = torch.stack([
-        stored_sdrs[0],  # Exact match with first
-        stored_sdrs[2],  # Exact match with third
-        stored_sdrs[1],  # Exact match with second
-    ])
+    query_batch = torch.stack(
+        [
+            stored_sdrs[0],  # Exact match with first
+            stored_sdrs[2],  # Exact match with third
+            stored_sdrs[1],  # Exact match with second
+        ]
+    )
 
     # Batch retrieval
     batch_contents, batch_sim = memory.retrieve_batch(query_batch, top_k=3)
@@ -186,9 +189,7 @@ def test_engram_batch_retrieve():
         num_valid = valid_mask.sum().item()
         if num_valid > 0:
             assert torch.allclose(
-                batch_sim[i, :num_valid],
-                seq_sim[:num_valid],
-                atol=1e-5
+                batch_sim[i, :num_valid], seq_sim[:num_valid], atol=1e-5
             ), f"Similarities should match for batch element {i}"
 
 
@@ -224,11 +225,11 @@ def test_engram_batch_retrieve_threshold_filtering():
 
     # Create batch with different overlap levels
     query_batch = torch.zeros(3, 2048)
-    query_batch[0, :40] = 1          # 100% overlap (40/40) - should retrieve
-    query_batch[1, :25] = 1          # 62.5% overlap (25/40) - should retrieve
-    query_batch[1, 100:115] = 1      # Fill rest to maintain 40 active bits
-    query_batch[2, :15] = 1          # 37.5% overlap (15/40) - below threshold
-    query_batch[2, 100:125] = 1      # Fill rest to maintain 40 active bits
+    query_batch[0, :40] = 1  # 100% overlap (40/40) - should retrieve
+    query_batch[1, :25] = 1  # 62.5% overlap (25/40) - should retrieve
+    query_batch[1, 100:115] = 1  # Fill rest to maintain 40 active bits
+    query_batch[2, :15] = 1  # 37.5% overlap (15/40) - below threshold
+    query_batch[2, 100:125] = 1  # Fill rest to maintain 40 active bits
 
     contents, similarities = memory.retrieve_batch(query_batch, top_k=5)
 
@@ -243,7 +244,9 @@ def test_engram_batch_retrieve_threshold_filtering():
     # Third query: low similarity below threshold, should not retrieve
     assert similarities[2, 0] < 0.5, "Low overlap should be below threshold"
     # All entries should be zero (threshold filtered out)
-    assert torch.all(similarities[2] < 0.5), "All similarities should be below threshold"
+    assert torch.all(
+        similarities[2] < 0.5
+    ), "All similarities should be below threshold"
 
 
 def test_engram_batch_retrieve_variable_results():

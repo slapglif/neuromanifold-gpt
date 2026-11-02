@@ -1,11 +1,12 @@
 """Tests for checkpoint utilities and metadata export."""
 
+import importlib.util
 import json
 import os
-import pytest
-import importlib.util
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 
 def _import_checkpoints_directly():
@@ -15,11 +16,10 @@ def _import_checkpoints_directly():
     allowing tests to run in environments without torch installed.
     """
     checkpoints_path = os.path.join(
-        os.path.dirname(__file__), '..', 'utils', 'checkpoints.py'
+        os.path.dirname(__file__), "..", "utils", "checkpoints.py"
     )
     spec = importlib.util.spec_from_file_location(
-        'checkpoints_module',
-        checkpoints_path
+        "checkpoints_module", checkpoints_path
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -623,7 +623,9 @@ class TestExportCheckpointsMetadata:
         output_file = tmp_path / "metadata.json"
 
         with pytest.raises(ValueError, match="Directory does not exist"):
-            checkpoints_module.export_checkpoints_metadata("/nonexistent/path", str(output_file))
+            checkpoints_module.export_checkpoints_metadata(
+                "/nonexistent/path", str(output_file)
+            )
 
     def test_export_file_path_raises_error(self, tmp_path):
         """Test that export raises ValueError when directory is a file."""
@@ -636,7 +638,9 @@ class TestExportCheckpointsMetadata:
         output_file = tmp_path / "metadata.json"
 
         with pytest.raises(ValueError, match="Path is not a directory"):
-            checkpoints_module.export_checkpoints_metadata(str(not_a_dir), str(output_file))
+            checkpoints_module.export_checkpoints_metadata(
+                str(not_a_dir), str(output_file)
+            )
 
     def test_export_creates_output_directory(self, tmp_path):
         """Test that export creates output directory if it doesn't exist."""

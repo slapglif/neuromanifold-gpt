@@ -16,22 +16,24 @@ Usage:
 
 import os
 import sys
-from typing import Optional, Any, Dict, Union
+from typing import Any, Dict, Optional
+
 from loguru import logger as loguru_logger
 from rich.console import Console, RenderableType
 from rich.theme import Theme
 
-
 # Initialize rich console with custom theme
 _console = Console(
-    theme=Theme({
-        "info": "cyan",
-        "warning": "yellow",
-        "error": "bold red",
-        "metric": "bold green",
-        "progress": "yellow",
-        "section": "bold blue",
-    })
+    theme=Theme(
+        {
+            "info": "cyan",
+            "warning": "yellow",
+            "error": "bold red",
+            "metric": "bold green",
+            "progress": "yellow",
+            "section": "bold blue",
+        }
+    )
 )
 
 

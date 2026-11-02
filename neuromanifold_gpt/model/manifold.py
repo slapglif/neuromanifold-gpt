@@ -55,7 +55,7 @@ class ManifoldProjection(nn.Module):
 
         # Small epsilon for numerical stability
         self._eps = 1e-4
-        
+
         # Initialize weights
         self._init_weights()
 
@@ -67,7 +67,7 @@ class ManifoldProjection(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.zeros_(m.weight)
                 nn.init.zeros_(m.bias)
-                
+
         # Encoder: Kaiming normal
         for m in self.encoder:
             if isinstance(m, nn.Linear):

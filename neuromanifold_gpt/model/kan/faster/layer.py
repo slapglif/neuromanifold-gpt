@@ -52,13 +52,13 @@ class FasterKANLayer(nn.Module):
                 torch.randn(out_features, in_features) * 0.02
             )
         else:
-            self.register_parameter('base_weight', None)
+            self.register_parameter("base_weight", None)
 
         # Bias
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_features))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
         # LayerNorm for input scaling (key to FasterKAN)
         self.layer_norm = nn.LayerNorm(in_features)
@@ -79,7 +79,9 @@ class FasterKANLayer(nn.Module):
         basis_out = self.basis(x_norm)  # (..., in_features, num_centers)
 
         # Flatten basis output
-        basis_flat = rearrange(basis_out, '... i c -> ... (i c)')  # (..., in * num_centers)
+        basis_flat = rearrange(
+            basis_out, "... i c -> ... (i c)"
+        )  # (..., in * num_centers)
 
         # Spline transformation
         spline_out = F.linear(basis_flat, self.spline_weight)  # (..., out_features)

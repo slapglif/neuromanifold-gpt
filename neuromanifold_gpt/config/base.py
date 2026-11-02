@@ -7,6 +7,22 @@ including settings for:
 - Soliton attention dynamics
 - Engram memory hierarchy
 - DAG planning and imagination modules
+
+Example usage:
+    from neuromanifold_gpt.config.loader import load_config
+    from neuromanifold_gpt.config.base import NeuroManifoldConfig
+
+    # Load with CLI overrides
+    config = load_config(NeuroManifoldConfig, ['--n_layer=12', '--n_embd=768'])
+
+    # Load from preset module
+    config = load_config(NeuroManifoldConfig, ['neuromanifold_gpt.config.presets.nano'])
+
+    # Combine preset with overrides
+    config = load_config(
+        NeuroManifoldConfig,
+        ['neuromanifold_gpt.config.presets.nano', '--use_kan=True', '--fhn_tau=10.0']
+    )
 """
 
 from dataclasses import dataclass, field
@@ -24,6 +40,23 @@ class NeuroManifoldConfig:
     - SDR Engram memory for infinite context
     - Forced DAG planning for System 2 thinking
     - Consistency model imagination module
+
+    Example usage:
+        >>> from neuromanifold_gpt.config.loader import load_config
+        >>> from neuromanifold_gpt.config.base import NeuroManifoldConfig
+        >>>
+        >>> # Load defaults with specific overrides
+        >>> config = load_config(NeuroManifoldConfig, ['--n_layer=12', '--n_embd=768'])
+        >>>
+        >>> # Load from a preset configuration
+        >>> config = load_config(NeuroManifoldConfig, ['neuromanifold_gpt.config.presets.nano'])
+        >>>
+        >>> # Enable advanced features
+        >>> config = load_config(NeuroManifoldConfig, [
+        ...     '--use_sdr=True',
+        ...     '--use_kaufmann_attention=True',
+        ...     '--use_moe=True'
+        ... ])
 
     Attributes:
         vocab_size: Vocabulary size (default 50304 for GPT-2 + padding)
@@ -101,6 +134,10 @@ class NeuroManifoldConfig:
     use_fhn_partitioning: bool = True  # Enable energy balancing for stability
     use_fhn_fused: bool = False  # Disabled (Using JIT instead)
     use_fhn_parallel: bool = True  # Use FFT-based Parallel Scan (Linearized FHN) for max speed
+
+    # Chunked attention for memory-efficient long sequences
+    use_fhn_chunked: bool = True  # Enable chunked attention for reduced memory usage
+    fhn_chunk_size: int = 512  # Chunk size for processing long sequences (trade-off: memory vs speed)
     
     # Spectral regularization
     ortho_weight: float = 0.01
@@ -124,7 +161,7 @@ class NeuroManifoldConfig:
     mhc_residual_weight: float = 0.9  # Initial identity mapping bias
     mhc_sinkhorn_iters: int = 5  # Sinkhorn-Knopp iterations (3-5 sufficient for convergence)
     mhc_sinkhorn_tau: float = 0.05  # Sinkhorn temperature for smoothness
-    use_mhc_fused: bool = False  # Use Triton-optimized fused mHC operations for performance
+    use_mhc_fused: bool = field(init=False)  # Auto-enabled when CUDA available (Triton-optimized fused mHC)
 
     # Attention configuration
     attention_type: str = "fhn"  # Attention mechanism: "fhn", "kaufmann", or "knot"
@@ -275,6 +312,13 @@ class NeuroManifoldConfig:
             self.n_fhn_steps = 1  # Reduce FHN steps
             self.sdr_size = min(self.sdr_size, 512)  # Cap SDR size
 
+        # Auto-enable fused mHC when CUDA is available for performance
+        try:
+            import torch
+            self.use_mhc_fused = torch.cuda.is_available()
+        except ImportError:
+            self.use_mhc_fused = False
+
         # Compute number of active SDR bits
         self.sdr_n_active = int(self.sdr_size * self.sdr_sparsity)
 
@@ -315,6 +359,16 @@ class NeuroManifoldConfigNano(NeuroManifoldConfig):
     - Fewer heads (4 vs 8)
     - Reduced manifold dimensions
     - Smaller SDR size
+
+    Example usage:
+        >>> from neuromanifold_gpt.config.loader import load_config
+        >>> from neuromanifold_gpt.config.base import NeuroManifoldConfigNano
+        >>>
+        >>> # Use nano preset directly
+        >>> config = load_config(NeuroManifoldConfigNano, [])
+        >>>
+        >>> # Nano preset with custom overrides
+        >>> config = load_config(NeuroManifoldConfigNano, ['--batch_size=32'])
     """
 
     block_size: int = 256

@@ -15,10 +15,10 @@ import torch
 import torch.nn as nn
 
 from neuromanifold_gpt.model.kan.faster import (
-    RSWAFBasis,
-    FasterKANLayer,
     FasterKANFFN,
+    FasterKANLayer,
     FasterKANLinear,
+    RSWAFBasis,
     replace_linear_with_fasterkan,
 )
 
@@ -54,7 +54,7 @@ class TestRSWAFBasis:
         """Test RSWAF peaks at grid center."""
         # At center, (u - u_i) / h = 0, so tanh(0) = 0, basis = 1 - 0 = 1
         x = torch.tensor([[[0.0]]])  # Input at grid center
-        output = basis(x)
+        basis(x)
         # Find center index (grid is [-1, 1] with 8 points)
         # Centers: -1, -0.71, -0.43, -0.14, 0.14, 0.43, 0.71, 1
         # Point 0.0 is between center 3 and 4
@@ -72,7 +72,9 @@ class TestRSWAFBasis:
         loss = output.sum()
         loss.backward()
         assert input_tensor.grad is not None
-        assert not torch.allclose(input_tensor.grad, torch.zeros_like(input_tensor.grad))
+        assert not torch.allclose(
+            input_tensor.grad, torch.zeros_like(input_tensor.grad)
+        )
 
     def test_learnable_parameters(self):
         """Test learnable grid and h parameters."""
@@ -81,7 +83,9 @@ class TestRSWAFBasis:
         assert isinstance(basis.grid, nn.Parameter)
 
         # Non-learnable version
-        basis_fixed = RSWAFBasis(num_centers=8, h=1.0, learnable_h=False, learnable_grid=False)
+        basis_fixed = RSWAFBasis(
+            num_centers=8, h=1.0, learnable_h=False, learnable_grid=False
+        )
         assert not isinstance(basis_fixed.h, nn.Parameter)
         assert not isinstance(basis_fixed.grid, nn.Parameter)
 
@@ -92,7 +96,9 @@ class TestFasterKANLayer:
     @pytest.fixture
     def layer(self):
         """Standard FasterKAN layer for testing."""
-        return FasterKANLayer(in_features=64, out_features=128, num_centers=8, bias=True)
+        return FasterKANLayer(
+            in_features=64, out_features=128, num_centers=8, bias=True
+        )
 
     @pytest.fixture
     def input_tensor(self):
@@ -114,7 +120,9 @@ class TestFasterKANLayer:
 
         # Check gradients exist
         assert input_tensor.grad is not None
-        assert not torch.allclose(input_tensor.grad, torch.zeros_like(input_tensor.grad))
+        assert not torch.allclose(
+            input_tensor.grad, torch.zeros_like(input_tensor.grad)
+        )
 
         # Check parameter gradients
         assert layer.spline_weight.grad is not None
@@ -184,9 +192,9 @@ class TestFasterKANFFN:
     def test_forward_shape(self, ffn, input_tensor):
         """Test FFN preserves input shape."""
         output = ffn(input_tensor)
-        assert output.shape == input_tensor.shape, (
-            f"Expected {input_tensor.shape}, got {output.shape}"
-        )
+        assert (
+            output.shape == input_tensor.shape
+        ), f"Expected {input_tensor.shape}, got {output.shape}"
 
     def test_backward_pass(self, ffn, input_tensor):
         """Test FFN backward pass."""
@@ -196,7 +204,9 @@ class TestFasterKANFFN:
         loss.backward()
 
         assert input_tensor.grad is not None
-        assert not torch.allclose(input_tensor.grad, torch.zeros_like(input_tensor.grad))
+        assert not torch.allclose(
+            input_tensor.grad, torch.zeros_like(input_tensor.grad)
+        )
 
     def test_dropout_behavior(self):
         """Test dropout is applied during training but not eval."""
@@ -272,9 +282,9 @@ class TestCausalityPreservation:
         # should be identical if causality is preserved
         # NOTE: LayerNorm doesn't look at other positions, so this should pass
         # Check positions 0-4 are identical
-        assert torch.allclose(out1[:, :5, :], out2[:, :5, :], atol=1e-5), (
-            "Causality violation: position 5 change affected earlier positions"
-        )
+        assert torch.allclose(
+            out1[:, :5, :], out2[:, :5, :], atol=1e-5
+        ), "Causality violation: position 5 change affected earlier positions"
 
         # Position 5+ can differ
         assert not torch.allclose(out1[:, 5, :], out2[:, 5, :])

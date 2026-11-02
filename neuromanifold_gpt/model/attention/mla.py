@@ -16,6 +16,7 @@ class RMSNorm(nn.Module):
 
     Reference: https://arxiv.org/abs/1910.07467
     """
+
     def __init__(self, dim, eps=1e-6):
         super().__init__()
         self.eps = eps
@@ -89,7 +90,9 @@ class MultiHeadLatentAttention(nn.Module):
 
         # Use Flash Attention when available
         out = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             attn_mask=None,
             dropout_p=self.dropout.p if self.training else 0.0,
             is_causal=True,

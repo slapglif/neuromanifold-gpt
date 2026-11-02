@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Test SDR with longer training to see if it learns proper representations."""
 
+from collections import Counter
+
 import torch
 import torch.nn.functional as F
-from collections import Counter
 from loguru import logger
 
 torch.backends.cudnn.benchmark = True
@@ -16,19 +17,24 @@ from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 def load_shakespeare():
     data_path = "neuromanifold_gpt/data/input.txt"
-    with open(data_path, 'r') as f:
+    with open(data_path, "r") as f:
         text = f.read()
     chars = sorted(set(text))
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+
+    def encode(s):
+        return [stoi[c] for c in s]
+
+    def decode(l):
+        return "".join([itos[i] for i in l])
+
     data = torch.tensor(encode(text), dtype=torch.long)
     return data, decode, encode
 
 
 def main():
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")
 
     # Larger SDR size and higher sparsity for more information capacity
@@ -59,8 +65,10 @@ def main():
         learning_rate=3e-4,  # Slightly lower LR
     )
 
-    logger.info(f"SDR config: size={config.sdr_size}, n_active={config.sdr_n_active}, "
-                f"context_size={config.sdr_context_size}")
+    logger.info(
+        f"SDR config: size={config.sdr_size}, n_active={config.sdr_n_active}, "
+        f"context_size={config.sdr_context_size}"
+    )
 
     data, decode, encode = load_shakespeare()
     logger.info(f"Data: {len(data)} chars")
@@ -84,8 +92,8 @@ def main():
     logger.info(f"Training for {n_iters} iterations...")
     for i in range(n_iters):
         ix = torch.randint(len(data) - block_size, (batch_size,))
-        x = torch.stack([data[j:j+block_size] for j in ix]).to(device)
-        y = torch.stack([data[j+1:j+block_size+1] for j in ix]).to(device)
+        x = torch.stack([data[j : j + block_size] for j in ix]).to(device)
+        y = torch.stack([data[j + 1 : j + block_size + 1] for j in ix]).to(device)
 
         logits, loss, info = model(x, y)
         loss.backward()
@@ -98,11 +106,15 @@ def main():
             model.eval()
             context = torch.zeros((1, 1), dtype=torch.long, device=device)
             with torch.no_grad():
-                generated = model.generate(context, max_new_tokens=50, temperature=0.8, top_k=40)
+                generated = model.generate(
+                    context, max_new_tokens=50, temperature=0.8, top_k=40
+                )
             gen_text = decode(generated[0].tolist())
             char_counts = Counter(generated[0].tolist())
             diversity = len(char_counts)
-            logger.info(f"iter {i}: loss={loss.item():.4f}, gen_diversity={diversity}, sample='{gen_text[:40]}'")
+            logger.info(
+                f"iter {i}: loss={loss.item():.4f}, gen_diversity={diversity}, sample='{gen_text[:40]}'"
+            )
             model.train()
 
     logger.info(f"\nFinal loss: {loss.item():.4f}")
@@ -114,7 +126,9 @@ def main():
     for prompt in prompts:
         prompt_ids = torch.tensor([encode(prompt)], dtype=torch.long, device=device)
         with torch.no_grad():
-            generated = model.generate(prompt_ids.clone(), max_new_tokens=100, temperature=0.8, top_k=40)
+            generated = model.generate(
+                prompt_ids.clone(), max_new_tokens=100, temperature=0.8, top_k=40
+            )
         output = decode(generated[0].tolist())
         logger.info(f"\nPrompt '{prompt}':")
         logger.info(f"  {output[:120]}")
@@ -123,7 +137,7 @@ def main():
     logger.info("\nLogit entropy analysis:")
     with torch.no_grad():
         ix = torch.randint(len(data) - 256, (16,))
-        tokens = torch.stack([data[i:i+256] for i in ix]).to(device)
+        tokens = torch.stack([data[i : i + 256] for i in ix]).to(device)
         logits, _, _ = model(tokens)
         probs = F.softmax(logits, dim=-1)
         entropy = -(probs * probs.log().clamp(min=-100)).sum(dim=-1).mean()

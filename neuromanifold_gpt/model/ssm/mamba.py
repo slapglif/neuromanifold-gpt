@@ -31,7 +31,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan, ParallelSelectiveScan
+from neuromanifold_gpt.model.ssm.selective_scan import (
+    ParallelSelectiveScan,
+    SelectiveScan,
+)
+from neuromanifold_gpt.model.ssm.selective_scan_optimized import (
+    MemoryEfficientSelectiveScan,
+)
 
 
 class MambaBlock(nn.Module):
@@ -71,6 +77,8 @@ class MambaBlock(nn.Module):
         use_conv_bias: bool = True,
         use_norm: bool = True,
         use_parallel_scan: bool = False,
+        memory_efficient: bool = True,
+        chunk_size: int = 64,
     ):
         """
         Initialize MambaBlock.
@@ -90,6 +98,8 @@ class MambaBlock(nn.Module):
             use_conv_bias: Whether to use bias in convolution
             use_norm: Whether to use layer normalization
             use_parallel_scan: Whether to use parallel associative scan (faster for long sequences)
+            memory_efficient: Use memory-efficient chunked scan (recommended for limited GPU memory)
+            chunk_size: Chunk size for memory-efficient scan (lower = less memory, more overhead)
         """
         super().__init__()
 
@@ -117,17 +127,37 @@ class MambaBlock(nn.Module):
         )
 
         # Selective scan (core SSM mechanism)
-        # Choose between sequential and parallel implementation
-        scan_class = ParallelSelectiveScan if use_parallel_scan else SelectiveScan
-        self.ssm = scan_class(
-            embed_dim=self.inner_dim,
-            state_dim=state_dim,
-            dt_rank=dt_rank,
-            dt_min=dt_min,
-            dt_max=dt_max,
-            use_hippo_init=use_hippo_init,
-            hippo_type=hippo_type,
-        )
+        # Priority: memory_efficient > parallel > sequential
+        if memory_efficient:
+            self.ssm = MemoryEfficientSelectiveScan(
+                embed_dim=self.inner_dim,
+                state_dim=state_dim,
+                dt_rank=dt_rank,
+                dt_min=dt_min,
+                dt_max=dt_max,
+                chunk_size=chunk_size,
+                gradient_checkpointing=True,
+            )
+        elif use_parallel_scan:
+            self.ssm = ParallelSelectiveScan(
+                embed_dim=self.inner_dim,
+                state_dim=state_dim,
+                dt_rank=dt_rank,
+                dt_min=dt_min,
+                dt_max=dt_max,
+                use_hippo_init=use_hippo_init,
+                hippo_type=hippo_type,
+            )
+        else:
+            self.ssm = SelectiveScan(
+                embed_dim=self.inner_dim,
+                state_dim=state_dim,
+                dt_rank=dt_rank,
+                dt_min=dt_min,
+                dt_max=dt_max,
+                use_hippo_init=use_hippo_init,
+                hippo_type=hippo_type,
+            )
 
         # Output projection: inner_dim -> embed_dim
         self.out_proj = nn.Linear(self.inner_dim, embed_dim, bias=bias)
@@ -254,13 +284,14 @@ class MambaBlock(nn.Module):
         """
         # Initialize states if needed
         if state is None:
-            state = self.ssm.init_state(
-                x.size(0), x.device, x.dtype
-            )
+            state = self.ssm.init_state(x.size(0), x.device, x.dtype)
         if conv_state is None:
             conv_state = torch.zeros(
-                x.size(0), self.inner_dim, self.conv_kernel_size - 1,
-                device=x.device, dtype=x.dtype
+                x.size(0),
+                self.inner_dim,
+                self.conv_kernel_size - 1,
+                device=x.device,
+                dtype=x.dtype,
             )
 
         # Store residual
@@ -295,7 +326,9 @@ class MambaBlock(nn.Module):
         x_branch = F.silu(x_branch)
 
         # SSM step
-        x_branch, new_state = self.ssm.step(x_branch, state)  # (B, inner_dim), (B, D, N)
+        x_branch, new_state = self.ssm.step(
+            x_branch, state
+        )  # (B, inner_dim), (B, D, N)
 
         # Gating
         z_branch = F.silu(z_branch)
@@ -333,8 +366,11 @@ class MambaBlock(nn.Module):
         """
         ssm_state = self.ssm.init_state(batch_size, device, dtype)
         conv_state = torch.zeros(
-            batch_size, self.inner_dim, self.conv_kernel_size - 1,
-            device=device, dtype=dtype
+            batch_size,
+            self.inner_dim,
+            self.conv_kernel_size - 1,
+            device=device,
+            dtype=dtype,
         )
         return ssm_state, conv_state
 
@@ -381,7 +417,7 @@ class MambaResidualBlock(nn.Module):
         super().__init__()
 
         # Disable internal norm since we handle it externally
-        kwargs['use_norm'] = False
+        kwargs["use_norm"] = False
 
         self.norm = nn.LayerNorm(embed_dim)
         self.mamba = MambaBlock(embed_dim, state_dim, **kwargs)

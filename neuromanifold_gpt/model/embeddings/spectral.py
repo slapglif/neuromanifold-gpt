@@ -29,11 +29,12 @@ STATUS: NOT INTEGRATED - This module is experimental and not currently
     used in NeuroManifoldGPT. The model uses standard embeddings.
 """
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, einsum
-import math
+from einops import einsum, rearrange
 
 
 class SpectralTokenEmbedding(nn.Module):
@@ -81,12 +82,12 @@ class SpectralTokenEmbedding(nn.Module):
             # Initialize to approximate Fourier basis
             for i in range(self.n_modes):
                 freq = (i + 1) * math.pi / self.n_modes
-                self.freq_real.weight.data[:, i] = torch.cos(
-                    freq * torch.arange(self.vocab_size).float()
-                ) * 0.1
-                self.freq_imag.weight.data[:, i] = torch.sin(
-                    freq * torch.arange(self.vocab_size).float()
-                ) * 0.1
+                self.freq_real.weight.data[:, i] = (
+                    torch.cos(freq * torch.arange(self.vocab_size).float()) * 0.1
+                )
+                self.freq_imag.weight.data[:, i] = (
+                    torch.sin(freq * torch.arange(self.vocab_size).float()) * 0.1
+                )
         else:
             nn.init.normal_(self.freq_real.weight, std=0.1)
             nn.init.normal_(self.freq_imag.weight, std=0.1)
@@ -119,7 +120,9 @@ class SpectralTokenEmbedding(nn.Module):
         imag_rotated = real * torch.sin(phase) + imag * torch.cos(phase)
 
         # Concatenate real and imaginary for projection
-        freq_features = torch.cat([real_rotated, imag_rotated], dim=-1)  # (B, T, 2*n_modes)
+        freq_features = torch.cat(
+            [real_rotated, imag_rotated], dim=-1
+        )  # (B, T, 2*n_modes)
 
         # Project to embedding space
         embeddings = self.freq_to_embed(freq_features)  # (B, T, embed_dim)
@@ -201,10 +204,14 @@ class AFNOTokenMixer(nn.Module):
         residual = x
 
         # Reshape for block-diagonal processing
-        x = rearrange(x, 'b t (n d) -> b n t d', n=self.n_blocks)  # (B, n_blocks, T, block_size)
+        x = rearrange(
+            x, "b t (n d) -> b n t d", n=self.n_blocks
+        )  # (B, n_blocks, T, block_size)
 
         # FFT along sequence dimension
-        x_ft = torch.fft.rfft(x, dim=2, norm='ortho')  # (B, n_blocks, T//2+1, block_size)
+        x_ft = torch.fft.rfft(
+            x, dim=2, norm="ortho"
+        )  # (B, n_blocks, T//2+1, block_size)
         freq_len = x_ft.shape[2]
 
         # Only process up to n_modes frequencies
@@ -225,10 +232,12 @@ class AFNOTokenMixer(nn.Module):
 
         # Batched complex multiplication via einsum
         # n=n_blocks, m=n_modes, i,j=block_size, b=batch
-        out_real = einsum(W_real, x_real, 'n m i j, b n m j -> b n m i') - \
-                   einsum(W_imag, x_imag, 'n m i j, b n m j -> b n m i')
-        out_imag = einsum(W_real, x_imag, 'n m i j, b n m j -> b n m i') + \
-                   einsum(W_imag, x_real, 'n m i j, b n m j -> b n m i')
+        out_real = einsum(W_real, x_real, "n m i j, b n m j -> b n m i") - einsum(
+            W_imag, x_imag, "n m i j, b n m j -> b n m i"
+        )
+        out_imag = einsum(W_real, x_imag, "n m i j, b n m j -> b n m i") + einsum(
+            W_imag, x_real, "n m i j, b n m j -> b n m i"
+        )
 
         # Apply soft-thresholding for sparsity
         out_real = self.softshrink(out_real)
@@ -238,10 +247,12 @@ class AFNOTokenMixer(nn.Module):
         out_ft[:, :, :n_modes, :] = torch.complex(out_real, out_imag)
 
         # IFFT back to sequence domain
-        x = torch.fft.irfft(out_ft, n=T, dim=2, norm='ortho')  # (B, n_blocks, T, block_size)
+        x = torch.fft.irfft(
+            out_ft, n=T, dim=2, norm="ortho"
+        )  # (B, n_blocks, T, block_size)
 
         # Reshape back
-        x = rearrange(x, 'b n t d -> b t (n d)')  # (B, T, D)
+        x = rearrange(x, "b n t d -> b t (n d)")  # (B, T, D)
 
         # Add residual and apply MLP
         x = x + residual
@@ -282,9 +293,7 @@ class WaveInputEncoder(nn.Module):
         )
 
         # Position as phase modulation
-        self.pos_phases = nn.Parameter(
-            torch.randn(max_seq_len, embed_dim) * 0.02
-        )
+        self.pos_phases = nn.Parameter(torch.randn(max_seq_len, embed_dim) * 0.02)
 
         # Optional AFNO mixer for pre-mixing
         self.use_afno_mixer = use_afno_mixer

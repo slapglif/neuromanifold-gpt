@@ -11,14 +11,15 @@ Measures:
 Tests at different sequence lengths: 128, 256, 512, 1024
 """
 
-import time
 import argparse
-import torch
-import torch.nn as nn
+import time
 from contextlib import nullcontext
 
-from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
+import torch
+import torch.nn as nn
+
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 
 def benchmark_model(
@@ -96,10 +97,22 @@ def benchmark_speed(quick_test: bool = False):
         torch.cuda.reset_peak_memory_stats()
 
     # Set up autocast context
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    dtype = (
+        "bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16"
+    )
+    device_type = "cuda" if "cuda" in str(device) else "cpu"
+    ptdtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype]
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    )
 
     # Test configurations
     if quick_test:
@@ -207,18 +220,30 @@ def benchmark_speed(quick_test: bool = False):
         neuromanifold_model = NeuroManifoldGPT(neuromanifold_config)
 
         # Count parameters
-        standard_params = sum(p.numel() for p in standard_model.parameters() if p.requires_grad)
-        neuromanifold_params = sum(p.numel() for p in neuromanifold_model.parameters() if p.requires_grad)
+        standard_params = sum(
+            p.numel() for p in standard_model.parameters() if p.requires_grad
+        )
+        neuromanifold_params = sum(
+            p.numel() for p in neuromanifold_model.parameters() if p.requires_grad
+        )
 
-        print(f"\nParameters:")
+        print("\nParameters:")
         print(f"  Standard:      {standard_params:,}")
-        print(f"  NeuroManifold: {neuromanifold_params:,} ({neuromanifold_params / standard_params:.2f}x)")
+        print(
+            f"  NeuroManifold: {neuromanifold_params:,} ({neuromanifold_params / standard_params:.2f}x)"
+        )
 
         # Benchmark standard attention
         print("\nBenchmarking standard attention...")
         standard_fwd, standard_bwd = benchmark_model(
-            standard_model, batch_size, seq_len, base_config["vocab_size"],
-            device, ctx, n_iters, warmup
+            standard_model,
+            batch_size,
+            seq_len,
+            base_config["vocab_size"],
+            device,
+            ctx,
+            n_iters,
+            warmup,
         )
 
         # Clean up standard model before loading NeuroManifold
@@ -230,8 +255,14 @@ def benchmark_speed(quick_test: bool = False):
         # Benchmark NeuroManifold attention
         print("Benchmarking NeuroManifold attention...")
         neuromanifold_fwd, neuromanifold_bwd = benchmark_model(
-            neuromanifold_model, batch_size, seq_len, base_config["vocab_size"],
-            device, ctx, n_iters, warmup
+            neuromanifold_model,
+            batch_size,
+            seq_len,
+            base_config["vocab_size"],
+            device,
+            ctx,
+            n_iters,
+            warmup,
         )
 
         # Calculate totals
@@ -239,25 +270,37 @@ def benchmark_speed(quick_test: bool = False):
         neuromanifold_total = neuromanifold_fwd + neuromanifold_bwd
 
         # Calculate tokens/sec
-        standard_tokens_per_sec = (batch_size * seq_len * n_iters) / (standard_total / 1000 * n_iters)
-        neuromanifold_tokens_per_sec = (batch_size * seq_len * n_iters) / (neuromanifold_total / 1000 * n_iters)
+        standard_tokens_per_sec = (batch_size * seq_len * n_iters) / (
+            standard_total / 1000 * n_iters
+        )
+        neuromanifold_tokens_per_sec = (batch_size * seq_len * n_iters) / (
+            neuromanifold_total / 1000 * n_iters
+        )
 
         # Print results
-        print(f"\nForward Pass (ms):")
+        print("\nForward Pass (ms):")
         print(f"  Standard:      {standard_fwd:.3f}")
-        print(f"  NeuroManifold: {neuromanifold_fwd:.3f} ({neuromanifold_fwd / standard_fwd:.2f}x)")
+        print(
+            f"  NeuroManifold: {neuromanifold_fwd:.3f} ({neuromanifold_fwd / standard_fwd:.2f}x)"
+        )
 
-        print(f"\nBackward Pass (ms):")
+        print("\nBackward Pass (ms):")
         print(f"  Standard:      {standard_bwd:.3f}")
-        print(f"  NeuroManifold: {neuromanifold_bwd:.3f} ({neuromanifold_bwd / standard_bwd:.2f}x)")
+        print(
+            f"  NeuroManifold: {neuromanifold_bwd:.3f} ({neuromanifold_bwd / standard_bwd:.2f}x)"
+        )
 
-        print(f"\nTotal Time (ms):")
+        print("\nTotal Time (ms):")
         print(f"  Standard:      {standard_total:.3f}")
-        print(f"  NeuroManifold: {neuromanifold_total:.3f} ({neuromanifold_total / standard_total:.2f}x)")
+        print(
+            f"  NeuroManifold: {neuromanifold_total:.3f} ({neuromanifold_total / standard_total:.2f}x)"
+        )
 
-        print(f"\nThroughput (tokens/sec):")
+        print("\nThroughput (tokens/sec):")
         print(f"  Standard:      {standard_tokens_per_sec:.1f}")
-        print(f"  NeuroManifold: {neuromanifold_tokens_per_sec:.1f} ({neuromanifold_tokens_per_sec / standard_tokens_per_sec:.2f}x)")
+        print(
+            f"  NeuroManifold: {neuromanifold_tokens_per_sec:.1f} ({neuromanifold_tokens_per_sec / standard_tokens_per_sec:.2f}x)"
+        )
 
         # Clean up
         del neuromanifold_model
@@ -274,7 +317,7 @@ def main():
     parser.add_argument(
         "--quick-test",
         action="store_true",
-        help="Run quick test with reduced iterations"
+        help="Run quick test with reduced iterations",
     )
     args = parser.parse_args()
 

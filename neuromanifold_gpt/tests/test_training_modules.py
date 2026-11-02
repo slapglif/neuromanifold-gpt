@@ -1,12 +1,13 @@
 # neuromanifold_gpt/tests/test_training_modules.py
 """Integration tests for refactored training modules."""
-import pytest
-import torch
-import tempfile
 import os
 import pickle
-import numpy as np
+import tempfile
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+import torch
 
 
 def test_train_config_initialization():
@@ -123,8 +124,8 @@ def test_streaming_data_module_initialization():
 
 def test_lightning_module_initialization():
     """NeuroManifoldLitModule should initialize."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
     from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLitModule(config)
@@ -134,15 +135,15 @@ def test_lightning_module_initialization():
 
 def test_lightning_module_training_step():
     """NeuroManifoldLitModule training step should work."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
     from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLitModule(config)
 
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
 
     loss = module.training_step(batch, 0)
@@ -152,15 +153,15 @@ def test_lightning_module_training_step():
 
 def test_lightning_module_validation_step():
     """NeuroManifoldLitModule validation step should work."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
     from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLitModule(config)
 
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
 
     loss = module.validation_step(batch, 0)
@@ -170,21 +171,21 @@ def test_lightning_module_validation_step():
 
 def test_lightning_module_configure_optimizers():
     """NeuroManifoldLitModule should configure optimizer and scheduler."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
     from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLitModule(config)
 
     result = module.configure_optimizers()
-    assert 'optimizer' in result
-    assert 'lr_scheduler' in result
+    assert "optimizer" in result
+    assert "lr_scheduler" in result
 
-    optimizer = result['optimizer']
+    optimizer = result["optimizer"]
     assert len(optimizer.param_groups) == 2  # decay and no_decay
 
     # Check weight decay values
-    weight_decays = [g['weight_decay'] for g in optimizer.param_groups]
+    weight_decays = [g["weight_decay"] for g in optimizer.param_groups]
     assert config.weight_decay in weight_decays
     assert 0.0 in weight_decays
 
@@ -216,17 +217,17 @@ def test_mfu_callback_initialization():
 
 def test_integration_imports():
     """All training components should be importable from training submodules."""
+    from neuromanifold_gpt.training.callbacks import (
+        MFUCallback,
+        SampleGenerationCallback,
+    )
     from neuromanifold_gpt.training.config import TrainConfig
     from neuromanifold_gpt.training.data_modules import (
         MemmapDataset,
-        TextDataModule,
         StreamingDataModule,
+        TextDataModule,
     )
     from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
-    from neuromanifold_gpt.training.callbacks import (
-        SampleGenerationCallback,
-        MFUCallback,
-    )
     from neuromanifold_gpt.training.trainer import train
 
     # Check that all expected components are importable
@@ -242,9 +243,9 @@ def test_integration_imports():
 
 def test_integration_data_to_module():
     """Integration: Data module should work with Lightning module."""
+    from neuromanifold_gpt.config import NeuroManifoldConfigNano
     from neuromanifold_gpt.training.data_modules import TextDataModule
     from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
-    from neuromanifold_gpt.config import NeuroManifoldConfigNano
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create mock data
@@ -281,16 +282,16 @@ def test_integration_data_to_module():
         batch_x, batch_y = next(iter(train_loader))
 
         # Should be able to run training step
-        batch_dict = {'input_ids': batch_x, 'labels': batch_y}
+        batch_dict = {"input_ids": batch_x, "labels": batch_y}
         loss = module.training_step(batch_dict, 0)
         assert not torch.isnan(loss)
 
 
 def test_integration_config_to_module():
     """Integration: TrainConfig should configure Lightning module."""
+    from neuromanifold_gpt.config import NeuroManifoldConfig
     from neuromanifold_gpt.training.config import TrainConfig
     from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
-    from neuromanifold_gpt.config import NeuroManifoldConfig
 
     train_config = TrainConfig(
         learning_rate=1e-3,
@@ -316,22 +317,22 @@ def test_integration_config_to_module():
     optimizer_config = module.configure_optimizers()
 
     # Check optimizer uses config values
-    optimizer = optimizer_config['optimizer']
-    assert optimizer.param_groups[0]['weight_decay'] == 0.05
+    optimizer = optimizer_config["optimizer"]
+    assert optimizer.param_groups[0]["weight_decay"] == 0.05
     # Learning rate should match
     for param_group in optimizer.param_groups:
-        assert param_group['lr'] == 1e-3
+        assert param_group["lr"] == 1e-3
 
 
 def test_callbacks_work_with_lightning_module():
     """Integration: Callbacks should work with Lightning module."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
+    from neuromanifold_gpt.config import NeuroManifoldConfigNano
     from neuromanifold_gpt.training.callbacks import (
-        SampleGenerationCallback,
         MFUCallback,
+        SampleGenerationCallback,
     )
     from neuromanifold_gpt.training.config import TrainConfig
-    from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLitModule(config)
@@ -355,30 +356,27 @@ def test_callbacks_work_with_lightning_module():
     mock_trainer.global_step = 10
 
     # Sample callback should handle batch end
-    sample_callback.on_train_batch_end(
-        mock_trainer, module, None, None, 0
-    )
+    sample_callback.on_train_batch_end(mock_trainer, module, None, None, 0)
 
     # MFU callback should handle batch end (need a proper batch tuple)
     batch = (torch.zeros(2, 50), torch.zeros(2, 50))
-    mfu_callback.on_train_batch_end(
-        mock_trainer, module, None, batch, 0
-    )
+    mfu_callback.on_train_batch_end(mock_trainer, module, None, batch, 0)
 
 
 def test_lightning_module_logs_metrics():
     """Lightning module should log metrics during training."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
-    from neuromanifold_gpt.config import NeuroManifoldConfigNano
     from unittest.mock import MagicMock
+
+    from neuromanifold_gpt.config import NeuroManifoldConfigNano
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfigNano()
     module = NeuroManifoldLitModule(config)
     module.log = MagicMock()
 
     batch = {
-        'input_ids': torch.randint(0, config.vocab_size, (2, 50)),
-        'labels': torch.randint(0, config.vocab_size, (2, 50))
+        "input_ids": torch.randint(0, config.vocab_size, (2, 50)),
+        "labels": torch.randint(0, config.vocab_size, (2, 50)),
     }
 
     # Training step should log train_loss
@@ -386,7 +384,7 @@ def test_lightning_module_logs_metrics():
     module.log.assert_called()
     call_args = [call[0] for call in module.log.call_args_list]
     logged_names = [args[0] for args in call_args]
-    assert 'train_loss' in logged_names
+    assert "train_loss" in logged_names
 
     # Reset mock
     module.log.reset_mock()
@@ -396,14 +394,14 @@ def test_lightning_module_logs_metrics():
     module.log.assert_called()
     call_args = [call[0] for call in module.log.call_args_list]
     logged_names = [args[0] for args in call_args]
-    assert 'val_loss' in logged_names
-    assert 'val_perplexity' in logged_names
+    assert "val_loss" in logged_names
+    assert "val_perplexity" in logged_names
 
 
 def test_module_has_all_config_attributes():
     """Lightning module should preserve config attributes."""
-    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
     from neuromanifold_gpt.config import NeuroManifoldConfig
+    from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
 
     config = NeuroManifoldConfig(
         vocab_size=100,

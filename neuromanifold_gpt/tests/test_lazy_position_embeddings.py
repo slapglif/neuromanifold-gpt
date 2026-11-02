@@ -2,6 +2,7 @@
 """Tests for lazy initialization of position embeddings in FHNAttention."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
 
 
@@ -11,9 +12,9 @@ def test_rope_not_initialized_fast_path():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='learned',
+        pos_emb_type="learned",
         n_fhn_steps=0,  # Fast path
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, rope should be None
@@ -37,9 +38,9 @@ def test_alibi_not_initialized_fast_path():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='learned',
+        pos_emb_type="learned",
         n_fhn_steps=0,  # Fast path
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, alibi should be None
@@ -62,9 +63,9 @@ def test_rope_lazy_initialization():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='rotary',
+        pos_emb_type="rotary",
         n_fhn_steps=0,  # Fast path (RoPE works with fast path)
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, rope should be None (lazy initialization)
@@ -82,8 +83,8 @@ def test_rope_lazy_initialization():
     assert out.shape == (2, 32, 256)
 
     # Verify RoPE has expected attributes
-    assert hasattr(attn.rope, 'cos_cached')
-    assert hasattr(attn.rope, 'sin_cached')
+    assert hasattr(attn.rope, "cos_cached")
+    assert hasattr(attn.rope, "sin_cached")
 
 
 def test_alibi_lazy_initialization():
@@ -91,13 +92,15 @@ def test_alibi_lazy_initialization():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='alibi',
+        pos_emb_type="alibi",
         n_fhn_steps=0,  # ALiBi forces slow path
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, alibi should be None (lazy initialization)
-    assert attn.alibi is None, "ALiBi should be None after __init__ (lazy initialization)"
+    assert (
+        attn.alibi is None
+    ), "ALiBi should be None after __init__ (lazy initialization)"
 
     # Create dummy input
     x = torch.randn(2, 32, 256)
@@ -107,11 +110,13 @@ def test_alibi_lazy_initialization():
     out, info = attn(x, spectral_basis)
 
     # ALiBi should now be initialized
-    assert attn.alibi is not None, "ALiBi should be initialized after first forward pass"
+    assert (
+        attn.alibi is not None
+    ), "ALiBi should be initialized after first forward pass"
     assert out.shape == (2, 32, 256)
 
     # Verify ALiBi has expected attributes
-    assert hasattr(attn.alibi, 'slopes')
+    assert hasattr(attn.alibi, "slopes")
 
 
 def test_rope_not_initialized_with_ramanujan():
@@ -119,9 +124,9 @@ def test_rope_not_initialized_with_ramanujan():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='ramanujan',
+        pos_emb_type="ramanujan",
         n_fhn_steps=0,
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, rope should be None
@@ -142,11 +147,7 @@ def test_rope_not_initialized_with_ramanujan():
 def test_multiple_forward_passes_single_initialization():
     """Position embeddings should only be initialized once across multiple forward passes."""
     attn = FHNAttention(
-        embed_dim=256,
-        n_heads=8,
-        pos_emb_type='rotary',
-        n_fhn_steps=0,
-        max_seq_len=128
+        embed_dim=256, n_heads=8, pos_emb_type="rotary", n_fhn_steps=0, max_seq_len=128
     )
 
     # After __init__, rope should be None
@@ -166,7 +167,9 @@ def test_multiple_forward_passes_single_initialization():
     rope_instance_2 = attn.rope
 
     # Should be the exact same instance (not re-initialized)
-    assert rope_instance_1 is rope_instance_2, "RoPE should not be re-initialized on subsequent forward passes"
+    assert (
+        rope_instance_1 is rope_instance_2
+    ), "RoPE should not be re-initialized on subsequent forward passes"
 
 
 def test_slow_path_with_rope():
@@ -174,9 +177,9 @@ def test_slow_path_with_rope():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='rotary',
+        pos_emb_type="rotary",
         n_fhn_steps=2,  # Slow path
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, rope should be None
@@ -199,9 +202,9 @@ def test_slow_path_with_alibi():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='alibi',
+        pos_emb_type="alibi",
         n_fhn_steps=2,  # Slow path
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, alibi should be None
@@ -222,11 +225,7 @@ def test_slow_path_with_alibi():
 def test_no_position_embeddings_initialized_learned():
     """Neither RoPE nor ALiBi should be initialized with learned embeddings."""
     attn = FHNAttention(
-        embed_dim=256,
-        n_heads=8,
-        pos_emb_type='learned',
-        n_fhn_steps=0,
-        max_seq_len=128
+        embed_dim=256, n_heads=8, pos_emb_type="learned", n_fhn_steps=0, max_seq_len=128
     )
 
     # After __init__, both should be None
@@ -242,7 +241,9 @@ def test_no_position_embeddings_initialized_learned():
 
     # Both should still be None
     assert attn.rope is None, "RoPE should never be initialized with learned embeddings"
-    assert attn.alibi is None, "ALiBi should never be initialized with learned embeddings"
+    assert (
+        attn.alibi is None
+    ), "ALiBi should never be initialized with learned embeddings"
     assert out.shape == (2, 32, 256)
 
 
@@ -251,9 +252,9 @@ def test_rope_initialized_slow_path():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='rotary',
+        pos_emb_type="rotary",
         n_fhn_steps=2,  # Slow path with FHN modulation
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, rope should be None (lazy initialization)
@@ -267,12 +268,14 @@ def test_rope_initialized_slow_path():
     out, info = attn(x, spectral_basis)
 
     # RoPE should now be initialized since pos_emb_type='rotary' and slow path was used
-    assert attn.rope is not None, "RoPE should be initialized after first forward pass in slow path"
+    assert (
+        attn.rope is not None
+    ), "RoPE should be initialized after first forward pass in slow path"
     assert out.shape == (2, 32, 256)
 
     # Verify RoPE has expected attributes
-    assert hasattr(attn.rope, 'cos_cached'), "RoPE should have cos_cached attribute"
-    assert hasattr(attn.rope, 'sin_cached'), "RoPE should have sin_cached attribute"
+    assert hasattr(attn.rope, "cos_cached"), "RoPE should have cos_cached attribute"
+    assert hasattr(attn.rope, "sin_cached"), "RoPE should have sin_cached attribute"
 
 
 def test_alibi_initialized_slow_path():
@@ -280,13 +283,15 @@ def test_alibi_initialized_slow_path():
     attn = FHNAttention(
         embed_dim=256,
         n_heads=8,
-        pos_emb_type='alibi',
+        pos_emb_type="alibi",
         n_fhn_steps=2,  # Slow path
-        max_seq_len=128
+        max_seq_len=128,
     )
 
     # After __init__, alibi should be None (lazy initialization)
-    assert attn.alibi is None, "ALiBi should be None after __init__ (lazy initialization)"
+    assert (
+        attn.alibi is None
+    ), "ALiBi should be None after __init__ (lazy initialization)"
 
     # Create dummy input
     x = torch.randn(2, 32, 256)
@@ -296,11 +301,13 @@ def test_alibi_initialized_slow_path():
     out, info = attn(x, spectral_basis)
 
     # ALiBi should now be initialized since pos_emb_type='alibi' and slow path was used
-    assert attn.alibi is not None, "ALiBi should be initialized after first forward pass in slow path"
+    assert (
+        attn.alibi is not None
+    ), "ALiBi should be initialized after first forward pass in slow path"
     assert out.shape == (2, 32, 256)
 
     # Verify ALiBi has expected attributes
-    assert hasattr(attn.alibi, 'slopes'), "ALiBi should have slopes attribute"
+    assert hasattr(attn.alibi, "slopes"), "ALiBi should have slopes attribute"
 
 
 def test_memory_savings_fast_path():
@@ -325,9 +332,9 @@ def test_memory_savings_fast_path():
         FHNAttention(
             embed_dim=embed_dim,
             n_heads=n_heads,
-            pos_emb_type='learned',
+            pos_emb_type="learned",
             n_fhn_steps=0,  # Fast path
-            max_seq_len=max_seq_len
+            max_seq_len=max_seq_len,
         )
         for _ in range(n_layers)
     ]
@@ -345,8 +352,12 @@ def test_memory_savings_fast_path():
     for i, layer in enumerate(layers):
         x, info = layer(x, spectral_basis)
         # Verify position embeddings still not initialized (fast path, learned embeddings)
-        assert layer.rope is None, f"Layer {i}: RoPE should remain None with learned embeddings"
-        assert layer.alibi is None, f"Layer {i}: ALiBi should remain None with learned embeddings"
+        assert (
+            layer.rope is None
+        ), f"Layer {i}: RoPE should remain None with learned embeddings"
+        assert (
+            layer.alibi is None
+        ), f"Layer {i}: ALiBi should remain None with learned embeddings"
 
     # Verify output shape is correct
     assert x.shape == (2, seq_len, embed_dim)
@@ -356,9 +367,9 @@ def test_memory_savings_fast_path():
         FHNAttention(
             embed_dim=embed_dim,
             n_heads=n_heads,
-            pos_emb_type='ramanujan',
+            pos_emb_type="ramanujan",
             n_fhn_steps=0,  # Fast path
-            max_seq_len=max_seq_len
+            max_seq_len=max_seq_len,
         )
         for _ in range(n_layers)
     ]
@@ -366,8 +377,12 @@ def test_memory_savings_fast_path():
     x = torch.randn(2, seq_len, embed_dim)
     for i, layer in enumerate(layers_ramanujan):
         x, info = layer(x, spectral_basis)
-        assert layer.rope is None, f"Layer {i}: RoPE should remain None with ramanujan embeddings"
-        assert layer.alibi is None, f"Layer {i}: ALiBi should remain None with ramanujan embeddings"
+        assert (
+            layer.rope is None
+        ), f"Layer {i}: RoPE should remain None with ramanujan embeddings"
+        assert (
+            layer.alibi is None
+        ), f"Layer {i}: ALiBi should remain None with ramanujan embeddings"
 
     # SUCCESS: No memory allocated for unused position embeddings across all layers!
     # This demonstrates the memory savings: 6 layers × (RoPE + ALiBi) = significant savings

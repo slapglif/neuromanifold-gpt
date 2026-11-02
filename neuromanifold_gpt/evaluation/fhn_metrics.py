@@ -11,8 +11,9 @@ wave propagation without numerical instability or degradation.
 Reference: neuromanifold_gpt/model/attention/fhn.py
 """
 
+from typing import Any, Dict
+
 import torch
-from typing import Dict, Any
 
 
 class FHNMetrics:
@@ -41,11 +42,11 @@ class FHNMetrics:
                 - fhn_state_range: Range of potentials (max - min)
         """
         return {
-            'fhn_state_mean': fhn_state.mean().item(),
-            'fhn_state_std': fhn_state.std().item(),
-            'fhn_state_min': fhn_state.min().item(),
-            'fhn_state_max': fhn_state.max().item(),
-            'fhn_state_range': (fhn_state.max() - fhn_state.min()).item(),
+            "fhn_state_mean": fhn_state.mean().item(),
+            "fhn_state_std": fhn_state.std().item(),
+            "fhn_state_min": fhn_state.min().item(),
+            "fhn_state_max": fhn_state.max().item(),
+            "fhn_state_range": (fhn_state.max() - fhn_state.min()).item(),
         }
 
     @staticmethod
@@ -67,10 +68,10 @@ class FHNMetrics:
                 - pulse_width_max: Maximum width observed
         """
         return {
-            'pulse_width_mean': pulse_widths.mean().item(),
-            'pulse_width_std': pulse_widths.std().item(),
-            'pulse_width_min': pulse_widths.min().item(),
-            'pulse_width_max': pulse_widths.max().item(),
+            "pulse_width_mean": pulse_widths.mean().item(),
+            "pulse_width_std": pulse_widths.std().item(),
+            "pulse_width_min": pulse_widths.min().item(),
+            "pulse_width_max": pulse_widths.max().item(),
         }
 
     @staticmethod
@@ -93,8 +94,8 @@ class FHNMetrics:
         is_bounded = ((fhn_state >= -3.0) & (fhn_state <= 3.0)).all().float().item()
 
         return {
-            'fhn_stability_bounded': is_bounded,
-            'fhn_state_abs_mean': fhn_state.abs().mean().item(),
+            "fhn_stability_bounded": is_bounded,
+            "fhn_state_abs_mean": fhn_state.abs().mean().item(),
         }
 
     @staticmethod
@@ -123,8 +124,8 @@ class FHNMetrics:
         metrics = {}
 
         # Extract tensors from info dict
-        fhn_state = info.get('fhn_state')
-        pulse_widths = info.get('pulse_widths')
+        fhn_state = info.get("fhn_state")
+        pulse_widths = info.get("pulse_widths")
 
         # Compute state statistics
         if fhn_state is not None:

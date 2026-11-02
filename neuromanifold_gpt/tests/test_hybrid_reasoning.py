@@ -2,6 +2,7 @@
 """Tests for HybridReasoningModule and ThinkingLayer."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.hybrid_reasoning import (
     HybridReasoningModule,
     ThinkingLayer,
@@ -56,8 +57,8 @@ def test_hybrid_reasoning_forward_shape():
     out, info = module(x)
 
     assert out.shape == (2, 20, 384)
-    assert 'thinking_probs' in info
-    assert 'mode_selections' in info
+    assert "thinking_probs" in info
+    assert "mode_selections" in info
 
 
 def test_hybrid_reasoning_gradient_flow():
@@ -83,7 +84,7 @@ def test_hybrid_reasoning_thinking_probs_range():
     x = torch.randn(4, 20, 384)
 
     _, info = module(x)
-    thinking_probs = info['thinking_probs']
+    thinking_probs = info["thinking_probs"]
 
     assert thinking_probs.shape == (4,)
     assert (thinking_probs >= 0).all()
@@ -97,7 +98,7 @@ def test_hybrid_reasoning_mode_selections_binary():
     x = torch.randn(4, 20, 384)
 
     _, info = module(x)
-    mode_selections = info['mode_selections']
+    mode_selections = info["mode_selections"]
 
     assert mode_selections.shape == (4,)
     assert ((mode_selections == 0) | (mode_selections == 1)).all()
@@ -115,7 +116,7 @@ def test_hybrid_reasoning_with_e7_prior():
     out, info = module(x, e7_tier=e7_tier)
 
     assert out.shape == (2, 20, 384)
-    assert 'thinking_probs' in info
+    assert "thinking_probs" in info
 
 
 def test_hybrid_reasoning_without_e7_prior():
@@ -142,7 +143,7 @@ def test_hybrid_reasoning_e7_default_when_none():
     out, info = module(x, e7_tier=None)
 
     assert out.shape == (2, 20, 384)
-    assert 'thinking_probs' in info
+    assert "thinking_probs" in info
 
 
 def test_hybrid_reasoning_training_mode():
@@ -152,7 +153,7 @@ def test_hybrid_reasoning_training_mode():
     x = torch.randn(4, 20, 384)
 
     out, info = module(x)
-    mode_selections = info['mode_selections']
+    mode_selections = info["mode_selections"]
 
     # In training mode, selections should be from Gumbel-Softmax
     assert mode_selections.shape == (4,)
@@ -169,8 +170,8 @@ def test_hybrid_reasoning_eval_mode_threshold():
     x = torch.randn(4, 20, 384)
 
     _, info = module(x)
-    thinking_probs = info['thinking_probs']
-    mode_selections = info['mode_selections']
+    thinking_probs = info["thinking_probs"]
+    mode_selections = info["mode_selections"]
 
     # Mode selections should match threshold comparison
     expected_selections = (thinking_probs > 0.5).float()
@@ -187,8 +188,8 @@ def test_hybrid_reasoning_custom_threshold():
     x = torch.randn(4, 20, 384)
 
     _, info = module(x)
-    thinking_probs = info['thinking_probs']
-    mode_selections = info['mode_selections']
+    thinking_probs = info["thinking_probs"]
+    mode_selections = info["mode_selections"]
 
     # Mode selections should match custom threshold
     expected_selections = (thinking_probs > 0.8).float()
@@ -221,7 +222,7 @@ def test_hybrid_reasoning_batch_consistency():
     x = torch.cat([x1, x2], dim=0)
 
     _, info = module(x)
-    thinking_probs = info['thinking_probs']
+    thinking_probs = info["thinking_probs"]
 
     # Both items should get predictions
     assert thinking_probs.shape == (2,)
@@ -248,8 +249,8 @@ def test_hybrid_reasoning_router_output_stability():
     _, info2 = module(x)
 
     # Same input should give same predictions in eval mode
-    assert torch.allclose(info1['thinking_probs'], info2['thinking_probs'])
-    assert torch.allclose(info1['mode_selections'], info2['mode_selections'])
+    assert torch.allclose(info1["thinking_probs"], info2["thinking_probs"])
+    assert torch.allclose(info1["mode_selections"], info2["mode_selections"])
 
 
 def test_hybrid_reasoning_fast_path_when_disabled():

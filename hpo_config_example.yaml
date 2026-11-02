@@ -1,0 +1,185 @@
+# Example HPO Configuration for NeuroManifoldGPT
+#
+# This configuration defines the search space for automated hyperparameter
+# optimization using Optuna. It includes parameters to optimize and fixed
+# parameters that remain constant across all trials.
+
+# Search space: parameters to optimize
+search_space:
+  # Learning rate (log scale recommended for learning rates)
+  learning_rate:
+    type: float
+    low: 1.0e-5
+    high: 1.0e-2
+    log: true
+
+  # Model architecture
+  n_layer:
+    type: int
+    low: 2
+    high: 8
+
+  n_head:
+    type: int
+    low: 4
+    high: 8
+
+  n_embd:
+    type: int
+    low: 128
+    high: 512
+
+  # Batch size (categorical for common powers of 2)
+  batch_size:
+    type: categorical
+    choices: [16, 32, 64, 128]
+
+  # Dropout rate
+  dropout:
+    type: float
+    low: 0.0
+    high: 0.3
+    log: false
+
+  # NeuroManifold-specific features
+  use_sdr:
+    type: categorical
+    choices: [true, false]
+
+  use_kan:
+    type: categorical
+    choices: [true, false]
+
+  kan_type:
+    type: categorical
+    choices: ["faster", "wave", "cheby"]
+
+  kan_num_centers:
+    type: int
+    low: 2
+    high: 5
+
+  # FHN dynamics
+  fhn_threshold:
+    type: float
+    low: 0.3
+    high: 0.7
+    log: false
+
+  fhn_tau:
+    type: float
+    low: 5.0
+    high: 20.0
+    log: false
+
+  n_fhn_steps:
+    type: int
+    low: 1
+    high: 3
+
+  use_fhn_partitioning:
+    type: categorical
+    choices: [true, false]
+
+  # Manifold hyper-connections
+  use_mhc:
+    type: categorical
+    choices: [true, false]
+
+  use_full_mhc:
+    type: categorical
+    choices: [true, false]
+
+  # Gradient clipping
+  grad_clip:
+    type: float
+    low: 0.5
+    high: 2.0
+    log: false
+
+  # Weight decay
+  weight_decay:
+    type: float
+    low: 0.01
+    high: 0.3
+    log: true
+
+# Fixed parameters: not optimized
+fixed_params:
+  # Dataset
+  dataset: "shakespeare_char"
+  block_size: 256
+  num_workers: 2
+
+  # Training limits (keep trials short for faster HPO)
+  max_iters: 1000
+  eval_interval: 200
+  log_interval: 50
+  eval_iters: 50
+
+  # Early stopping
+  early_stopping_patience: 10
+
+  # Optimization
+  warmup_iters: 100
+  lr_decay_iters: 1000
+  min_lr: 1.0e-5
+  gradient_accumulation_steps: 1
+
+  # Hardware
+  devices: 1
+  precision: "bf16-mixed"
+  compile_model: false
+
+  # I/O
+  save_checkpoints: false
+  wandb_log: false
+
+  # Fixed architecture choices
+  bias: false
+  vocab_size: 0
+
+  # Fixed NeuroManifold settings
+  sdr_size: 2048
+  manifold_dim: 64
+  n_eigenvectors: 32
+  kan_wavelet: "dog"
+  use_fast_wavekan: true
+  use_fhn_imex: true
+  use_fhn_fused: false
+  mhc_n_streams: 2
+  use_kaufmann_attention: false
+  skip_manifold_spectral: false
+
+  # Sampling
+  sample_interval: 500
+  sample_max_tokens: 200
+  sample_temperature: 1.0
+  sample_top_k: 40
+
+# Optuna study configuration
+study:
+  # Study name (used for storage/resumption)
+  name: "neuromanifold-hpo"
+
+  # Direction: minimize or maximize the objective
+  direction: "minimize"
+
+  # Number of trials to run
+  n_trials: 50
+
+  # Storage URL (optional, for distributed optimization or resumption)
+  # storage: "sqlite:///hpo_study.db"
+
+  # Sampler (optional, defaults to TPE)
+  # Options: "tpe", "random", "grid", "cmaes"
+  sampler: "tpe"
+
+# Pruning configuration (optional, for early stopping of unpromising trials)
+# This will be used in phase-2
+pruning:
+  enabled: false
+  algorithm: "median"  # Options: "median", "hyperband", "percentile"
+  n_startup_trials: 5
+  n_warmup_steps: 50
+  interval_steps: 10

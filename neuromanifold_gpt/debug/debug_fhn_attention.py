@@ -28,7 +28,7 @@ config = NeuroManifoldConfig(
     use_fhn_parallel=True,
 )
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}")
 
 # Create FHN attention
@@ -62,15 +62,15 @@ print(f"\nOutput shape: {out.shape}")
 print(f"\nInfo keys: {info.keys()}")
 
 # Analyze FHN state
-if 'fhn_state' in info:
-    fhn_state = info['fhn_state']
+if "fhn_state" in info:
+    fhn_state = info["fhn_state"]
     print(f"\nFHN state type: {type(fhn_state)}")
 
     if isinstance(fhn_state, dict):
         print(f"FHN state keys: {fhn_state.keys()}")
-        if 'v' in fhn_state:
-            v = fhn_state['v']
-            print(f"\nFHN v (activation) stats:")
+        if "v" in fhn_state:
+            v = fhn_state["v"]
+            print("\nFHN v (activation) stats:")
             print(f"  Shape: {v.shape}")
             print(f"  Mean: {v.mean().item():.4f}")
             print(f"  Std: {v.std().item():.4f}")
@@ -80,7 +80,7 @@ if 'fhn_state' in info:
             print(f"  % firing (v > 0.5): {firing*100:.1f}%")
     elif isinstance(fhn_state, tuple):
         v, w = fhn_state
-        print(f"\nFHN v (activation) stats:")
+        print("\nFHN v (activation) stats:")
         print(f"  Shape: {v.shape}")
         print(f"  Mean: {v.mean().item():.4f}")
         print(f"  Std: {v.std().item():.4f}")
@@ -89,14 +89,14 @@ if 'fhn_state' in info:
         firing = (v > 0.5).float().mean().item()
         print(f"  % firing (v > 0.5): {firing*100:.1f}%")
 
-        print(f"\nFHN w (recovery) stats:")
+        print("\nFHN w (recovery) stats:")
         print(f"  Shape: {w.shape}")
         print(f"  Mean: {w.mean().item():.4f}")
         print(f"  Std: {w.std().item():.4f}")
         print(f"  Min: {w.min().item():.4f}")
         print(f"  Max: {w.max().item():.4f}")
     elif isinstance(fhn_state, torch.Tensor):
-        print(f"\nFHN state (tensor) stats:")
+        print("\nFHN state (tensor) stats:")
         print(f"  Shape: {fhn_state.shape}")
         print(f"  Mean: {fhn_state.mean().item():.4f}")
         print(f"  Std: {fhn_state.std().item():.4f}")
@@ -106,10 +106,10 @@ if 'fhn_state' in info:
         print(f"  % |val| > 0.5: {firing*100:.1f}%")
 
 # Check attention weights
-if 'attn_weights' in info:
-    attn_w = info['attn_weights']
+if "attn_weights" in info:
+    attn_w = info["attn_weights"]
     print(f"\nAttention weights shape: {attn_w.shape}")
-    print(f"Attention weights stats:")
+    print("Attention weights stats:")
     print(f"  Mean: {attn_w.mean().item():.4f}")
     print(f"  Std: {attn_w.std().item():.4f}")
     print(f"  Sum per query (should be ~1): {attn_w.sum(dim=-1).mean().item():.4f}")
@@ -123,7 +123,7 @@ out_grad, _ = attn(x_grad, spectral_grad)
 loss = out_grad.sum()
 loss.backward()
 
-print(f"\nGradient flow check:")
+print("\nGradient flow check:")
 print(f"  x_grad.grad exists: {x_grad.grad is not None}")
 print(f"  spectral_grad.grad exists: {spectral_grad.grad is not None}")
 if x_grad.grad is not None:
@@ -133,13 +133,13 @@ if x_grad.grad is not None:
     print(f"  x_grad.grad has NaN: {has_nan}")
 
 # Test: Compare output variance with input variance
-print(f"\nVariance analysis:")
+print("\nVariance analysis:")
 print(f"  Input variance: {x.var().item():.4f}")
 print(f"  Output variance: {out.var().item():.4f}")
 print(f"  Ratio (out/in): {out.var().item() / x.var().item():.4f}")
 
 # Test: Causal masking - does position i only depend on positions <= i?
-print(f"\nCausal masking test:")
+print("\nCausal masking test:")
 # If causal, changing position j should NOT affect positions < j
 x_test = x.clone()
 x_mod = x.clone()

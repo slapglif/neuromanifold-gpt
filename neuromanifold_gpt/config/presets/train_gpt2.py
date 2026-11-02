@@ -3,8 +3,8 @@
 # $ torchrun --standalone --nproc_per_node=8 train.py neuromanifold_gpt.config.presets.train_gpt2
 
 wandb_log = True
-wandb_project = 'owt'
-wandb_run_name = 'gpt2-124M'
+wandb_project = "owt"
+wandb_run_name = "gpt2-124M"
 
 # These make the total batch size be ~0.5M
 # 12 batch size * 1024 block size * 5 gradaccum * 8 GPUs = 491,520
@@ -26,16 +26,16 @@ weight_decay = 1e-1
 
 # Export all config as a dict for compatibility with verification
 config = {
-    'wandb_log': wandb_log,
-    'wandb_project': wandb_project,
-    'wandb_run_name': wandb_run_name,
-    'batch_size': batch_size,
-    'block_size': block_size,
-    'gradient_accumulation_steps': gradient_accumulation_steps,
-    'max_iters': max_iters,
-    'lr_decay_iters': lr_decay_iters,
-    'eval_interval': eval_interval,
-    'eval_iters': eval_iters,
-    'log_interval': log_interval,
-    'weight_decay': weight_decay,
+    "wandb_log": wandb_log,
+    "wandb_project": wandb_project,
+    "wandb_run_name": wandb_run_name,
+    "batch_size": batch_size,
+    "block_size": block_size,
+    "gradient_accumulation_steps": gradient_accumulation_steps,
+    "max_iters": max_iters,
+    "lr_decay_iters": lr_decay_iters,
+    "eval_interval": eval_interval,
+    "eval_iters": eval_iters,
+    "log_interval": log_interval,
+    "weight_decay": weight_decay,
 }

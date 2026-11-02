@@ -1,4 +1,5 @@
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,7 +15,7 @@ class WaveKANLinear(nn.Module):
         wavelet_type: str = "mexican_hat",
         bias: bool = False,
         use_base_linear: bool = True,
-        use_fast_wavekan: bool = False, # If True, share a/b across outputs (In-wise only)
+        use_fast_wavekan: bool = False,  # If True, share a/b across outputs (In-wise only)
     ):
         super().__init__()
         self.in_features = in_features
@@ -113,7 +114,7 @@ class WaveKANLinear(nn.Module):
             wavelet_weighted = wavelet * weights_expanded
 
             # Sum over input features: sum_j (w_ij * phi(x_j))
-            output = wavelet_weighted.sum(dim=2) # (N, Out)
+            output = wavelet_weighted.sum(dim=2)  # (N, Out)
 
             return output
 
@@ -138,7 +139,9 @@ class WaveKANLinear(nn.Module):
             # Let's use simple Linear(x) as residual, consistent with ChebyKAN's prompt description
             # (though ChebyKAN code I read didn't have it, I'll add it here for robustness)
             base_out = self.base_linear(x.reshape(B * T, D))
-            output = wavelet_out + F.silu(base_out) # SiLU activation on base path is common in KAN
+            output = wavelet_out + F.silu(
+                base_out
+            )  # SiLU activation on base path is common in KAN
         else:
             output = wavelet_out
             if self.bias is not None:

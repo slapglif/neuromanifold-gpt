@@ -19,13 +19,15 @@ Reference: Gu et al., "HiPPO: Recurrent Memory with Optimal Polynomial Projectio
 """
 
 import math
-from typing import Literal, Optional
+from typing import Literal
 
 import torch
 import torch.nn as nn
 
 
-def make_hippo_legs(N: int, dtype: torch.dtype = torch.float32) -> tuple[torch.Tensor, torch.Tensor]:
+def make_hippo_legs(
+    N: int, dtype: torch.dtype = torch.float32
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Construct HiPPO-LegS (Legendre Shifted) matrices.
 
@@ -64,7 +66,9 @@ def make_hippo_legs(N: int, dtype: torch.dtype = torch.float32) -> tuple[torch.T
     return A, B
 
 
-def make_hippo_legt(N: int, dtype: torch.dtype = torch.float32) -> tuple[torch.Tensor, torch.Tensor]:
+def make_hippo_legt(
+    N: int, dtype: torch.dtype = torch.float32
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Construct HiPPO-LegT (Legendre Translated) matrices.
 
@@ -102,7 +106,9 @@ def make_hippo_legt(N: int, dtype: torch.dtype = torch.float32) -> tuple[torch.T
     return A, B
 
 
-def make_hippo_lagt(N: int, alpha: float = 0.5, dtype: torch.dtype = torch.float32) -> tuple[torch.Tensor, torch.Tensor]:
+def make_hippo_lagt(
+    N: int, alpha: float = 0.5, dtype: torch.dtype = torch.float32
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Construct HiPPO-LagT (Laguerre Translated) matrices.
 
@@ -140,7 +146,9 @@ def make_hippo_lagt(N: int, alpha: float = 0.5, dtype: torch.dtype = torch.float
     return A, B
 
 
-def make_hippo_foud(N: int, dtype: torch.dtype = torch.float32) -> tuple[torch.Tensor, torch.Tensor]:
+def make_hippo_foud(
+    N: int, dtype: torch.dtype = torch.float32
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Construct HiPPO-FouD (Fourier Diagonal) matrices.
 
@@ -366,12 +374,10 @@ class DiagonalHiPPO(nn.Module):
         B_flat = B_full.squeeze(-1)
 
         if learnable:
-            # For S4D/Mamba: use log parametrization for A (ensures negative real part)
-            # A = -exp(log_A_real) + i * A_imag
-            self.log_A = nn.Parameter(torch.log(-A_diag.clamp(max=-1e-8).abs() + 1e-8))
+            self.log_A = nn.Parameter(torch.log((-A_diag).clamp(min=1e-8)))
             self.B = nn.Parameter(B_flat)
         else:
-            self.register_buffer("log_A", torch.log(-A_diag.clamp(max=-1e-8).abs() + 1e-8))
+            self.register_buffer("log_A", torch.log((-A_diag).clamp(min=1e-8)))
             self.register_buffer("B", B_flat)
 
     def get_matrices(self) -> tuple[torch.Tensor, torch.Tensor]:

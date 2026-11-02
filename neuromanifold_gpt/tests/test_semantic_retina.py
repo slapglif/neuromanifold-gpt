@@ -43,7 +43,9 @@ class TestSemanticRetina:
         from neuromanifold_gpt.model.semantic_retina import SemanticRetina
 
         for grid_size in [32, 64, 128]:
-            retina = SemanticRetina(grid_size=grid_size, n_features=grid_size * grid_size)
+            retina = SemanticRetina(
+                grid_size=grid_size, n_features=grid_size * grid_size
+            )
             activation = torch.randn(1, 5, grid_size, grid_size)
             out = retina(activation)
             assert out.shape == activation.shape
@@ -55,8 +57,12 @@ class TestSemanticRetina:
         activation = torch.zeros(1, 1, 64, 64)
         activation[0, 0, 32, 32] = 1.0
 
-        retina_small = SemanticRetina(grid_size=64, n_features=4096, kernel_size=3, sigma=1.0)
-        retina_large = SemanticRetina(grid_size=64, n_features=4096, kernel_size=7, sigma=2.0)
+        retina_small = SemanticRetina(
+            grid_size=64, n_features=4096, kernel_size=3, sigma=1.0
+        )
+        retina_large = SemanticRetina(
+            grid_size=64, n_features=4096, kernel_size=7, sigma=2.0
+        )
 
         out_small = retina_small(activation)
         out_large = retina_large(activation)
