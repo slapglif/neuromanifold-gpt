@@ -6,7 +6,7 @@ Implementation using Chebyshev polynomial basis functions.
 Mathematically elegant, stable for normalized inputs in [-1, 1].
 """
 
-from .linear import ChebyKANLinear
 from .ffn import ChebyKANFFN
+from .linear import ChebyKANLinear
 
 __all__ = ["ChebyKANLinear", "ChebyKANFFN"]

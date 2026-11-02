@@ -1,22 +1,37 @@
-# Nano preset for fast experimentation and testing
-# ~1M parameters, trains in minutes on a single GPU
+"""Nano preset for fast experimentation and testing.
 
-use_nano_config = True
-batch_size = 8
-block_size = 256
-gradient_accumulation_steps = 1
+This preset provides a minimal configuration suitable for:
+- Quick iteration during development
+- Unit testing
+- Resource-constrained environments
+- Debugging model components
 
-# Reduced training
-max_iters = 5000
-eval_interval = 250
-eval_iters = 50
-warmup_iters = 100
-lr_decay_iters = 5000
+The configuration uses the NeuroManifoldConfigNano dataclass with
+appropriate settings for fast training (~1M parameters, trains in
+minutes on a single GPU).
+"""
 
-# Higher LR for small model
-learning_rate = 1e-3
-min_lr = 1e-4
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-# Output
-out_dir = "out-neuromanifold-nano"
-wandb_run_name = "neuromanifold-nano"
+
+def get_nano_config() -> NeuroManifoldConfig:
+    """Get the nano configuration for fast experimentation.
+
+    Returns:
+        NeuroManifoldConfig: Configuration with nano preset values.
+    """
+    return NeuroManifoldConfig(
+        # Reduced model size for fast iteration
+        block_size=256,
+        n_layer=4,
+        n_heads=4,
+        n_embd=128,
+
+        # Reduced manifold dimensions
+        manifold_dim=32,
+        n_eigenvectors=16,
+        sdr_size=1024,
+
+        # Higher learning rate for small model
+        learning_rate=1e-3,
+    )

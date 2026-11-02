@@ -12,9 +12,10 @@ with training efficiency and representation learning.
 Reference: neuromanifold_gpt/model/gpt.py (use_mtp, mtp_n_predict)
 """
 
+from typing import Dict, List, Optional
+
 import torch
 import torch.nn.functional as F
-from typing import Dict, List, Optional, Tuple
 
 
 class MTPMetrics:
@@ -61,9 +62,9 @@ class MTPMetrics:
         accuracy = num_correct / num_total if num_total > 0 else 0.0
 
         return {
-            'accuracy': accuracy,
-            'num_correct': num_correct,
-            'num_total': num_total,
+            "accuracy": accuracy,
+            "num_correct": num_correct,
+            "num_total": num_total,
         }
 
     @staticmethod
@@ -92,7 +93,7 @@ class MTPMetrics:
             # Ensure k doesn't exceed vocab size
             actual_k = min(k, logits.shape[-1])
             acc_metrics = MTPMetrics.compute_accuracy(logits, targets, top_k=actual_k)
-            metrics[f'top_{k}_accuracy'] = acc_metrics['accuracy']
+            metrics[f"top_{k}_accuracy"] = acc_metrics["accuracy"]
 
         return metrics
 
@@ -126,11 +127,11 @@ class MTPMetrics:
         entropy = -(probs * log_probs).sum(dim=-1)
 
         return {
-            'confidence_mean': max_probs.mean().item(),
-            'confidence_std': max_probs.std().item(),
-            'confidence_min': max_probs.min().item(),
-            'confidence_max': max_probs.max().item(),
-            'entropy_mean': entropy.mean().item(),
+            "confidence_mean": max_probs.mean().item(),
+            "confidence_std": max_probs.std().item(),
+            "confidence_min": max_probs.min().item(),
+            "confidence_max": max_probs.max().item(),
+            "entropy_mean": entropy.mean().item(),
         }
 
     @staticmethod
@@ -173,7 +174,7 @@ class MTPMetrics:
             # logits: (batch, seq_len, vocab_size) predicts targets[:, d:seq_len+d]
 
             seq_len = logits.shape[1]
-            depth_targets = targets[:, depth_idx:depth_idx + seq_len]
+            depth_targets = targets[:, depth_idx : depth_idx + seq_len]
 
             # Ensure targets match logits sequence length
             if depth_targets.shape[1] != seq_len:
@@ -184,12 +185,12 @@ class MTPMetrics:
 
             # Compute accuracy for this depth
             acc_metrics = MTPMetrics.compute_accuracy(logits, depth_targets)
-            metrics[f'depth_{depth}_accuracy'] = acc_metrics['accuracy']
-            accuracies.append(acc_metrics['accuracy'])
+            metrics[f"depth_{depth}_accuracy"] = acc_metrics["accuracy"]
+            accuracies.append(acc_metrics["accuracy"])
 
         # Compute mean accuracy across all depths
         if accuracies:
-            metrics['mean_depth_accuracy'] = sum(accuracies) / len(accuracies)
+            metrics["mean_depth_accuracy"] = sum(accuracies) / len(accuracies)
 
         return metrics
 
@@ -220,7 +221,7 @@ class MTPMetrics:
 
         # Basic accuracy
         acc_metrics = MTPMetrics.compute_accuracy(logits, targets, top_k=1)
-        metrics['accuracy'] = acc_metrics['accuracy']
+        metrics["accuracy"] = acc_metrics["accuracy"]
 
         # Top-k accuracies
         topk_metrics = MTPMetrics.compute_top_k_accuracies(logits, targets, k_values)

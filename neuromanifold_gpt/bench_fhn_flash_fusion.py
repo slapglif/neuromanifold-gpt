@@ -1,6 +1,9 @@
-import torch
 import time
+
+import torch
+
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
+
 
 def benchmark_fhn_flash_fusion():
     """Benchmark Flash Attention + FHN Fusion vs Manual Attention + FHN."""
@@ -27,7 +30,9 @@ def benchmark_fhn_flash_fusion():
     attn_baseline = FHNAttention(D, H, n_fhn_steps=0).to(device)
 
     # Old path: Manual Attention + FHN (use_flash_fhn_fusion=False)
-    attn_manual = FHNAttention(D, H, n_fhn_steps=2, use_flash_fhn_fusion=False).to(device)
+    attn_manual = FHNAttention(D, H, n_fhn_steps=2, use_flash_fhn_fusion=False).to(
+        device
+    )
 
     # New path: Flash Attention + Output Modulation (use_flash_fhn_fusion=True)
     attn_flash = FHNAttention(D, H, n_fhn_steps=2, use_flash_fhn_fusion=True).to(device)
@@ -87,6 +92,7 @@ def benchmark_fhn_flash_fusion():
     print(f"Speedup (new vs baseline):         {time_baseline / time_flash:.2f}x")
     print(f"Overhead of old FHN:               {time_manual / time_baseline:.2f}x")
     print(f"Overhead of new FHN:               {time_flash / time_baseline:.2f}x")
+
 
 if __name__ == "__main__":
     benchmark_fhn_flash_fusion()

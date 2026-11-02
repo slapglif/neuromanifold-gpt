@@ -2,6 +2,7 @@
 """Tests for FHN Excitable Attention mechanism."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
 
 
@@ -14,8 +15,8 @@ def test_fhn_output_shape():
     out, info = attn(x, spectral_basis)
 
     assert out.shape == (2, 20, 384)
-    assert 'pulse_widths' in info
-    assert 'fhn_state' in info
+    assert "pulse_widths" in info
+    assert "fhn_state" in info
 
 
 def test_fhn_pulse_width_positive():
@@ -26,7 +27,7 @@ def test_fhn_pulse_width_positive():
 
     _, info = attn(x, spectral_basis)
 
-    assert (info['pulse_widths'] > 0).all()
+    assert (info["pulse_widths"] > 0).all()
 
 
 def test_fhn_threshold_behavior():
@@ -60,7 +61,7 @@ def test_fhn_buffer_preallocation():
     out1, info1 = attn(x1, spectral_basis1)
 
     # Capture buffer information from first pass
-    state1 = info1['fhn_state']
+    state1 = info1["fhn_state"]
     state1_shape = state1.shape
 
     # Second forward pass with same dimensions but different data
@@ -68,7 +69,7 @@ def test_fhn_buffer_preallocation():
     spectral_basis2 = torch.randn(batch_size, seq_len, 32)
     out2, info2 = attn(x2, spectral_basis2)
 
-    state2 = info2['fhn_state']
+    state2 = info2["fhn_state"]
 
     # Verify shapes are consistent (buffers can be reused)
     assert out1.shape == (batch_size, seq_len, 384)
@@ -86,4 +87,4 @@ def test_fhn_buffer_preallocation():
 
     # Should handle different batch size
     assert out3.shape == (4, seq_len, 384)
-    assert torch.isfinite(info3['fhn_state']).all()
+    assert torch.isfinite(info3["fhn_state"]).all()

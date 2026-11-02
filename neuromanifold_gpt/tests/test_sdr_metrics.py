@@ -8,6 +8,7 @@ These tests verify the correctness of SDR quality metrics:
 """
 import pytest
 import torch
+
 from neuromanifold_gpt.evaluation.sdr_metrics import SDRMetrics
 
 
@@ -46,14 +47,14 @@ class TestComputeSparsity:
     def test_sparsity_varying_activation(self):
         """Different activation levels should give different sparsities."""
         sdr = torch.zeros(3, 2048)
-        sdr[0, :20] = 1   # 20/2048
-        sdr[1, :40] = 1   # 40/2048
-        sdr[2, :80] = 1   # 80/2048
+        sdr[0, :20] = 1  # 20/2048
+        sdr[1, :40] = 1  # 40/2048
+        sdr[2, :80] = 1  # 80/2048
         sparsity = SDRMetrics.compute_sparsity(sdr)
         assert sparsity[0] < sparsity[1] < sparsity[2]
-        assert abs(sparsity[0] - 20/2048) < 1e-6
-        assert abs(sparsity[1] - 40/2048) < 1e-6
-        assert abs(sparsity[2] - 80/2048) < 1e-6
+        assert abs(sparsity[0] - 20 / 2048) < 1e-6
+        assert abs(sparsity[1] - 40 / 2048) < 1e-6
+        assert abs(sparsity[2] - 80 / 2048) < 1e-6
 
 
 class TestComputeEntropy:
@@ -97,11 +98,11 @@ class TestComputeEntropy:
     def test_entropy_normalization(self):
         """Entropy should be non-negative and finite."""
         sdr = torch.zeros(5, 2048)
-        sdr[0, :40] = 1    # Uniform - 40 bits
-        sdr[1, :1] = 1     # Single bit
-        sdr[2, :10] = 1    # Few bits
-        sdr[3, :100] = 1   # Many bits (more than n_active)
-        sdr[4, :] = 1      # All bits
+        sdr[0, :40] = 1  # Uniform - 40 bits
+        sdr[1, :1] = 1  # Single bit
+        sdr[2, :10] = 1  # Few bits
+        sdr[3, :100] = 1  # Many bits (more than n_active)
+        sdr[4, :] = 1  # All bits
         entropy = SDRMetrics.compute_entropy(sdr, n_active=40)
         # All entropies should be non-negative and finite
         assert (entropy >= 0).all()
@@ -120,59 +121,59 @@ class TestComputeOverlapStatistics:
         sdr[..., :n_active] = 1
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active)
         # Only one unique pair: identical SDRs
-        assert stats['overlap_mean'] == n_active
-        assert stats['overlap_max'] == n_active
-        assert stats['overlap_min'] == n_active
-        assert abs(stats['overlap_mean_norm'] - 1.0) < 1e-6
+        assert stats["overlap_mean"] == n_active
+        assert stats["overlap_max"] == n_active
+        assert stats["overlap_min"] == n_active
+        assert abs(stats["overlap_mean_norm"] - 1.0) < 1e-6
 
     def test_overlap_disjoint_sdrs(self):
         """Disjoint SDRs should have zero overlap."""
         sdr = torch.zeros(2, 1, 2048)
-        sdr[0, 0, :40] = 1   # First SDR
+        sdr[0, 0, :40] = 1  # First SDR
         sdr[1, 0, 100:140] = 1  # Second SDR (disjoint)
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active=40)
-        assert stats['overlap_mean'] == 0.0
-        assert stats['overlap_min'] == 0.0
-        assert stats['overlap_max'] == 0.0
-        assert stats['overlap_mean_norm'] == 0.0
+        assert stats["overlap_mean"] == 0.0
+        assert stats["overlap_min"] == 0.0
+        assert stats["overlap_max"] == 0.0
+        assert stats["overlap_mean_norm"] == 0.0
 
     def test_overlap_partial(self):
         """Partially overlapping SDRs."""
         sdr = torch.zeros(2, 1, 2048)
         n_active = 40
-        sdr[0, 0, :n_active] = 1      # [0:40]
-        sdr[1, 0, 20:60] = 1           # [20:60]
+        sdr[0, 0, :n_active] = 1  # [0:40]
+        sdr[1, 0, 20:60] = 1  # [20:60]
         # Overlap is 20 bits (20:40)
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active)
-        assert stats['overlap_mean'] == 20.0
-        assert stats['overlap_min'] == 20.0
-        assert stats['overlap_max'] == 20.0
-        assert abs(stats['overlap_mean_norm'] - 0.5) < 1e-6
+        assert stats["overlap_mean"] == 20.0
+        assert stats["overlap_min"] == 20.0
+        assert stats["overlap_max"] == 20.0
+        assert abs(stats["overlap_mean_norm"] - 0.5) < 1e-6
 
     def test_overlap_single_sdr(self):
         """Single SDR should return zeros (no pairs)."""
         sdr = torch.zeros(1, 1, 2048)
         sdr[0, 0, :40] = 1
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active=40)
-        assert stats['overlap_mean'] == 0.0
-        assert stats['overlap_std'] == 0.0
-        assert stats['overlap_min'] == 0.0
-        assert stats['overlap_max'] == 0.0
+        assert stats["overlap_mean"] == 0.0
+        assert stats["overlap_std"] == 0.0
+        assert stats["overlap_min"] == 0.0
+        assert stats["overlap_max"] == 0.0
 
     def test_overlap_multiple_pairs(self):
         """Test with multiple SDR pairs."""
         sdr = torch.zeros(3, 1, 2048)
         n_active = 40
         # Three SDRs with varying overlaps
-        sdr[0, 0, :n_active] = 1           # [0:40]
-        sdr[1, 0, 10:50] = 1               # [10:50] -> overlap 30 with first
-        sdr[2, 0, 30:70] = 1               # [30:70] -> overlap 10 with first, 20 with second
+        sdr[0, 0, :n_active] = 1  # [0:40]
+        sdr[1, 0, 10:50] = 1  # [10:50] -> overlap 30 with first
+        sdr[2, 0, 30:70] = 1  # [30:70] -> overlap 10 with first, 20 with second
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active)
         # Pairs: (0,1)=30, (0,2)=10, (1,2)=20 -> mean=20
-        assert abs(stats['overlap_mean'] - 20.0) < 1e-6
-        assert stats['overlap_min'] == 10.0
-        assert stats['overlap_max'] == 30.0
-        assert stats['overlap_std'] > 0  # Should have non-zero std
+        assert abs(stats["overlap_mean"] - 20.0) < 1e-6
+        assert stats["overlap_min"] == 10.0
+        assert stats["overlap_max"] == 30.0
+        assert stats["overlap_std"] > 0  # Should have non-zero std
 
     def test_overlap_batch_and_sequence(self):
         """Test with batch and sequence dimensions."""
@@ -182,8 +183,8 @@ class TestComputeOverlapStatistics:
         sdr[..., :n_active] = 1
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active)
         # All 6 SDRs are identical, so all pairwise overlaps = 40
-        assert stats['overlap_mean'] == n_active
-        assert stats['overlap_std'] == 0.0
+        assert stats["overlap_mean"] == n_active
+        assert stats["overlap_std"] == 0.0
 
 
 class TestComputeAll:
@@ -198,11 +199,15 @@ class TestComputeAll:
 
         # Check all expected keys are present
         expected_keys = {
-            'sparsity', 'sparsity_std',
-            'entropy', 'entropy_std',
-            'overlap_mean', 'overlap_std',
-            'overlap_min', 'overlap_max',
-            'overlap_mean_norm'
+            "sparsity",
+            "sparsity_std",
+            "entropy",
+            "entropy_std",
+            "overlap_mean",
+            "overlap_std",
+            "overlap_min",
+            "overlap_max",
+            "overlap_mean_norm",
         }
         assert set(metrics.keys()) == expected_keys
 
@@ -218,29 +223,29 @@ class TestComputeAll:
         metrics = SDRMetrics.compute_all(sdr, n_active)
 
         # All SDRs are identical
-        assert abs(metrics['sparsity'] - n_active/2048) < 1e-6
-        assert metrics['sparsity_std'] == 0.0
-        assert metrics['entropy'] > 0.99  # Uniform distribution
-        assert metrics['entropy_std'] == 0.0
-        assert metrics['overlap_mean'] == n_active
-        assert metrics['overlap_mean_norm'] == 1.0
+        assert abs(metrics["sparsity"] - n_active / 2048) < 1e-6
+        assert metrics["sparsity_std"] == 0.0
+        assert metrics["entropy"] > 0.99  # Uniform distribution
+        assert metrics["entropy_std"] == 0.0
+        assert metrics["overlap_mean"] == n_active
+        assert metrics["overlap_mean_norm"] == 1.0
 
     def test_compute_all_varying_sdrs(self):
         """Test compute_all with varying SDRs."""
         sdr = torch.zeros(3, 1, 2048)
         n_active = 40
         # Three different SDRs
-        sdr[0, 0, :20] = 1      # Low sparsity
-        sdr[1, 0, :40] = 1      # Target sparsity
-        sdr[2, 0, :80] = 1      # High sparsity
+        sdr[0, 0, :20] = 1  # Low sparsity
+        sdr[1, 0, :40] = 1  # Target sparsity
+        sdr[2, 0, :80] = 1  # High sparsity
         metrics = SDRMetrics.compute_all(sdr, n_active)
 
         # Should have varying sparsity
-        assert metrics['sparsity_std'] > 0
+        assert metrics["sparsity_std"] > 0
         # Entropy should vary
-        assert metrics['entropy_std'] >= 0
+        assert metrics["entropy_std"] >= 0
         # Overlaps should be present
-        assert metrics['overlap_mean'] > 0
+        assert metrics["overlap_mean"] > 0
 
     def test_compute_all_empty_batch(self):
         """Test compute_all with minimal valid input."""
@@ -250,11 +255,11 @@ class TestComputeAll:
         metrics = SDRMetrics.compute_all(sdr, n_active)
 
         # Single SDR: no pairs for overlap
-        assert metrics['overlap_mean'] == 0.0
-        assert metrics['overlap_std'] == 0.0
+        assert metrics["overlap_mean"] == 0.0
+        assert metrics["overlap_std"] == 0.0
         # But should have valid sparsity and entropy
-        assert abs(metrics['sparsity'] - n_active/2048) < 1e-6
-        assert metrics['entropy'] > 0.99
+        assert abs(metrics["sparsity"] - n_active / 2048) < 1e-6
+        assert metrics["entropy"] > 0.99
 
     def test_compute_all_realistic_batch(self):
         """Test with realistic batch dimensions."""
@@ -269,19 +274,21 @@ class TestComputeAll:
             for j in range(seq_len):
                 # Each SDR has n_active bits at different positions
                 start = (i * seq_len + j) * 10 % (sdr_dim - n_active)
-                sdr[i, j, start:start + n_active] = 1
+                sdr[i, j, start : start + n_active] = 1
 
         metrics = SDRMetrics.compute_all(sdr, n_active)
 
         # All should have target sparsity
-        assert abs(metrics['sparsity'] - n_active/sdr_dim) < 1e-4
+        assert abs(metrics["sparsity"] - n_active / sdr_dim) < 1e-4
         # All have uniform distribution
-        assert metrics['entropy'] > 0.95
+        assert metrics["entropy"] > 0.95
         # Some overlap expected due to limited space
-        assert 0 <= metrics['overlap_mean_norm'] <= 1.0
+        assert 0 <= metrics["overlap_mean_norm"] <= 1.0
         # Should have reasonable statistics
-        assert metrics['overlap_std'] >= 0
-        assert metrics['overlap_min'] <= metrics['overlap_mean'] <= metrics['overlap_max']
+        assert metrics["overlap_std"] >= 0
+        assert (
+            metrics["overlap_min"] <= metrics["overlap_mean"] <= metrics["overlap_max"]
+        )
 
 
 class TestEdgeCases:
@@ -293,7 +300,7 @@ class TestEdgeCases:
         sdr[:40] = 1
         sparsity = SDRMetrics.compute_sparsity(sdr)
         assert sparsity.shape == torch.Size([])
-        assert abs(sparsity - 40/2048) < 1e-6
+        assert abs(sparsity - 40 / 2048) < 1e-6
 
     def test_high_dimensional_tensor(self):
         """Verify high-dimensional tensor handling."""
@@ -302,7 +309,7 @@ class TestEdgeCases:
         sdr[..., :n_active] = 1
         sparsity = SDRMetrics.compute_sparsity(sdr)
         assert sparsity.shape == (2, 3, 4, 5)
-        assert torch.allclose(sparsity, torch.full((2, 3, 4, 5), n_active/2048))
+        assert torch.allclose(sparsity, torch.full((2, 3, 4, 5), n_active / 2048))
 
     def test_different_sdr_dimensions(self):
         """Verify works with different SDR dimensions."""
@@ -327,7 +334,8 @@ class TestEdgeCases:
         sdr = torch.zeros(2, 1, 2048)
         # Leave all zeros
         stats = SDRMetrics.compute_overlap_statistics(sdr, n_active=40)
-        assert stats['overlap_mean'] == 0.0
+        assert stats["overlap_mean"] == 0.0
         # std of constant values is NaN in PyTorch (mathematically undefined with ddof=1)
         import math
-        assert stats['overlap_std'] == 0.0 or math.isnan(stats['overlap_std'])
+
+        assert stats["overlap_std"] == 0.0 or math.isnan(stats["overlap_std"])

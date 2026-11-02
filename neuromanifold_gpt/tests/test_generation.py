@@ -2,6 +2,7 @@
 """Test generation to debug quality issues."""
 
 import os
+
 import torch
 import torch.nn.functional as F
 
@@ -38,20 +39,27 @@ config = NeuroManifoldConfig(
     dropout=0.0,
 )
 
+
 def load_shakespeare():
     data_path = "neuromanifold_gpt/data/input.txt"
-    with open(data_path, 'r') as f:
+    with open(data_path, "r") as f:
         text = f.read()
     chars = sorted(set(text))
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+
+    def encode(s):
+        return [stoi[c] for c in s]
+
+    def decode(l):
+        return "".join([itos[i] for i in l])
+
     data = torch.tensor(encode(text), dtype=torch.long)
     return data, decode, encode
 
+
 def main():
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
     data, decode, encode = load_shakespeare()
@@ -76,8 +84,8 @@ def main():
     print("Training for 2000 iterations...")
     for i in range(2000):
         ix = torch.randint(len(data) - block_size, (batch_size,))
-        x = torch.stack([data[j:j+block_size] for j in ix]).to(device)
-        y = torch.stack([data[j+1:j+block_size+1] for j in ix]).to(device)
+        x = torch.stack([data[j : j + block_size] for j in ix]).to(device)
+        y = torch.stack([data[j + 1 : j + block_size + 1] for j in ix]).to(device)
 
         logits, loss, _ = model(x, y)
         loss.backward()
@@ -113,7 +121,9 @@ def main():
         for temp in temperatures:
             print(f"\nTemp={temp}:")
             with torch.no_grad():
-                generated = model.generate(prompt_ids.clone(), max_new_tokens=100, temperature=temp, top_k=40)
+                generated = model.generate(
+                    prompt_ids.clone(), max_new_tokens=100, temperature=temp, top_k=40
+                )
             output = decode(generated[0].tolist())
             print(f"  {output[:150]}")
 
@@ -131,6 +141,7 @@ def main():
         for prob, idx in zip(top_probs.tolist(), top_ids.tolist()):
             char = decode([idx])
             print(f"  '{char}': {prob:.4f}")
+
 
 if __name__ == "__main__":
     main()

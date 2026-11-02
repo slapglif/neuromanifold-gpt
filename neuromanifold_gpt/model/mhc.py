@@ -42,6 +42,15 @@ Components:
     - **get_expand_reduce_stream_functions**: Utilities for stream management
     - **get_init_and_expand_reduce_stream_functions**: Factory for mHC setup
 
+Module Organization:
+    For improved maintainability, this implementation is organized across multiple files:
+    - **sinkhorn.py**: Sinkhorn-Knopp algorithm for projecting matrices onto the
+      Birkhoff polytope (doubly stochastic constraint)
+    - **mhc_utils.py**: Utility functions including stream expansion/reduction,
+      existence checks, and default value helpers
+    - **mhc.py**: Core HyperConnections and Residual classes (this file)
+    - **mhc_fused.py**: Optional Triton-fused kernels for GPU acceleration
+
 Usage Patterns:
     1. Direct wrapping:
         >>> hc = HyperConnections(num_streams=4, dim=384, branch=attention)
@@ -82,115 +91,28 @@ References:
 Author: DeepSeek Team (original), adapted for NeuroManifold GPT
 """
 
-from typing import Callable, Optional
 from functools import partial
 from random import randrange
+from typing import Callable, Optional
 
 import torch
+from einops import einsum, rearrange
 from torch import nn
 from torch.nn import Module
-import torch.nn.functional as F
-from einops import rearrange, einsum
-from einops.layers.torch import Reduce
+
+from .mhc_utils import default, exists, get_expand_reduce_stream_functions
+
+# Import from extracted modules
+from .sinkhorn import sinkhorn_log
 
 # Try to import fused kernel for GPU acceleration
 try:
     from .mhc_fused import fused_mhc_width_connection
+
     HAS_TRITON = torch.cuda.is_available()
 except (ImportError, RuntimeError):
     HAS_TRITON = False
     fused_mhc_width_connection = None
-
-
-def exists(v):
-    """Check if a value is not None.
-
-    Args:
-        v: Value to check
-
-    Returns:
-        True if v is not None, False otherwise
-    """
-    return v is not None
-
-
-def default(v, d):
-    """Return value v if it exists, otherwise return default d.
-
-    Args:
-        v: Value to check
-        d: Default value to return if v is None
-
-    Returns:
-        v if v is not None, else d
-    """
-    return v if exists(v) else d
-
-
-def sinkhorn_log(logits: torch.Tensor, num_iters: int = 10, tau: float = 0.05, convergence_tol: Optional[float] = None) -> torch.Tensor:
-    """Project matrix onto Birkhoff polytope via Sinkhorn-Knopp in log space.
-
-    The Birkhoff polytope is the set of doubly stochastic matrices:
-    - All entries >= 0
-    - All rows sum to 1
-    - All columns sum to 1
-
-    This uses the numerically stable log-space algorithm from DeepSeek.
-
-    Args:
-        logits: Raw logits matrix (n, n)
-        num_iters: Number of alternating normalization iterations
-        tau: Temperature for softmax (lower = sharper, closer to permutation)
-        convergence_tol: Optional convergence threshold for early stopping.
-            If provided, stops when ||u_new - u_old|| < convergence_tol.
-            Default None uses all num_iters iterations.
-
-    Returns:
-        Doubly stochastic matrix on Birkhoff polytope
-    """
-    n = logits.shape[-1]
-    Z = logits / tau
-    log_marginal = torch.zeros((n,), device=logits.device, dtype=logits.dtype)
-
-    u = torch.zeros(logits.shape[:-1], device=Z.device, dtype=Z.dtype)
-    v = torch.zeros_like(u)
-
-    for _ in range(num_iters):
-        u_prev = u.clone() if convergence_tol is not None else None
-
-        u = log_marginal - torch.logsumexp(Z + v.unsqueeze(-2), dim=-1)
-        v = log_marginal - torch.logsumexp(Z + u.unsqueeze(-1), dim=-2)
-
-        # Early stopping check
-        if convergence_tol is not None:
-            u_change = torch.norm(u - u_prev)
-            if u_change < convergence_tol:
-                break
-
-    return torch.exp(Z + u.unsqueeze(-1) + v.unsqueeze(-2))
-
-
-def get_expand_reduce_stream_functions(num_streams: int, disable: bool = False):
-    """Get functions to expand input to multiple streams and reduce back.
-
-    Args:
-        num_streams: Number of parallel residual streams
-        disable: If True, return identity functions
-
-    Returns:
-        (expand_fn, reduce_fn) tuple
-    """
-    if num_streams == 1 or disable:
-        return (nn.Identity(), nn.Identity())
-
-    expand_fn = Reduce(
-        pattern="b ... -> (b s) ...", reduction="repeat", s=num_streams
-    )
-    reduce_fn = Reduce(
-        pattern="(b s) ... -> b ...", reduction="sum", s=num_streams
-    )
-
-    return expand_fn, reduce_fn
 
 
 class HyperConnections(Module):
@@ -279,8 +201,10 @@ class HyperConnections(Module):
         dropout: float = 0.0,
         sinkhorn_iters: int = 10,
         sinkhorn_tau: float = 0.05,
-        sinkhorn_convergence_tol: Optional[float] = None,
-        use_fused: Optional[bool] = None,  # Use Triton-fused kernel for GPU acceleration
+        sinkhorn_convergence_tol: Optional[float] = 1e-6,
+        use_fused: Optional[
+            bool
+        ] = None,  # Use Triton-fused kernel for GPU acceleration (auto-detect)
     ):
         """Initialize the HyperConnections layer.
 
@@ -330,7 +254,9 @@ class HyperConnections(Module):
         self.sinkhorn_iters = sinkhorn_iters
         self.sinkhorn_tau = sinkhorn_tau
         self.sinkhorn_convergence_tol = sinkhorn_convergence_tol
-        self.use_fused = default(use_fused, HAS_TRITON) and HAS_TRITON  # Enable fusion by default if available
+        self.use_fused = (
+            default(use_fused, HAS_TRITON) and HAS_TRITON
+        )  # Enable fusion by default if available
 
         # Choose initial residual stream index
         init_residual_index = (
@@ -351,9 +277,7 @@ class HyperConnections(Module):
 
         # H_post: Post-mixing matrix (softmax over streams)
         # Initialize to zeros (equal distribution)
-        self.H_post_logits = nn.Parameter(
-            torch.zeros(1, num_residual_streams)
-        )
+        self.H_post_logits = nn.Parameter(torch.zeros(1, num_residual_streams))
 
         self.dropout = nn.Dropout(dropout)
 
@@ -401,7 +325,7 @@ class HyperConnections(Module):
             self.H_res_logits,
             num_iters=self.sinkhorn_iters,
             tau=self.sinkhorn_tau,
-            convergence_tol=self.sinkhorn_convergence_tol
+            convergence_tol=self.sinkhorn_convergence_tol,
         )
         h_pre = self.H_pre_logits.softmax(dim=-1)  # (1, S)
         h_post = self.H_post_logits.softmax(dim=-1)  # (1, S)
@@ -411,9 +335,7 @@ class HyperConnections(Module):
             # Call fused kernel: combines all 4 operations into one GPU kernel
             # Input: (B*S, T, D) -> Output: branch_input (B, T, D), residuals_out (B*S, T, D)
             branch_input, residuals_out = fused_mhc_width_connection(
-                residuals,
-                h_res,
-                h_pre
+                residuals, h_res, h_pre
             )
             return branch_input, residuals_out, h_post
 
@@ -443,10 +365,7 @@ class HyperConnections(Module):
         return branch_input, residuals_out, h_post
 
     def depth_connection(
-        self,
-        branch_output: torch.Tensor,
-        residuals: torch.Tensor,
-        beta: torch.Tensor
+        self, branch_output: torch.Tensor, residuals: torch.Tensor, beta: torch.Tensor
     ) -> torch.Tensor:
         """Add branch output to residuals via H_post mixing (depth connection).
 
@@ -536,6 +455,7 @@ class HyperConnections(Module):
             The wrapped function preserves the signature of the original branch
             function, accepting arbitrary positional and keyword arguments.
         """
+
         def forward_and_add_residual(residual, *args, **kwargs):
             branch_input, add_residual = self.forward(residual)
             branch_output = branch(branch_input, *args, **kwargs)
@@ -675,11 +595,13 @@ class Residual(Module):
             If branch is None: (x, add_residual_fn) for manual use
         """
         if not exists(self.branch):
+
             def add_residual_fn(branch_out):
                 if isinstance(branch_out, tuple):
                     branch_out, *rest = branch_out
                     return (x + branch_out, *rest)
                 return x + branch_out
+
             return x, add_residual_fn
 
         branch_out = self.branch(x, *args, **kwargs)
@@ -695,7 +617,7 @@ def get_init_and_expand_reduce_stream_functions(
     disable: bool = False,
     sinkhorn_iters: int = 10,
     sinkhorn_tau: float = 0.05,
-    sinkhorn_convergence_tol: Optional[float] = None,
+    sinkhorn_convergence_tol: Optional[float] = 1e-6,
 ):
     """Get mHC initializer and stream expand/reduce functions.
 

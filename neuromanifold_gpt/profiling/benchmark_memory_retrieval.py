@@ -7,12 +7,21 @@ vectorized batch retrieval to demonstrate 10-50x speedup.
 """
 
 import os
+
 os.environ["NEUROMANIFOLD_TESTING"] = "1"
 
 import time
+
 import torch
 from rich.console import Console
 from rich.table import Table
+
+# Note: We import shared profiling utilities for consistency with other profiling scripts.
+# However, benchmark_loop_based() and benchmark_vectorized() are specialized benchmark
+# functions that compare loop-based vs vectorized memory retrieval approaches.
+# They cannot be directly replaced with profile_component() since they benchmark
+# specific method calls on a memory object rather than profiling a full module.
+from neuromanifold_gpt.utils.profiling import cleanup
 
 console = Console()
 
@@ -38,7 +47,9 @@ def populate_memory(memory, n_items):
         memory.store(sdr, content)
 
 
-def benchmark_loop_based(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS):
+def benchmark_loop_based(
+    memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS
+):
     """Benchmark the old loop-based approach (calling retrieve() B times)."""
     B = query_sdrs.shape[0]
 
@@ -65,12 +76,14 @@ def benchmark_loop_based(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_i
         times.append((time.perf_counter() - start) * 1000)
 
     mean_ms = sum(times) / len(times)
-    std_ms = (sum((t - mean_ms)**2 for t in times) / len(times)) ** 0.5
+    std_ms = (sum((t - mean_ms) ** 2 for t in times) / len(times)) ** 0.5
 
     return mean_ms, std_ms, min(times), max(times)
 
 
-def benchmark_vectorized(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS):
+def benchmark_vectorized(
+    memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_iters=N_ITERS
+):
     """Benchmark the new vectorized approach (calling retrieve_batch() once)."""
     # Warmup
     for _ in range(n_warmup):
@@ -93,7 +106,7 @@ def benchmark_vectorized(memory, query_sdrs, top_k=TOP_K, n_warmup=N_WARMUP, n_i
         times.append((time.perf_counter() - start) * 1000)
 
     mean_ms = sum(times) / len(times)
-    std_ms = (sum((t - mean_ms)**2 for t in times) / len(times)) ** 0.5
+    std_ms = (sum((t - mean_ms) ** 2 for t in times) / len(times)) ** 0.5
 
     return mean_ms, std_ms, min(times), max(times)
 
@@ -121,7 +134,9 @@ def verify_correctness(memory, query_sdrs, top_k=TOP_K):
         n_vec = (vec_sims[b] > 0).sum().item()
 
         if n_loop != n_vec:
-            console.print(f"[red]Mismatch in batch {b}: loop returned {n_loop} results, vectorized returned {n_vec}[/red]")
+            console.print(
+                f"[red]Mismatch in batch {b}: loop returned {n_loop} results, vectorized returned {n_vec}[/red]"
+            )
             all_correct = False
             continue
 
@@ -132,7 +147,9 @@ def verify_correctness(memory, query_sdrs, top_k=TOP_K):
                 all_correct = False
 
             # Compare contents (should be identical)
-            if not torch.allclose(loop_contents[b], vec_contents[b, :n_loop], rtol=1e-4):
+            if not torch.allclose(
+                loop_contents[b], vec_contents[b, :n_loop], rtol=1e-4
+            ):
                 console.print(f"[red]Content mismatch in batch {b}[/red]")
                 all_correct = False
 
@@ -140,11 +157,15 @@ def verify_correctness(memory, query_sdrs, top_k=TOP_K):
 
 
 def main():
-    console.print(f"\n[bold cyan]Memory Retrieval Benchmark: Loop vs Vectorized[/bold cyan]")
+    console.print(
+        "\n[bold cyan]Memory Retrieval Benchmark: Loop vs Vectorized[/bold cyan]"
+    )
     console.print(f"Device: {DEVICE}")
     if DEVICE == "cuda":
         console.print(f"GPU: {torch.cuda.get_device_name()}")
-    console.print(f"Memory: {MEMORY_CAPACITY} items, SDR: {SDR_SIZE} ({N_ACTIVE} active)")
+    console.print(
+        f"Memory: {MEMORY_CAPACITY} items, SDR: {SDR_SIZE} ({N_ACTIVE} active)"
+    )
     console.print(f"Content dim: {CONTENT_DIM}, Top-K: {TOP_K}")
     console.print(f"Warmup: {N_WARMUP}, Iterations: {N_ITERS}\n")
 
@@ -164,6 +185,9 @@ def main():
     populate_memory(memory, MEMORY_CAPACITY)
     console.print(f"Populated memory with {len(memory)} items\n")
 
+    # Clean up after memory population
+    cleanup()
+
     # Verify correctness first
     console.print("[bold]Verifying correctness...[/bold]")
     test_batch_size = 8
@@ -174,10 +198,17 @@ def main():
 
     is_correct = verify_correctness(memory, test_queries, top_k=TOP_K)
     if is_correct:
-        console.print("[green]✓ Correctness verified - both methods produce identical results[/green]\n")
+        console.print(
+            "[green]✓ Correctness verified - both methods produce identical results[/green]\n"
+        )
     else:
-        console.print("[red]✗ Correctness check failed - results differ between methods[/red]\n")
+        console.print(
+            "[red]✗ Correctness check failed - results differ between methods[/red]\n"
+        )
         return
+
+    # Clean up after correctness verification
+    cleanup()
 
     # Benchmark across different batch sizes
     console.print("[bold]Running benchmarks...[/bold]\n")
@@ -193,7 +224,9 @@ def main():
             query_sdrs[b, active_indices] = 1.0
 
         # Benchmark loop-based
-        loop_mean, loop_std, loop_min, loop_max = benchmark_loop_based(memory, query_sdrs)
+        loop_mean, loop_std, loop_min, loop_max = benchmark_loop_based(
+            memory, query_sdrs
+        )
 
         # Benchmark vectorized
         vec_mean, vec_std, vec_min, vec_max = benchmark_vectorized(memory, query_sdrs)
@@ -201,14 +234,16 @@ def main():
         # Calculate speedup
         speedup = loop_mean / vec_mean
 
-        results.append({
-            "batch_size": batch_size,
-            "loop_mean": loop_mean,
-            "loop_std": loop_std,
-            "vec_mean": vec_mean,
-            "vec_std": vec_std,
-            "speedup": speedup,
-        })
+        results.append(
+            {
+                "batch_size": batch_size,
+                "loop_mean": loop_mean,
+                "loop_std": loop_std,
+                "vec_mean": vec_mean,
+                "vec_std": vec_std,
+                "speedup": speedup,
+            }
+        )
 
         console.print(f"Speedup: [bold green]{speedup:.1f}x[/bold green]")
 
@@ -247,7 +282,9 @@ def main():
 
     # Find peak speedup
     max_speedup_result = max(results, key=lambda x: x["speedup"])
-    console.print(f"\n[bold]Peak Speedup:[/bold] {max_speedup_result['speedup']:.1f}x at batch size {max_speedup_result['batch_size']}")
+    console.print(
+        f"\n[bold]Peak Speedup:[/bold] {max_speedup_result['speedup']:.1f}x at batch size {max_speedup_result['batch_size']}"
+    )
 
     # Speedup trend
     console.print("\n[bold]Speedup Trend:[/bold]")
@@ -255,7 +292,9 @@ def main():
         r_small = results[i]
         r_large = results[i + 1]
         increase = r_large["speedup"] - r_small["speedup"]
-        console.print(f"   B={r_small['batch_size']:2d} -> B={r_large['batch_size']:2d}: {r_small['speedup']:.1f}x -> {r_large['speedup']:.1f}x (+{increase:.1f}x)")
+        console.print(
+            f"   B={r_small['batch_size']:2d} -> B={r_large['batch_size']:2d}: {r_small['speedup']:.1f}x -> {r_large['speedup']:.1f}x (+{increase:.1f}x)"
+        )
 
     # Performance impact on model forward pass
     console.print("\n[bold]Impact on Model Training:[/bold]")
@@ -264,16 +303,26 @@ def main():
     training_batch = 64
     train_result = next(r for r in results if r["batch_size"] == training_batch)
     saved_per_iter = train_result["loop_mean"] - train_result["vec_mean"]
-    console.print(f"   Per iteration @ B={training_batch}: saves {saved_per_iter:.2f} ms ({train_result['speedup']:.1f}x speedup)")
-    console.print(f"   Per 1000 iterations: saves {saved_per_iter * 1000 / 1000:.1f} seconds")
-    console.print(f"   Per epoch (5000 iters): saves {saved_per_iter * 5000 / 1000:.1f} seconds")
+    console.print(
+        f"   Per iteration @ B={training_batch}: saves {saved_per_iter:.2f} ms ({train_result['speedup']:.1f}x speedup)"
+    )
+    console.print(
+        f"   Per 1000 iterations: saves {saved_per_iter * 1000 / 1000:.1f} seconds"
+    )
+    console.print(
+        f"   Per epoch (5000 iters): saves {saved_per_iter * 5000 / 1000:.1f} seconds"
+    )
 
     # Success criteria
     console.print("\n[bold]Target Achievement:[/bold]")
     if max_speedup_result["speedup"] >= 10:
-        console.print(f"   [bold green]✓ SUCCESS: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)[/bold green]")
+        console.print(
+            f"   [bold green]✓ SUCCESS: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)[/bold green]"
+        )
     else:
-        console.print(f"   [bold red]✗ BELOW TARGET: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)[/bold red]")
+        console.print(
+            f"   [bold red]✗ BELOW TARGET: Achieved {max_speedup_result['speedup']:.1f}x speedup (target: 10-50x)[/bold red]"
+        )
 
     # Scalability
     console.print("\n[bold]Scalability Analysis:[/bold]")

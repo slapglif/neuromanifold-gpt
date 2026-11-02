@@ -133,7 +133,10 @@ class TestNeuroManifoldConfigNano:
 
     def test_nano_preset_inherits_from_base(self):
         """Test nano preset inherits non-overridden values from base."""
-        from neuromanifold_gpt.config.base import NeuroManifoldConfig, NeuroManifoldConfigNano
+        from neuromanifold_gpt.config.base import (
+            NeuroManifoldConfig,
+            NeuroManifoldConfigNano,
+        )
 
         base = NeuroManifoldConfig()
         nano = NeuroManifoldConfigNano()

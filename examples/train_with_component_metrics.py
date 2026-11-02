@@ -20,47 +20,83 @@ Usage:
 import os
 import sys
 
-# Handle --help before any imports that require dependencies
-if '--help' in sys.argv or '-h' in sys.argv:
-    print(__doc__)
-    print("\nConfiguration parameters:")
-    print("  Training:")
-    print("    --max_steps=<int>           Max training steps (default: 1000)")
-    print("    --batch_size=<int>          Batch size (default: 16)")
-    print("    --learning_rate=<float>     Learning rate (default: 3e-4)")
-    print("    --gradient_clip_val=<float> Gradient clipping (default: 1.0)")
-    print("")
-    print("  Model:")
-    print("    --n_layer=<int>             Number of layers (default: 4)")
-    print("    --n_head=<int>              Number of attention heads (default: 4)")
-    print("    --n_embd=<int>              Embedding dimension (default: 256)")
-    print("    --block_size=<int>          Context length (default: 256)")
-    print("    --use_sdr=<bool>            Enable SDR encoder (default: True)")
-    print("    --dropout=<float>           Dropout rate (default: 0.1)")
-    print("")
-    print("  Logging:")
-    print("    --wandb_log=<bool>          Enable WandB logging (default: False)")
-    print("    --wandb_project=<str>       WandB project name (default: 'neuromanifold-metrics')")
-    print("    --wandb_run_name=<str>      WandB run name (default: 'component-metrics')")
-    print("    --log_component_metrics_every=<int>  Log component metrics every N steps (default: 50)")
-    print("")
-    print("  Data:")
-    print("    --dataset=<str>             Dataset name (default: 'shakespeare_char')")
-    print("    --out_dir=<str>             Output directory (default: 'out-metrics')")
-    print("")
-    print("  Hardware:")
-    print("    --devices=<int>             Number of devices (default: 1)")
-    print("    --precision=<str>           Training precision: '32', 'bf16-mixed', 'fp16-mixed' (default: 'bf16-mixed')")
-    sys.exit(0)
+# Add parent directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+# Load configuration first (handles --help before heavy imports)
+from dataclasses import dataclass
+from neuromanifold_gpt.config.loader import load_config
+
+@dataclass
+class ComponentMetricsTrainingConfig:
+    """Training configuration with component metrics logging.
+
+    Attributes:
+        max_steps: Max training steps
+        batch_size: Batch size
+        learning_rate: Learning rate
+        gradient_clip_val: Gradient clipping value
+        n_layer: Number of layers
+        n_head: Number of attention heads
+        n_embd: Embedding dimension
+        block_size: Context length
+        vocab_size: Vocabulary size (GPT-2 default)
+        use_sdr: Enable SDR encoder
+        dropout: Dropout rate
+        wandb_log: Enable WandB logging
+        wandb_project: WandB project name
+        wandb_run_name: WandB run name
+        log_component_metrics_every: Log component metrics every N steps
+        dataset: Dataset name
+        out_dir: Output directory
+        devices: Number of devices
+        precision: Training precision
+        weight_decay: Weight decay for optimizer
+        beta1: AdamW beta1 parameter
+        beta2: AdamW beta2 parameter
+    """
+    # Training
+    max_steps: int = 1000
+    batch_size: int = 16
+    learning_rate: float = 3e-4
+    gradient_clip_val: float = 1.0
+
+    # Model
+    n_layer: int = 4
+    n_head: int = 4
+    n_embd: int = 256
+    block_size: int = 256
+    vocab_size: int = 50257  # GPT-2 vocab size
+    use_sdr: bool = True
+    dropout: float = 0.1
+
+    # Logging
+    wandb_log: bool = False
+    wandb_project: str = 'neuromanifold-metrics'
+    wandb_run_name: str = 'component-metrics'
+    log_component_metrics_every: int = 50
+
+    # Data
+    dataset: str = 'shakespeare_char'
+    out_dir: str = 'out-metrics'
+
+    # Hardware
+    devices: int = 1
+    precision: str = 'bf16-mixed'
+
+    # Optimizer
+    weight_decay: float = 0.1
+    beta1: float = 0.9
+    beta2: float = 0.95
+
+config = load_config(ComponentMetricsTrainingConfig, sys.argv[1:])
+
+# Now import heavy dependencies
 from typing import Dict, Any, Optional, Union
 import torch
 import lightning as L
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger, TensorBoardLogger, Logger
-
-# Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
@@ -279,8 +315,10 @@ class NeuroManifoldWithMetrics(L.LightningModule):
             else:
                 decay_params.append(param)
 
+        # Use weight_decay from NeuroManifoldConfig
+        weight_decay = getattr(self.config, 'weight_decay', 0.1)
         optim_groups = [
-            {'params': decay_params, 'weight_decay': self.config.weight_decay},
+            {'params': decay_params, 'weight_decay': weight_decay},
             {'params': no_decay_params, 'weight_decay': 0.0},
         ]
 
@@ -294,10 +332,11 @@ class NeuroManifoldWithMetrics(L.LightningModule):
 
     def on_before_optimizer_step(self, optimizer):
         """Gradient clipping before optimizer step."""
-        if self.config.grad_clip > 0:
+        grad_clip = getattr(self.config, 'grad_clip', 1.0)
+        if grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
-                self.config.grad_clip,
+                grad_clip,
             )
 
 # -----------------------------------------------------------------------------
@@ -369,91 +408,60 @@ class DemoDataModule(L.LightningDataModule):
 # Main Training Script
 # -----------------------------------------------------------------------------
 def main():
-    # Configuration
-    max_steps = 1000
-    batch_size = 16
-    learning_rate = 3e-4
-    gradient_clip_val = 1.0
-
-    # Model config
-    n_layer = 4
-    n_head = 4
-    n_embd = 256
-    block_size = 256
-    vocab_size = 50257  # GPT-2 vocab size
-    use_sdr = True
-    dropout = 0.1
-
-    # Logging
-    wandb_log = False
-    wandb_project = 'neuromanifold-metrics'
-    wandb_run_name = 'component-metrics'
-    log_component_metrics_every = 50
-
-    # Data
-    dataset = 'shakespeare_char'
-    out_dir = 'out-metrics'
-
-    # Hardware
-    devices = 1
-    precision = 'bf16-mixed'
-
-    # Override from command line
-    exec(open('configurator.py').read())
-
+    # Configuration loaded at module level
     # Create output directory
-    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(config.out_dir, exist_ok=True)
 
     # Create NeuroManifoldConfig
-    config = NeuroManifoldConfig(
-        n_layer=n_layer,
-        n_heads=n_head,
-        n_embd=n_embd,
-        block_size=block_size,
-        vocab_size=vocab_size,
-        use_sdr=use_sdr,
-        dropout=dropout,
-        learning_rate=learning_rate,
-        weight_decay=0.1,
-        beta1=0.9,
-        beta2=0.95,
-        grad_clip=gradient_clip_val,
+    nm_config = NeuroManifoldConfig(
+        n_layer=config.n_layer,
+        n_heads=config.n_head,
+        n_embd=config.n_embd,
+        block_size=config.block_size,
+        vocab_size=config.vocab_size,
+        use_sdr=config.use_sdr,
+        dropout=config.dropout,
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay,
+        beta1=config.beta1,
+        beta2=config.beta2,
+        grad_clip=config.gradient_clip_val,
     )
 
     # Create model
-    model = NeuroManifoldWithMetrics(config)
+    model = NeuroManifoldWithMetrics(nm_config)
 
     # Create data module
     data_module = DemoDataModule(
-        vocab_size=vocab_size,
-        block_size=block_size,
-        batch_size=batch_size,
+        vocab_size=config.vocab_size,
+        block_size=config.block_size,
+        batch_size=config.batch_size,
     )
 
     # Setup logger
     logger: Logger
-    if wandb_log:
+    if config.wandb_log:
         logger = WandbLogger(
-            project=wandb_project,
-            name=wandb_run_name,
-            save_dir=out_dir,
+            project=config.wandb_project,
+            name=config.wandb_run_name,
+            save_dir=config.out_dir,
         )
-        print(f"Logging to WandB project: {wandb_project}")
+        print(f"Logging to WandB project: {config.wandb_project}")
     else:
         logger = TensorBoardLogger(
-            save_dir=out_dir,
+            save_dir=config.out_dir,
             name='lightning_logs',
         )
-        print(f"Logging to TensorBoard in: {out_dir}")
+        print(f"Logging to TensorBoard in: {config.out_dir}")
 
     # Setup callbacks
     callbacks = [
         # Component metrics logging callback
-        ComponentMetricsCallback(log_every_n_steps=log_component_metrics_every),
+        ComponentMetricsCallback(log_every_n_steps=config.log_component_metrics_every),
 
         # Standard checkpoint callback
         ModelCheckpoint(
-            dirpath=out_dir,
+            dirpath=config.out_dir,
             filename='neuromanifold-{epoch:02d}-{val_loss:.2f}',
             monitor='val_loss',
             mode='min',
@@ -466,13 +474,13 @@ def main():
 
     # Create trainer
     trainer = L.Trainer(
-        max_steps=max_steps,
+        max_steps=config.max_steps,
         accelerator='auto',
-        devices=devices,
-        precision=precision,  # type: ignore[arg-type]
+        devices=config.devices,
+        precision=config.precision,  # type: ignore[arg-type]
         logger=logger,
         callbacks=callbacks,
-        gradient_clip_val=gradient_clip_val,
+        gradient_clip_val=config.gradient_clip_val,
         log_every_n_steps=10,
         val_check_interval=100,
         enable_progress_bar=True,
@@ -483,21 +491,21 @@ def main():
     print("TRAINING WITH COMPONENT METRICS")
     print("="*60)
     print(f"Model: NeuroManifoldGPT")
-    print(f"  - Layers: {n_layer}")
-    print(f"  - Heads: {n_head}")
-    print(f"  - Embedding dim: {n_embd}")
-    print(f"  - Block size: {block_size}")
-    print(f"  - SDR enabled: {use_sdr}")
+    print(f"  - Layers: {config.n_layer}")
+    print(f"  - Heads: {config.n_head}")
+    print(f"  - Embedding dim: {config.n_embd}")
+    print(f"  - Block size: {config.block_size}")
+    print(f"  - SDR enabled: {config.use_sdr}")
     print(f"\nTraining:")
-    print(f"  - Max steps: {max_steps}")
-    print(f"  - Batch size: {batch_size}")
-    print(f"  - Learning rate: {learning_rate}")
-    print(f"  - Devices: {devices}")
-    print(f"  - Precision: {precision}")
+    print(f"  - Max steps: {config.max_steps}")
+    print(f"  - Batch size: {config.batch_size}")
+    print(f"  - Learning rate: {config.learning_rate}")
+    print(f"  - Devices: {config.devices}")
+    print(f"  - Precision: {config.precision}")
     print(f"\nLogging:")
-    print(f"  - Component metrics every: {log_component_metrics_every} steps")
-    print(f"  - Logger: {'WandB' if wandb_log else 'TensorBoard'}")
-    print(f"  - Output dir: {out_dir}")
+    print(f"  - Component metrics every: {config.log_component_metrics_every} steps")
+    print(f"  - Logger: {'WandB' if config.wandb_log else 'TensorBoard'}")
+    print(f"  - Output dir: {config.out_dir}")
     print("="*60 + "\n")
 
     # Start training
@@ -506,7 +514,7 @@ def main():
     print("\n" + "="*60)
     print("TRAINING COMPLETE")
     print("="*60)
-    print(f"Checkpoints saved to: {out_dir}")
+    print(f"Checkpoints saved to: {config.out_dir}")
     print("\nComponent metrics logged:")
     print("  - SDR metrics (sparsity, entropy, overlap)")
     print("  - FHN wave stability metrics")

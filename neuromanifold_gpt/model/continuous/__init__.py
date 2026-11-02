@@ -6,21 +6,21 @@ Exports:
     KANVelocityField: KAN-based score network (2026 scientific standard)
     ContinuousOutputHead: Unified continuous generation head
     ContinuousOutputConfig: Configuration for continuous generation
-    
+
     SACPolicy: Soft Actor-Critic with KAN backbone
     SACConfig: Config for SAC
     DDPGPolicy: Deep Deterministic Policy Gradient with KAN backbone
     DDPGConfig: Config for DDPG
 
-This module implements "Rectified Flow" (Flow Matching) for generation and 
+This module implements "Rectified Flow" (Flow Matching) for generation and
 RL policies (SAC/DDPG) for continuous control of the semantic manifold.
 """
 
-from .flow_scheduler import RectifiedFlowScheduler, FlowConfig
+from .ddpg_policy import DDPGConfig, DDPGPolicy
+from .flow_scheduler import FlowConfig, RectifiedFlowScheduler
+from .output_head import ContinuousOutputConfig, ContinuousOutputHead
+from .sac_policy import SACConfig, SACPolicy
 from .velocity_field import KANVelocityField
-from .output_head import ContinuousOutputHead, ContinuousOutputConfig
-from .sac_policy import SACPolicy, SACConfig
-from .ddpg_policy import DDPGPolicy, DDPGConfig
 
 __all__ = [
     "RectifiedFlowScheduler",

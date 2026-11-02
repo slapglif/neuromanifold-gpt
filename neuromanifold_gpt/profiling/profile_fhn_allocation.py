@@ -1,5 +1,7 @@
-import torch
 import time
+
+import torch
+
 from neuromanifold_gpt.model.attention.fhn import FHNDynamics
 
 
@@ -95,7 +97,9 @@ def profile_fhn_allocations():
     ]
 
     for B, H, T, D in configs:
-        print(f"\nConfiguration: {configs[0][4] if (B, H, T, D) == configs[0][:4] else configs[1][4] if (B, H, T, D) == configs[1][:4] else configs[2][4]}")
+        print(
+            f"\nConfiguration: {configs[0][4] if (B, H, T, D) == configs[0][:4] else configs[1][4] if (B, H, T, D) == configs[1][:4] else configs[2][4]}"
+        )
         print(f"  Shape: B={B}, H={H}, T={T}, D={D}")
         print(f"  Total elements: {B * H * T * D:,}")
 
@@ -117,21 +121,27 @@ def profile_fhn_allocations():
         time_new, mem_new = count_allocations_new_style(fhn, stimulus, n_iterations=100)
 
         # Calculate metrics
-        time_improvement = ((time_old - time_new) / time_old * 100) if time_old > 0 else 0
+        time_improvement = (
+            ((time_old - time_new) / time_old * 100) if time_old > 0 else 0
+        )
         mem_improvement = ((mem_old - mem_new) / mem_old * 100) if mem_old > 0 else 0
 
-        print(f"\n  Old Pattern (torch.zeros_like per forward):")
+        print("\n  Old Pattern (torch.zeros_like per forward):")
         print(f"    Time per forward: {time_old:.3f} ms")
         print(f"    Peak memory delta: {mem_old / 1024**2:.2f} MB")
 
-        print(f"\n  New Pattern (pre-allocated buffers):")
+        print("\n  New Pattern (pre-allocated buffers):")
         print(f"    Time per forward: {time_new:.3f} ms")
         print(f"    Peak memory delta: {mem_new / 1024**2:.2f} MB")
 
-        print(f"\n  Improvement:")
+        print("\n  Improvement:")
         print(f"    Time: {time_improvement:+.1f}%")
         print(f"    Memory: {mem_improvement:+.1f}%")
-        print(f"    Speedup: {time_old / time_new:.2f}x" if time_new > 0 else "    Speedup: N/A")
+        print(
+            f"    Speedup: {time_old / time_new:.2f}x"
+            if time_new > 0
+            else "    Speedup: N/A"
+        )
 
     print("\n" + "=" * 60)
     print("\nSummary:")

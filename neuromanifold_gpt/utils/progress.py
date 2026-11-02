@@ -6,17 +6,17 @@ Provides reusable progress bar utilities using rich.progress for:
 - Evaluation loops with ETA
 - File scanning operations
 """
-from typing import Optional, Iterator
 from contextlib import contextmanager
+from typing import Optional
 
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
-    TextColumn,
-    BarColumn,
     TaskProgressColumn,
-    TimeRemainingColumn,
+    TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 
 
@@ -88,7 +88,9 @@ def checkpoint_progress(description: str = "Loading checkpoint"):
             progress.update(task_id, completed=True)
 
 
-def progress_bar(iterable, description: str = "Processing", total: Optional[int] = None):
+def progress_bar(
+    iterable, description: str = "Processing", total: Optional[int] = None
+):
     """
     Wrap an iterable with a progress bar.
 

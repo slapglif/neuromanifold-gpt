@@ -9,6 +9,23 @@ This module defines the configuration structure for training, including settings
 - Sampling during training
 - Hardware configuration (devices, precision)
 - Logging and experiment tracking
+
+Example usage:
+    from neuromanifold_gpt.config.loader import load_config
+    from neuromanifold_gpt.config.training import TrainingConfig
+
+    # Load training config with CLI overrides
+    config = load_config(TrainingConfig, [
+        '--batch_size=32',
+        '--learning_rate=3e-4',
+        '--max_iters=10000'
+    ])
+
+    # Load from preset and override specific values
+    config = load_config(TrainingConfig, [
+        'neuromanifold_gpt.config.presets.train_shakespeare',
+        '--wandb_log=True'
+    ])
 """
 
 from dataclasses import dataclass
@@ -28,6 +45,25 @@ class TrainingConfig:
     - Text sampling during training for qualitative assessment
     - Hardware settings (GPUs, mixed precision)
     - Logging and experiment tracking (WandB)
+
+    Example usage:
+        >>> from neuromanifold_gpt.config.loader import load_config
+        >>> from neuromanifold_gpt.config.training import TrainingConfig
+        >>>
+        >>> # Basic training configuration
+        >>> config = load_config(TrainingConfig, [
+        ...     '--dataset=shakespeare_char',
+        ...     '--batch_size=64',
+        ...     '--max_iters=5000'
+        ... ])
+        >>>
+        >>> # Advanced configuration with KAN and mHC
+        >>> config = load_config(TrainingConfig, [
+        ...     '--use_kan=True',
+        ...     '--use_mhc=True',
+        ...     '--learning_rate=1e-3',
+        ...     '--wandb_log=True'
+        ... ])
 
     Attributes:
         out_dir: Output directory for checkpoints and logs
@@ -179,6 +215,24 @@ class SamplingConfig:
     - Output settings (number of samples, length)
     - Hardware settings (device, precision)
 
+    Example usage:
+        >>> from neuromanifold_gpt.config.loader import load_config
+        >>> from neuromanifold_gpt.config.training import SamplingConfig
+        >>>
+        >>> # Generate samples from a checkpoint
+        >>> config = load_config(SamplingConfig, [
+        ...     '--out_dir=out-shakespeare-char',
+        ...     '--start="ROMEO:"',
+        ...     '--num_samples=5',
+        ...     '--max_new_tokens=200'
+        ... ])
+        >>>
+        >>> # Creative sampling with higher temperature
+        >>> config = load_config(SamplingConfig, [
+        ...     '--temperature=1.2',
+        ...     '--top_k=100'
+        ... ])
+
     Attributes:
         init_from: Initialization mode ('resume' or gpt2 variant like 'gpt2-xl')
         out_dir: Directory to load checkpoint from (when init_from='resume')
@@ -221,6 +275,24 @@ class EvalConfig:
     - Hardware settings (device, precision)
     - Logging and experiment tracking (WandB)
 
+    Example usage:
+        >>> from neuromanifold_gpt.config.loader import load_config
+        >>> from neuromanifold_gpt.config.training import EvalConfig
+        >>>
+        >>> # Evaluate on LAMBADA benchmark
+        >>> config = load_config(EvalConfig, [
+        ...     '--out_dir=out-shakespeare-char',
+        ...     '--benchmark=lambada',
+        ...     '--eval_iters=1000'
+        ... ])
+        >>>
+        >>> # Run all benchmarks with WandB logging
+        >>> config = load_config(EvalConfig, [
+        ...     '--benchmark=all',
+        ...     '--wandb_log=True',
+        ...     '--wandb_project=neuromanifold-eval'
+        ... ])
+
     Attributes:
         out_dir: Checkpoint directory to load model from
         benchmark: Benchmark to evaluate (lambada, hellaswag, piqa, winogrande, all)
@@ -256,6 +328,53 @@ class EvalConfig:
 
 
 @dataclass
+class DistillationEvalConfig:
+    """Configuration for distillation evaluation (eval_distillation.py).
+
+    This configuration covers teacher-student model comparison:
+    - Checkpoint loading for both teacher and student models
+    - Benchmark selection and evaluation parameters
+    - Comparison metrics (KL divergence, agreement, perplexity)
+    - Hardware settings (device, precision)
+    - Logging and experiment tracking (WandB)
+
+    Attributes:
+        teacher_checkpoint: Path to teacher model checkpoint
+        student_checkpoint: Path to student model checkpoint
+        benchmark: Benchmark to evaluate (lambada, hellaswag, piqa, winogrande, all)
+        eval_iters: Maximum examples to evaluate (None = all examples)
+        device: Device to run on ('cpu', 'cuda', 'cuda:0', etc.)
+        dtype: Precision for inference ('float32', 'bfloat16', or 'float16')
+        seed: Random seed for reproducibility
+        compile: Whether to compile models with torch.compile (PyTorch 2.0+)
+        wandb_log: Enable Weights & Biases logging
+        wandb_project: WandB project name
+        wandb_run_name: WandB run name (auto-generated if None)
+    """
+
+    # Checkpoint loading
+    teacher_checkpoint: str = ''
+    student_checkpoint: str = ''
+
+    # Benchmark
+    benchmark: str = 'lambada'
+    eval_iters: Optional[int] = None
+
+    # Hardware
+    device: str = 'cuda'
+    dtype: str = 'bfloat16'
+
+    # Reproducibility
+    seed: int = 1337
+    compile: bool = False
+
+    # Logging
+    wandb_log: bool = False
+    wandb_project: str = 'neuromanifold-distill-eval'
+    wandb_run_name: Optional[str] = None
+
+
+@dataclass
 class BenchConfig:
     """Configuration for performance benchmarking (bench.py).
 
@@ -266,6 +385,25 @@ class BenchConfig:
     - Hardware settings (device, precision, compilation)
     - Profiling configuration (PyTorch profiler)
     - Benchmarking parameters (burn-in, measurement steps)
+
+    Example usage:
+        >>> from neuromanifold_gpt.config.loader import load_config
+        >>> from neuromanifold_gpt.config.training import BenchConfig
+        >>>
+        >>> # Quick benchmark with synthetic data
+        >>> config = load_config(BenchConfig, [
+        ...     '--real_data=False',
+        ...     '--batch_size=8',
+        ...     '--compile=True'
+        ... ])
+        >>>
+        >>> # Detailed profiling with real data
+        >>> config = load_config(BenchConfig, [
+        ...     '--profile=True',
+        ...     '--real_data=True',
+        ...     '--dataset=openwebtext',
+        ...     '--profiler_active=10'
+        ... ])
 
     Attributes:
         batch_size: Batch size for benchmarking

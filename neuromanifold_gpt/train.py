@@ -7,8 +7,8 @@ Provides:
 - AdamW optimizer with separate weight decay groups
 - Cosine annealing LR scheduler
 """
-import torch
 import lightning as L
+import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from neuromanifold_gpt.config import NeuroManifoldConfig
@@ -34,7 +34,7 @@ class NeuroManifoldLightning(L.LightningModule):
         self.model = NeuroManifoldGPT(config)
 
         # Save hyperparameters for logging
-        self.save_hyperparameters(ignore=['config'])
+        self.save_hyperparameters(ignore=["config"])
 
     def forward(
         self,
@@ -68,13 +68,13 @@ class NeuroManifoldLightning(L.LightningModule):
         Returns:
             loss: Scalar training loss
         """
-        input_ids = batch['input_ids']
-        labels = batch['labels']
+        input_ids = batch["input_ids"]
+        labels = batch["labels"]
 
         _, loss, _ = self(input_ids, labels)
 
         # Log training metrics
-        self.log('train_loss', loss, prog_bar=True, on_step=True, on_epoch=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
 
         return loss
 
@@ -92,14 +92,20 @@ class NeuroManifoldLightning(L.LightningModule):
         Returns:
             loss: Scalar validation loss
         """
-        input_ids = batch['input_ids']
-        labels = batch['labels']
+        input_ids = batch["input_ids"]
+        labels = batch["labels"]
 
         _, loss, _ = self(input_ids, labels)
 
         # Log validation metrics
-        self.log('val_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log('val_perplexity', torch.exp(loss), prog_bar=True, on_step=False, on_epoch=True)
+        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log(
+            "val_perplexity",
+            torch.exp(loss),
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
 
         return loss
 
@@ -122,14 +128,14 @@ class NeuroManifoldLightning(L.LightningModule):
             if not param.requires_grad:
                 continue
             # Biases, LayerNorm weights don't get weight decay
-            if param.ndim < 2 or 'ln' in name or 'norm' in name:
+            if param.ndim < 2 or "ln" in name or "norm" in name:
                 no_decay_params.append(param)
             else:
                 decay_params.append(param)
 
         optim_groups = [
-            {'params': decay_params, 'weight_decay': self.config.weight_decay},
-            {'params': no_decay_params, 'weight_decay': 0.0},
+            {"params": decay_params, "weight_decay": self.config.weight_decay},
+            {"params": no_decay_params, "weight_decay": 0.0},
         ]
 
         optimizer = torch.optim.AdamW(
@@ -153,11 +159,11 @@ class NeuroManifoldLightning(L.LightningModule):
         )
 
         return {
-            'optimizer': optimizer,
-            'lr_scheduler': {
-                'scheduler': scheduler,
-                'interval': 'step',
-                'frequency': 1,
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
             },
         }
 

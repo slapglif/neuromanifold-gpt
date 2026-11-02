@@ -3,11 +3,13 @@
 Includes config loader hacks to bypass torch dependencies where possible,
 and standard fixtures for model testing.
 """
-import sys
 import importlib.util
+import sys
 from pathlib import Path
+
 import pytest
 import torch
+
 from neuromanifold_gpt.config import NeuroManifoldConfigNano
 from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 
@@ -17,6 +19,7 @@ from neuromanifold_gpt.config.block_config import NeuroManifoldBlockConfig
 # Get the project root directory
 _conftest_dir = Path(__file__).parent
 _project_root = _conftest_dir.parent.parent
+
 
 def _load_module_direct(module_name, file_path):
     """Load a module directly from file path without triggering package imports."""
@@ -29,19 +32,19 @@ def _load_module_direct(module_name, file_path):
     spec.loader.exec_module(module)
     return module
 
+
 # Pre-load modules to bypass torch dependencies if needed
 try:
     _load_module_direct(
-        'neuromanifold_gpt.errors',
-        _project_root / 'neuromanifold_gpt' / 'errors.py'
+        "neuromanifold_gpt.errors", _project_root / "neuromanifold_gpt" / "errors.py"
     )
     _load_module_direct(
-        'neuromanifold_gpt.config.training',
-        _project_root / 'neuromanifold_gpt' / 'config' / 'training.py'
+        "neuromanifold_gpt.config.training",
+        _project_root / "neuromanifold_gpt" / "config" / "training.py",
     )
     _load_module_direct(
-        'neuromanifold_gpt.config.loader',
-        _project_root / 'neuromanifold_gpt' / 'config' / 'loader.py'
+        "neuromanifold_gpt.config.loader",
+        _project_root / "neuromanifold_gpt" / "config" / "loader.py",
     )
 except Exception as e:
     print(f"Warning: Failed to pre-load config modules: {e}")
@@ -49,6 +52,7 @@ except Exception as e:
 # -----------------------------------------------------------------------------
 # Shared Fixtures (from Master)
 # -----------------------------------------------------------------------------
+
 
 @pytest.fixture
 def nano_config():
@@ -68,11 +72,7 @@ def block_config():
         NeuroManifoldBlockConfig: Standard block configuration for testing.
     """
     return NeuroManifoldBlockConfig(
-        sdr_size=2048,
-        embed_dim=384,
-        manifold_dim=64,
-        n_eigenvectors=32,
-        n_heads=8
+        sdr_size=2048, embed_dim=384, manifold_dim=64, n_eigenvectors=32, n_heads=8
     )
 
 
@@ -133,7 +133,7 @@ def device():
     Returns:
         str: 'cuda' if GPU is available, 'cpu' otherwise.
     """
-    return 'cuda' if torch.cuda.is_available() else 'cpu'
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 @pytest.fixture

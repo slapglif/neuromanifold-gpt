@@ -26,14 +26,16 @@ from contextlib import nullcontext
 from typing import Any, Callable, ContextManager
 
 import numpy as np
-import torch
 import tiktoken
+import torch
 
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
 
-def load_model(config_path: str, device: str = "cuda", dtype: str = "bfloat16") -> tuple[NeuroManifoldGPT, dict[str, Any]]:
+def load_model(
+    config_path: str, device: str = "cuda", dtype: str = "bfloat16"
+) -> tuple[NeuroManifoldGPT, dict[str, Any]]:
     """Load a model from configuration file.
 
     Args:
@@ -46,23 +48,26 @@ def load_model(config_path: str, device: str = "cuda", dtype: str = "bfloat16") 
     """
     # Import config module
     import importlib
+
     config_module = importlib.import_module(config_path)
 
     # Get config instance
-    if hasattr(config_module, 'config'):
+    if hasattr(config_module, "config"):
         model_config = config_module.config
-    elif hasattr(config_module, 'out'):
+    elif hasattr(config_module, "out"):
         # Create config from dict
         model_config = NeuroManifoldConfig(**config_module.out)
     else:
-        raise ValueError(f"Config module {config_path} must have 'config' or 'out' attribute")
+        raise ValueError(
+            f"Config module {config_path} must have 'config' or 'out' attribute"
+        )
 
     # Initialize model
     model = NeuroManifoldGPT(model_config)
     model.to(device)
 
     # Get config dict for reference
-    config_dict = {k: v for k, v in vars(model_config).items() if not k.startswith('_')}
+    config_dict = {k: v for k, v in vars(model_config).items() if not k.startswith("_")}
 
     return model, config_dict
 
@@ -73,7 +78,7 @@ def get_batch(
     batch_size: int,
     block_size: int,
     device: str,
-    device_type: str
+    device_type: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Load a batch of data.
 
@@ -96,11 +101,20 @@ def get_batch(
         data = np.memmap(os.path.join(data_dir, "val.bin"), dtype=np.uint16, mode="r")
 
     ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[i : i + block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i + 1 : i + 1 + block_size]).astype(np.int64)) for i in ix])
+    x = torch.stack(
+        [torch.from_numpy((data[i : i + block_size]).astype(np.int64)) for i in ix]
+    )
+    y = torch.stack(
+        [
+            torch.from_numpy((data[i + 1 : i + 1 + block_size]).astype(np.int64))
+            for i in ix
+        ]
+    )
 
     if device_type == "cuda":
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(
+            device, non_blocking=True
+        )
     else:
         x, y = x.to(device), y.to(device)
 
@@ -115,7 +129,7 @@ def estimate_loss(
     batch_size: int,
     block_size: int,
     device: str,
-    ctx: ContextManager[None]
+    ctx: ContextManager[None],
 ) -> dict[str, float]:
     """Estimate loss on train and val splits.
 
@@ -140,7 +154,9 @@ def estimate_loss(
     for split in ["train", "val"]:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split, data_dir, batch_size, block_size, device, device_type)
+            X, Y = get_batch(
+                split, data_dir, batch_size, block_size, device, device_type
+            )
             with ctx:
                 logits, loss, info = model(X, Y)
             losses[k] = loss.item()
@@ -150,7 +166,9 @@ def estimate_loss(
     return out
 
 
-def setup_encoding(dataset: str) -> tuple[Callable[[str], list[int]], Callable[[list[int]], str]]:
+def setup_encoding(
+    dataset: str,
+) -> tuple[Callable[[str], list[int]], Callable[[list[int]], str]]:
     """Setup encoding/decoding functions for a dataset.
 
     Pattern from sample.py - tries to load meta.pkl, falls back to GPT-2 encoding.
@@ -168,12 +186,21 @@ def setup_encoding(dataset: str) -> tuple[Callable[[str], list[int]], Callable[[
         with open(meta_path, "rb") as f:
             meta = pickle.load(f)
         stoi, itos = meta["stoi"], meta["itos"]
-        encode = lambda s: [stoi[c] for c in s]
-        decode = lambda l: "".join([itos[i] for i in l])
+
+        def encode(s):
+            return [stoi[c] for c in s]
+
+        def decode(l):
+            return "".join([itos[i] for i in l])
+
     else:
         enc = tiktoken.get_encoding("gpt2")
-        encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
-        decode = lambda l: enc.decode(l)
+
+        def encode(s):
+            return enc.encode(s, allowed_special={"<|endoftext|>"})
+
+        def decode(l):
+            return enc.decode(l)
 
     return encode, decode
 
@@ -199,15 +226,17 @@ def measure_sample_diversity(samples: list[str]) -> dict[str, float]:
         words = sample.split()
         all_words.extend(words)
         if len(words) >= 2:
-            all_bigrams.extend([tuple(words[i:i+2]) for i in range(len(words)-1)])
+            all_bigrams.extend([tuple(words[i : i + 2]) for i in range(len(words) - 1)])
         if len(words) >= 3:
-            all_trigrams.extend([tuple(words[i:i+3]) for i in range(len(words)-2)])
+            all_trigrams.extend(
+                [tuple(words[i : i + 3]) for i in range(len(words) - 2)]
+            )
 
     metrics = {
         "unique_unigrams": len(set(all_words)) / max(len(all_words), 1),
         "unique_bigrams": len(set(all_bigrams)) / max(len(all_bigrams), 1),
         "unique_trigrams": len(set(all_trigrams)) / max(len(all_trigrams), 1),
-        "avg_length": sum(len(s) for s in samples) / max(len(samples), 1)
+        "avg_length": sum(len(s) for s in samples) / max(len(samples), 1),
     }
 
     return metrics
@@ -223,7 +252,7 @@ def benchmark_sample_quality(
     device: str = "cuda",
     dtype: str = "bfloat16",
     seed: int = 1337,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> dict[str, dict[str, float]]:
     """Benchmark sample generation quality for standard vs NeuroManifold attention.
 
@@ -266,7 +295,7 @@ def benchmark_sample_quality(
     ptdtype = {
         "float32": torch.float32,
         "bfloat16": torch.bfloat16,
-        "float16": torch.float16
+        "float16": torch.float16,
     }[dtype]
     ctx: ContextManager[None] = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)  # type: ignore[assignment]
 
@@ -288,7 +317,7 @@ def benchmark_sample_quality(
     model_standard, _ = load_model(
         "neuromanifold_gpt.config.benchmarks.standard_attention",
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
     model_standard.eval()
 
@@ -296,7 +325,9 @@ def benchmark_sample_quality(
     with torch.no_grad():
         with ctx:
             for k in range(num_samples):
-                y = model_standard.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                y = model_standard.generate(
+                    x, max_new_tokens, temperature=temperature, top_k=top_k
+                )
                 sample_text = decode(y[0].tolist())
                 samples_standard.append(sample_text)
 
@@ -325,7 +356,7 @@ def benchmark_sample_quality(
     model_neuromanifold, _ = load_model(
         "neuromanifold_gpt.config.benchmarks.neuromanifold_attention",
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
     model_neuromanifold.eval()
 
@@ -333,7 +364,9 @@ def benchmark_sample_quality(
     with torch.no_grad():
         with ctx:
             for k in range(num_samples):
-                y = model_neuromanifold.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                y = model_neuromanifold.generate(
+                    x, max_new_tokens, temperature=temperature, top_k=top_k
+                )
                 sample_text = decode(y[0].tolist())
                 samples_neuromanifold.append(sample_text)
 
@@ -359,11 +392,19 @@ def benchmark_sample_quality(
         print("=" * 80)
         print("Sample quality Summary")
         print("=" * 80)
-        print(f"Standard diversity (unigrams):      {results['standard']['unique_unigrams']:>10.4f}")
-        print(f"NeuroManifold diversity (unigrams): {results['neuromanifold']['unique_unigrams']:>10.4f}")
+        print(
+            f"Standard diversity (unigrams):      {results['standard']['unique_unigrams']:>10.4f}"
+        )
+        print(
+            f"NeuroManifold diversity (unigrams): {results['neuromanifold']['unique_unigrams']:>10.4f}"
+        )
         diversity_change = (
-            (results["neuromanifold"]["unique_unigrams"] - results["standard"]["unique_unigrams"])
-            / results["standard"]["unique_unigrams"] * 100
+            (
+                results["neuromanifold"]["unique_unigrams"]
+                - results["standard"]["unique_unigrams"]
+            )
+            / results["standard"]["unique_unigrams"]
+            * 100
         )
         print(f"Diversity change:                   {diversity_change:>9.1f}%")
         print()
@@ -378,7 +419,7 @@ def benchmark_quality(
     block_size: int = 1024,
     device: str = "cuda",
     dtype: str = "bfloat16",
-    verbose: bool = True
+    verbose: bool = True,
 ) -> dict[str, dict[str, float]]:
     """Benchmark quality metrics for standard vs NeuroManifold attention.
 
@@ -423,7 +464,7 @@ def benchmark_quality(
     ptdtype = {
         "float32": torch.float32,
         "bfloat16": torch.bfloat16,
-        "float16": torch.float16
+        "float16": torch.float16,
     }[dtype]
     ctx: ContextManager[None] = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)  # type: ignore[assignment]
 
@@ -437,24 +478,18 @@ def benchmark_quality(
     model_standard, config_standard = load_model(
         "neuromanifold_gpt.config.benchmarks.standard_attention",
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
 
     losses_standard = estimate_loss(
-        model_standard,
-        data_dir,
-        eval_iters,
-        batch_size,
-        block_size,
-        device,
-        ctx
+        model_standard, data_dir, eval_iters, batch_size, block_size, device, ctx
     )
 
     results["standard"] = {
         "val_loss": losses_standard["val"],
         "train_loss": losses_standard["train"],
         "perplexity": math.exp(losses_standard["val"]),
-        "train_val_gap": losses_standard["train"] - losses_standard["val"]
+        "train_val_gap": losses_standard["train"] - losses_standard["val"],
     }
 
     if verbose:
@@ -478,24 +513,18 @@ def benchmark_quality(
     model_neuromanifold, config_neuromanifold = load_model(
         "neuromanifold_gpt.config.benchmarks.neuromanifold_attention",
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
 
     losses_neuromanifold = estimate_loss(
-        model_neuromanifold,
-        data_dir,
-        eval_iters,
-        batch_size,
-        block_size,
-        device,
-        ctx
+        model_neuromanifold, data_dir, eval_iters, batch_size, block_size, device, ctx
     )
 
     results["neuromanifold"] = {
         "val_loss": losses_neuromanifold["val"],
         "train_loss": losses_neuromanifold["train"],
         "perplexity": math.exp(losses_neuromanifold["val"]),
-        "train_val_gap": losses_neuromanifold["train"] - losses_neuromanifold["val"]
+        "train_val_gap": losses_neuromanifold["train"] - losses_neuromanifold["val"],
     }
 
     if verbose:
@@ -518,10 +547,13 @@ def benchmark_quality(
         print("=" * 80)
         perplexity_improvement = (
             (results["standard"]["perplexity"] - results["neuromanifold"]["perplexity"])
-            / results["standard"]["perplexity"] * 100
+            / results["standard"]["perplexity"]
+            * 100
         )
         print(f"Standard perplexity:      {results['standard']['perplexity']:>10.2f}")
-        print(f"NeuroManifold perplexity: {results['neuromanifold']['perplexity']:>10.2f}")
+        print(
+            f"NeuroManifold perplexity: {results['neuromanifold']['perplexity']:>10.2f}"
+        )
         print(f"Improvement:              {perplexity_improvement:>9.1f}%")
         print()
 
@@ -537,43 +569,37 @@ def main():
         "--dataset",
         type=str,
         default="openwebtext",
-        help="Dataset name (default: openwebtext)"
+        help="Dataset name (default: openwebtext)",
     )
     parser.add_argument(
         "--eval_iters",
         type=int,
         default=200,
-        help="Number of evaluation iterations (default: 200)"
+        help="Number of evaluation iterations (default: 200)",
     )
     parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=12,
-        help="Batch size (default: 12)"
+        "--batch_size", type=int, default=12, help="Batch size (default: 12)"
     )
     parser.add_argument(
-        "--block_size",
-        type=int,
-        default=1024,
-        help="Sequence length (default: 1024)"
+        "--block_size", type=int, default=1024, help="Sequence length (default: 1024)"
     )
     parser.add_argument(
         "--device",
         type=str,
         default="cuda" if torch.cuda.is_available() else "cpu",
-        help="Device to run on (default: cuda if available)"
+        help="Device to run on (default: cuda if available)",
     )
     parser.add_argument(
         "--dtype",
         type=str,
-        default="bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16",
+        default="bfloat16"
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else "float16",
         choices=["float32", "bfloat16", "float16"],
-        help="Data type (default: bfloat16 if supported)"
+        help="Data type (default: bfloat16 if supported)",
     )
     parser.add_argument(
-        "--quick-test",
-        action="store_true",
-        help="Quick test mode (reduced iterations)"
+        "--quick-test", action="store_true", help="Quick test mode (reduced iterations)"
     )
 
     args = parser.parse_args()
@@ -585,18 +611,18 @@ def main():
         args.block_size = 256
 
     # Run perplexity benchmark
-    results = benchmark_quality(
+    benchmark_quality(
         dataset=args.dataset,
         eval_iters=args.eval_iters,
         batch_size=args.batch_size,
         block_size=args.block_size,
         device=args.device,
         dtype=args.dtype,
-        verbose=True
+        verbose=True,
     )
 
     # Run sample quality benchmark
-    sample_results = benchmark_sample_quality(
+    benchmark_sample_quality(
         dataset=args.dataset,
         num_samples=5 if args.quick_test else 10,
         max_new_tokens=50 if args.quick_test else 100,
@@ -604,7 +630,7 @@ def main():
         top_k=200,
         device=args.device,
         dtype=args.dtype,
-        verbose=True
+        verbose=True,
     )
 
     return 0

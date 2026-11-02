@@ -171,21 +171,43 @@ class TestCLIOverrides:
 class TestPresetLoading:
     """Test loading configuration from preset modules."""
 
-    def test_load_nano_preset(self):
-        """Test loading the nano preset configuration.
+    def test_load_nano_preset_directly(self):
+        """Test loading the nano preset configuration directly."""
+        # Load the preset module directly to avoid full package dependencies
+        if 'neuromanifold_gpt.config.presets.nano' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.presets.nano',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'presets' / 'nano.py'
+            )
 
-        Note: Skipped in this test environment due to package structure limitations.
-        Preset loading is tested in integration tests with full package.
-        """
-        pytest.skip("Preset loading requires full package structure - tested in integration")
+        preset = sys.modules['neuromanifold_gpt.config.presets.nano']
+        config = preset.get_nano_config()
 
-    def test_preset_with_overrides(self):
-        """Test loading preset and overriding specific values.
+        # Verify nano preset values
+        assert config.block_size == 256
+        assert config.n_layer == 4
+        assert config.n_heads == 4
+        assert config.n_embd == 128
+        assert config.manifold_dim == 32
 
-        Note: Skipped in this test environment due to package structure limitations.
-        Preset loading is tested in integration tests with full package.
-        """
-        pytest.skip("Preset loading requires full package structure - tested in integration")
+    def test_preset_function_returns_correct_type(self):
+        """Test that preset functions return the correct config type."""
+        if 'neuromanifold_gpt.config.base' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.base',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'base.py'
+            )
+        if 'neuromanifold_gpt.config.presets.nano' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.presets.nano',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'presets' / 'nano.py'
+            )
+
+        preset = sys.modules['neuromanifold_gpt.config.presets.nano']
+        base = sys.modules['neuromanifold_gpt.config.base']
+
+        config = preset.get_nano_config()
+        assert isinstance(config, base.NeuroManifoldConfig)
 
 
 class TestErrorHandling:
@@ -370,12 +392,138 @@ class TestMultipleConfigClasses:
         assert hasattr(bench_config, 'burnin_steps')
 
 
+class TestCompatibilityLayer:
+    """Test the backward compatibility shim (compat.py)."""
+
+    def test_apply_config_overrides_basic(self):
+        """Test basic config override functionality from compat layer."""
+        # Load compat module
+        if 'neuromanifold_gpt.config.compat' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.compat',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'compat.py'
+            )
+
+        compat = sys.modules['neuromanifold_gpt.config.compat']
+
+        # Create a config dict
+        config_dict = {
+            'batch_size': 16,
+            'learning_rate': 1e-3,
+            'n_layer': 6
+        }
+
+        # Apply overrides
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = compat.apply_config_overrides(
+                config_dict,
+                ['--batch_size=32', '--learning_rate=0.001'],
+                show_deprecation_warning=True
+            )
+
+            # Check that deprecation warning was issued
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+        # Check overrides were applied
+        assert result['batch_size'] == 32
+        assert result['learning_rate'] == 0.001
+        assert result['n_layer'] == 6  # Unchanged
+
+    def test_apply_config_overrides_type_validation(self):
+        """Test that compat layer validates types correctly."""
+        if 'neuromanifold_gpt.config.compat' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.compat',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'compat.py'
+            )
+
+        compat = sys.modules['neuromanifold_gpt.config.compat']
+
+        config_dict = {'batch_size': 16, 'learning_rate': 1e-3}
+
+        # Type mismatch should raise ValidationError
+        with pytest.raises(errors.ValidationError) as exc_info:
+            compat.apply_config_overrides(
+                config_dict,
+                ['--batch_size=not_a_number'],
+                show_deprecation_warning=False
+            )
+        assert "type mismatch" in str(exc_info.value).lower()
+
+    def test_apply_config_overrides_unknown_key(self):
+        """Test that compat layer rejects unknown config keys."""
+        if 'neuromanifold_gpt.config.compat' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.compat',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'compat.py'
+            )
+
+        compat = sys.modules['neuromanifold_gpt.config.compat']
+
+        config_dict = {'batch_size': 16}
+
+        # Unknown key should raise ValidationError
+        with pytest.raises(errors.ValidationError) as exc_info:
+            compat.apply_config_overrides(
+                config_dict,
+                ['--unknown_key=123'],
+                show_deprecation_warning=False
+            )
+        assert "unknown config key" in str(exc_info.value).lower()
+
+    def test_apply_config_overrides_invalid_format(self):
+        """Test that compat layer rejects invalid override formats."""
+        if 'neuromanifold_gpt.config.compat' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.compat',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'compat.py'
+            )
+
+        compat = sys.modules['neuromanifold_gpt.config.compat']
+
+        config_dict = {'batch_size': 16}
+
+        # Missing '=' should raise ValidationError
+        with pytest.raises(errors.ValidationError) as exc_info:
+            compat.apply_config_overrides(
+                config_dict,
+                ['--invalid_format'],
+                show_deprecation_warning=False
+            )
+        assert "format" in str(exc_info.value).lower()
+
+    def test_apply_config_overrides_numeric_coercion(self):
+        """Test that compat layer allows int to float coercion."""
+        if 'neuromanifold_gpt.config.compat' not in sys.modules:
+            _load_module_direct(
+                'neuromanifold_gpt.config.compat',
+                _project_root / 'neuromanifold_gpt' / 'config' / 'compat.py'
+            )
+
+        compat = sys.modules['neuromanifold_gpt.config.compat']
+
+        config_dict = {'learning_rate': 1e-3}
+
+        # Int should be coerced to float for float fields
+        result = compat.apply_config_overrides(
+            config_dict,
+            ['--learning_rate=1'],
+            show_deprecation_warning=False
+        )
+        assert result['learning_rate'] == 1.0
+        assert isinstance(result['learning_rate'], float)
+
+
 class TestBackwardCompatibility:
     """Test backward compatibility with old config system."""
 
     def test_config_accessible_via_dot_notation(self):
         """Test that config values are accessible via dot notation."""
-        
+
         config = loader.load_config(training.TrainingConfig, [], show_help=False)
 
         # All values should be accessible via dot notation
@@ -389,7 +537,7 @@ class TestBackwardCompatibility:
 
     def test_config_values_match_defaults(self):
         """Test that default config values match expected defaults."""
-        
+
         config = loader.load_config(training.TrainingConfig, [], show_help=False)
 
         # Training defaults
@@ -405,6 +553,43 @@ class TestBackwardCompatibility:
         # Optimization defaults
         assert config.learning_rate == 1e-3
         assert config.weight_decay == 0.1
+
+    def test_cli_override_compatibility_with_equals_format(self):
+        """Test that CLI overrides work with --key=value format."""
+        config = loader.load_config(
+            training.TrainingConfig,
+            ['--batch_size=32', '--learning_rate=0.001'],
+            show_help=False
+        )
+        assert config.batch_size == 32
+        assert config.learning_rate == 0.001
+
+    def test_error_messages_are_helpful(self):
+        """Test that error messages provide helpful guidance."""
+        # Unknown key error should suggest available keys
+        with pytest.raises(errors.ValidationError) as exc_info:
+            loader.load_config(
+                training.TrainingConfig,
+                ['--invalid_key=123'],
+                show_help=False
+            )
+        error_msg = str(exc_info.value)
+        assert "unknown" in error_msg.lower() or "not found" in error_msg.lower()
+
+    def test_multiple_config_types_support(self):
+        """Test that all config types from training module are supported."""
+        # This ensures backward compatibility with all existing config classes
+        configs = [
+            (training.TrainingConfig, 'batch_size', 64),
+            (training.SamplingConfig, 'num_samples', 10),
+            (training.EvalConfig, 'benchmark', 'lambada'),
+            (training.BenchConfig, 'batch_size', 12),
+        ]
+
+        for config_class, field_name, expected_value in configs:
+            config = loader.load_config(config_class, [], show_help=False)
+            assert hasattr(config, field_name)
+            assert getattr(config, field_name) == expected_value
 
 
 # Note: Run with: pytest neuromanifold_gpt/tests/test_config_loader.py -v

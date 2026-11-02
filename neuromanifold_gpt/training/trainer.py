@@ -10,25 +10,24 @@ This module provides the train() entry point that coordinates:
 """
 
 import os
-from typing import Optional
 
-import torch
 import pytorch_lightning as pl
+import torch
+from loguru import logger
 from pytorch_lightning.callbacks import (
-    ModelCheckpoint,
     EarlyStopping,
     LearningRateMonitor,
+    ModelCheckpoint,
 )
 from pytorch_lightning.loggers import WandbLogger
-from loguru import logger
 
+from model import GPTConfig
 from neuromanifold_gpt.config.base import NeuroManifoldConfig
+from neuromanifold_gpt.training.callbacks import MFUCallback, SampleGenerationCallback
+from neuromanifold_gpt.training.checkpoint_callback import SeparatedCheckpointCallback
 from neuromanifold_gpt.training.config import TrainConfig
 from neuromanifold_gpt.training.data_modules import StreamingDataModule, TextDataModule
 from neuromanifold_gpt.training.lightning_module import NeuroManifoldLitModule
-from neuromanifold_gpt.training.callbacks import SampleGenerationCallback, MFUCallback
-from neuromanifold_gpt.training.checkpoint_callback import SeparatedCheckpointCallback
-from model import GPTConfig, GPT
 
 
 def train(config: TrainConfig) -> None:
@@ -167,7 +166,9 @@ def train(config: TrainConfig) -> None:
                 filename_prefix="checkpoint",
             )
         )
-        logger.info(f"Enabled separated checkpoint saving (model_only={config.save_model_only})")
+        logger.info(
+            f"Enabled separated checkpoint saving (model_only={config.save_model_only})"
+        )
 
     if config.early_stopping_patience > 0:
         callbacks.append(

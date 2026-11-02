@@ -206,6 +206,33 @@ class GPT(nn.Module):
             n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
+    def get_param_breakdown(self):
+        """
+        Return a breakdown of parameters by component.
+        Returns a dictionary with parameter counts for each major component.
+        """
+        breakdown = {}
+
+        # Token embeddings
+        breakdown['token_embeddings'] = sum(p.numel() for p in self.transformer.wte.parameters())
+
+        # Position embeddings (if present)
+        if self.transformer.wpe is not None:
+            breakdown['position_embeddings'] = sum(p.numel() for p in self.transformer.wpe.parameters())
+        else:
+            breakdown['position_embeddings'] = 0
+
+        # Transformer blocks (all layers combined)
+        breakdown['transformer_blocks'] = sum(p.numel() for p in self.transformer.h.parameters())
+
+        # Final layer norm
+        breakdown['final_layer_norm'] = sum(p.numel() for p in self.transformer.ln_f.parameters())
+
+        # Language model head (note: shares weights with token embeddings)
+        breakdown['lm_head'] = sum(p.numel() for p in self.lm_head.parameters())
+
+        return breakdown
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)

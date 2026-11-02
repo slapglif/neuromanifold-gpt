@@ -2,7 +2,11 @@
 """Tests for SpectralDecomposition module."""
 import pytest
 import torch
-from neuromanifold_gpt.model.spectral import SpectralDecomposition, FastSpectralAttention
+
+from neuromanifold_gpt.model.spectral import (
+    FastSpectralAttention,
+    SpectralDecomposition,
+)
 
 
 def test_spectral_output_shapes():
@@ -41,7 +45,9 @@ def test_spectral_frequencies_positive():
 
 def test_ortho_regularization():
     """Orthogonality loss should encourage orthonormal basis."""
-    spectral = SpectralDecomposition(manifold_dim=64, n_eigenvectors=16, ortho_weight=0.01)
+    spectral = SpectralDecomposition(
+        manifold_dim=64, n_eigenvectors=16, ortho_weight=0.01
+    )
     coords = torch.randn(1, 20, 64)
 
     basis, _, ortho_loss = spectral(coords)

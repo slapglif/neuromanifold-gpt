@@ -18,16 +18,14 @@ Example:
     torch.Size([2, 10, 8])
 """
 
+from typing import Union
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import Union
 
 
 def ema_fft(
-    x: torch.Tensor,
-    alpha: Union[float, torch.Tensor],
-    eps: float = 1e-6
+    x: torch.Tensor, alpha: Union[float, torch.Tensor], eps: float = 1e-6
 ) -> torch.Tensor:
     """
     FFT-based parallel EMA computation.
@@ -92,10 +90,10 @@ def ema_fft(
         # alpha: (D,) or (H, D) -> powers: (T,) -> need to broadcast
         # kernel: (T, ...) matching trailing dims of alpha
         powers_expanded = powers.view(-1, *([1] * (alpha.ndim)))  # (T, 1, 1, ...)
-        kernel = alpha * (decay ** powers_expanded)  # Broadcasting
+        kernel = alpha * (decay**powers_expanded)  # Broadcasting
     else:
         # Scalar alpha
-        kernel = alpha * (decay ** powers)  # (T,)
+        kernel = alpha * (decay**powers)  # (T,)
 
     # Step 2: Pad to 2T for linear (non-circular) convolution
     n_fft = 2 * T
@@ -175,27 +173,23 @@ class DampedEMA(nn.Module):
         >>> # ema.alpha_logit is a trainable parameter
     """
 
-    def __init__(
-        self,
-        alpha: Union[float, str, torch.Tensor] = 0.9,
-        eps: float = 1e-6
-    ):
+    def __init__(self, alpha: Union[float, str, torch.Tensor] = 0.9, eps: float = 1e-6):
         super().__init__()
         self.eps = eps
 
-        if isinstance(alpha, str) and alpha == 'learnable':
+        if isinstance(alpha, str) and alpha == "learnable":
             # Learnable parameter (logit space for stability)
             # sigmoid(2.197) ≈ 0.9
             self.alpha_logit = nn.Parameter(torch.tensor(2.197))
-            self.alpha_mode = 'learnable'
+            self.alpha_mode = "learnable"
         elif isinstance(alpha, float):
             # Fixed scalar
-            self.register_buffer('alpha', torch.tensor(alpha))
-            self.alpha_mode = 'fixed'
+            self.register_buffer("alpha", torch.tensor(alpha))
+            self.alpha_mode = "fixed"
         elif isinstance(alpha, torch.Tensor):
             # Fixed per-channel
-            self.register_buffer('alpha', alpha)
-            self.alpha_mode = 'per_channel'
+            self.register_buffer("alpha", alpha)
+            self.alpha_mode = "per_channel"
         else:
             raise ValueError(
                 f"alpha must be float, 'learnable', or Tensor, got {type(alpha)}"
@@ -208,7 +202,7 @@ class DampedEMA(nn.Module):
         Returns:
             alpha: Smoothing factor (applies sigmoid if learnable)
         """
-        if self.alpha_mode == 'learnable':
+        if self.alpha_mode == "learnable":
             return torch.sigmoid(self.alpha_logit).clamp(self.eps, 1 - self.eps)
         else:
             return self.alpha
@@ -228,11 +222,11 @@ class DampedEMA(nn.Module):
 
     def extra_repr(self) -> str:
         """String representation for print(module)."""
-        if self.alpha_mode == 'learnable':
+        if self.alpha_mode == "learnable":
             alpha_val = self.get_alpha().item()
-            return f'alpha=learnable (current={alpha_val:.4f}), eps={self.eps}'
+            return f"alpha=learnable (current={alpha_val:.4f}), eps={self.eps}"
         else:
-            return f'alpha={self.get_alpha().item():.4f}, eps={self.eps}'
+            return f"alpha={self.get_alpha().item():.4f}, eps={self.eps}"
 
 
 class MultiHeadDampedEMA(nn.Module):
@@ -292,7 +286,7 @@ class MultiHeadDampedEMA(nn.Module):
         num_heads: int,
         head_dim: int,
         alpha: Union[float, str, torch.Tensor] = 0.9,
-        eps: float = 1e-6
+        eps: float = 1e-6,
     ):
         super().__init__()
         self.num_heads = num_heads
@@ -300,15 +294,15 @@ class MultiHeadDampedEMA(nn.Module):
         self.dim = num_heads * head_dim
         self.eps = eps
 
-        if isinstance(alpha, str) and alpha == 'learnable':
+        if isinstance(alpha, str) and alpha == "learnable":
             # Learnable parameter (logit space for stability)
             # sigmoid(2.197) ≈ 0.9
             self.alpha_logit = nn.Parameter(torch.tensor(2.197))
-            self.alpha_mode = 'learnable'
+            self.alpha_mode = "learnable"
         elif isinstance(alpha, float):
             # Fixed scalar
-            self.register_buffer('alpha', torch.tensor(alpha))
-            self.alpha_mode = 'fixed'
+            self.register_buffer("alpha", torch.tensor(alpha))
+            self.alpha_mode = "fixed"
         elif isinstance(alpha, torch.Tensor):
             # Fixed per-head or per-channel
             # Validate shape
@@ -320,8 +314,8 @@ class MultiHeadDampedEMA(nn.Module):
                     f"alpha tensor must have shape ({num_heads},) or "
                     f"({num_heads}, {head_dim}), got {alpha.shape}"
                 )
-            self.register_buffer('alpha', alpha)
-            self.alpha_mode = 'per_head'
+            self.register_buffer("alpha", alpha)
+            self.alpha_mode = "per_head"
         else:
             raise ValueError(
                 f"alpha must be float, 'learnable', or Tensor, got {type(alpha)}"
@@ -334,7 +328,7 @@ class MultiHeadDampedEMA(nn.Module):
         Returns:
             alpha: Smoothing factor (applies sigmoid if learnable)
         """
-        if self.alpha_mode == 'learnable':
+        if self.alpha_mode == "learnable":
             return torch.sigmoid(self.alpha_logit).clamp(self.eps, 1 - self.eps)
         else:
             return self.alpha
@@ -376,19 +370,19 @@ class MultiHeadDampedEMA(nn.Module):
 
     def extra_repr(self) -> str:
         """String representation for print(module)."""
-        if self.alpha_mode == 'learnable':
+        if self.alpha_mode == "learnable":
             alpha_val = self.get_alpha().item()
-            alpha_str = f'learnable (current={alpha_val:.4f})'
+            alpha_str = f"learnable (current={alpha_val:.4f})"
         else:
             alpha_val = self.get_alpha()
             if alpha_val.numel() == 1:
-                alpha_str = f'{alpha_val.item():.4f}'
+                alpha_str = f"{alpha_val.item():.4f}"
             else:
-                alpha_str = f'per_head (shape={tuple(alpha_val.shape)})'
+                alpha_str = f"per_head (shape={tuple(alpha_val.shape)})"
 
         return (
-            f'num_heads={self.num_heads}, head_dim={self.head_dim}, '
-            f'alpha={alpha_str}, eps={self.eps}'
+            f"num_heads={self.num_heads}, head_dim={self.head_dim}, "
+            f"alpha={alpha_str}, eps={self.eps}"
         )
 
 
@@ -435,12 +429,7 @@ class CEMA(nn.Module):
         exponential kernel only looks backward in time (τ ≥ 0).
     """
 
-    def __init__(
-        self,
-        dim: int,
-        alpha: Union[float, str] = 0.9,
-        eps: float = 1e-6
-    ):
+    def __init__(self, dim: int, alpha: Union[float, str] = 0.9, eps: float = 1e-6):
         super().__init__()
         self.dim = dim
         self.eps = eps
@@ -476,4 +465,4 @@ class CEMA(nn.Module):
 
     def extra_repr(self) -> str:
         """String representation for print(module)."""
-        return f'dim={self.dim}, alpha={self.ema.extra_repr()}'
+        return f"dim={self.dim}, alpha={self.ema.extra_repr()}"

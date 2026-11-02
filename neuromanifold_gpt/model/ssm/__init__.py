@@ -40,9 +40,16 @@ Usage:
 """
 
 from neuromanifold_gpt.model.ssm.base import SSMBase, SSMConfig
-from neuromanifold_gpt.model.ssm.hippo import HiPPO, DiagonalHiPPO
-from neuromanifold_gpt.model.ssm.selective_scan import SelectiveScan, ParallelSelectiveScan
-from neuromanifold_gpt.model.ssm.mamba import MambaBlock, MambaResidualBlock, BidirectionalMamba
+from neuromanifold_gpt.model.ssm.hippo import DiagonalHiPPO, HiPPO
+from neuromanifold_gpt.model.ssm.mamba import (
+    BidirectionalMamba,
+    MambaBlock,
+    MambaResidualBlock,
+)
+from neuromanifold_gpt.model.ssm.selective_scan import (
+    ParallelSelectiveScan,
+    SelectiveScan,
+)
 
 __all__ = [
     "SSMBase",

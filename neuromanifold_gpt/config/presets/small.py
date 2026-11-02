@@ -1,25 +1,35 @@
-# Small preset - similar to GPT-2 small (124M)
-# Good for single-GPU training on consumer hardware
+"""Small preset - similar to GPT-2 small (124M parameters).
 
-use_nano_config = False
-n_layer = 12
-n_head = 12
-n_embd = 768
-sdr_size = 2048
-manifold_dim = 128
-n_eigenvectors = 64
+This preset provides a configuration suitable for:
+- Single-GPU training on consumer hardware
+- Production-quality models with reasonable compute
+- Scaling up from nano/debug to serious training
 
-batch_size = 12
-block_size = 1024
-gradient_accumulation_steps = 40  # ~480 effective batch size
+The configuration uses approximately 124M parameters, similar to GPT-2 small,
+making it trainable on a single GPU with gradient accumulation.
+"""
 
-max_iters = 600000
-eval_interval = 2000
-warmup_iters = 2000
-lr_decay_iters = 600000
+from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-learning_rate = 6e-4
-min_lr = 6e-5
 
-out_dir = "out-neuromanifold-small"
-wandb_run_name = "neuromanifold-small"
+def get_small_config() -> NeuroManifoldConfig:
+    """Get the small configuration (GPT-2 small scale).
+
+    Returns:
+        NeuroManifoldConfig: Configuration with small preset values.
+    """
+    return NeuroManifoldConfig(
+        # GPT-2 small scale
+        n_layer=12,
+        n_heads=12,
+        n_embd=768,
+        block_size=1024,
+
+        # SDR and manifold settings
+        sdr_size=2048,
+        manifold_dim=128,
+        n_eigenvectors=64,
+
+        # Training configuration
+        learning_rate=6e-4,
+    )

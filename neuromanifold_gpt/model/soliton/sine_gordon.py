@@ -126,6 +126,7 @@ class SineGordonSolver(PDESolver):
         clamp_max: float = 10.0,
         dropout: float = 0.0,
         damping: float = 0.0,
+        causal: bool = False,
     ):
         """
         Initialize Sine-Gordon solver.
@@ -142,6 +143,7 @@ class SineGordonSolver(PDESolver):
             clamp_max: Maximum value for clamping (numerical stability)
             dropout: Dropout probability for regularization
             damping: Optional damping coefficient (adds -gamma*phi_t term)
+            causal: Force causal derivatives (backward differences only)
         """
         super().__init__(
             dim=dim,
@@ -152,13 +154,14 @@ class SineGordonSolver(PDESolver):
             clamp_min=clamp_min,
             clamp_max=clamp_max,
             dropout=dropout,
+            causal=causal,
         )
 
         self.use_rk4 = use_rk4
         self.damping = damping
 
         # Learnable wave speed squared (c^2)
-        self.c_squared = nn.Parameter(torch.tensor(wave_speed ** 2))
+        self.c_squared = nn.Parameter(torch.tensor(wave_speed**2))
 
         # Optional: learnable nonlinearity strength
         # Standard Sine-Gordon has sin(phi), but we can learn a scaling
@@ -278,9 +281,7 @@ class SineGordonSolver(PDESolver):
                 u_xx = self.spatial_derivative(u, order=2)
 
                 # Use JIT-compiled RK4 step
-                u, u_t = sine_gordon_rk4_step(
-                    u, u_t, dt, self.c_squared, u_xx
-                )
+                u, u_t = sine_gordon_rk4_step(u, u_t, dt, self.c_squared, u_xx)
 
                 # Apply damping manually after RK4 if needed
                 if self.damping > 0:
@@ -304,18 +305,17 @@ class SineGordonSolver(PDESolver):
         charge = self.compute_topological_charge(u)
 
         info = {
-            'energy': energy_final.mean().item(),
-            'energy_initial': energy_initial.mean().item(),
-            'energy_conservation': (
-                (energy_final - energy_initial).abs() /
-                (energy_initial.abs() + 1e-8)
-            ).mean().item(),
-            'topological_charge': charge.mean().item(),
-            'u_t': u_t,  # Return velocity for chaining
+            "energy": energy_final.mean(),
+            "energy_initial": energy_initial.mean(),
+            "energy_conservation": (
+                (energy_final - energy_initial).abs() / (energy_initial.abs() + 1e-8)
+            ).mean(),
+            "topological_charge": charge.mean(),
+            "u_t": u_t,  # Return velocity for chaining
         }
 
         if return_trajectory:
-            info['trajectory'] = torch.stack(trajectory, dim=0)
+            info["trajectory"] = torch.stack(trajectory, dim=0)
 
         return u, info
 
@@ -370,7 +370,7 @@ class SineGordonSolver(PDESolver):
         # Time derivative: phi_t = -4*gamma*v*sech(gamma(x-vt))*c / sqrt(1+(...)^2)
         # At t=0, simplify using chain rule
         exp_term = torch.exp(scale * x)
-        sech_sq = 4 * exp_term / (1 + exp_term**2)**2
+        sech_sq = 4 * exp_term / (1 + exp_term**2) ** 2
         phi_t = -v * c * scale * sech_sq
 
         # Expand to full shape

@@ -62,31 +62,30 @@ Usage:
 """
 
 # Spectral convolution layers (core FNO operation)
-from neuromanifold_gpt.model.fno.spectral_conv import (
-    SpectralConv,
-    SpectralConv1d,
-    SpectralConv2d,
-    SpectralConvNd,
-    SpectralConvConfig,
-)
-
 # FNO blocks and encoder
 from neuromanifold_gpt.model.fno.fourier_operator import (
     FNOBlock,
-    FNOEncoder,
     FNOConfig,
+    FNOEncoder,
     FNOWithMLP,
 )
 
 # Multimodal encoder with FNO
 from neuromanifold_gpt.model.fno.multimodal_encoder import (
-    MultimodalFNOEncoder,
-    MultimodalConfig,
-    MultimodalFusionEncoder,
-    ByteEmbedding,
     AudioEncoder,
+    ByteEmbedding,
     ImagePatchEncoder,
+    MultimodalConfig,
+    MultimodalFNOEncoder,
+    MultimodalFusionEncoder,
     sinusoidal_position_encoding,
+)
+from neuromanifold_gpt.model.fno.spectral_conv import (
+    SpectralConv,
+    SpectralConv1d,
+    SpectralConv2d,
+    SpectralConvConfig,
+    SpectralConvNd,
 )
 
 __all__ = [

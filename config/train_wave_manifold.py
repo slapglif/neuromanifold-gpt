@@ -8,7 +8,7 @@ log_interval = 10
 dataset = "shakespeare_char"
 batch_size = 16
 block_size = 256
-vocab_size = 256  # Byte-level / Character level
+vocab_size = 0  # Auto-detect from meta.pkl (65 for Shakespeare)
 
 # Model
 model_type = "wave_manifold"
@@ -24,8 +24,8 @@ use_mamba_backbone = True
 mamba_state_dim = 16
 use_soliton_mixing = True
 soliton_type = "sine_gordon"
-use_topological_loss = False
-use_continuous_head = False
+use_topological_loss = True
+use_continuous_head = False # Keep simple first
 
 # Optimization
 learning_rate = 1e-3

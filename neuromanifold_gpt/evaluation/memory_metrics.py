@@ -12,7 +12,7 @@ effectively and whether capacity limits are being approached.
 Reference: neuromanifold_gpt/model/memory/engram.py (SDREngramMemory)
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class MemoryMetrics:
@@ -42,37 +42,37 @@ class MemoryMetrics:
         metrics = {}
 
         # Extract memory size
-        memory_size = memory_stats.get('memory_size', 0)
+        memory_size = memory_stats.get("memory_size", 0)
         # Handle tensor inputs
-        if hasattr(memory_size, 'item'):
+        if hasattr(memory_size, "item"):
             memory_size = memory_size.item()
-        metrics['memory_size'] = float(memory_size)
+        metrics["memory_size"] = float(memory_size)
 
         # Extract capacity if available
-        capacity = memory_stats.get('capacity')
+        capacity = memory_stats.get("capacity")
         if capacity is not None:
-            if hasattr(capacity, 'item'):
+            if hasattr(capacity, "item"):
                 capacity = capacity.item()
-            metrics['memory_capacity'] = float(capacity)
+            metrics["memory_capacity"] = float(capacity)
 
             # Compute utilization
             if capacity > 0:
-                metrics['memory_utilization'] = float(memory_size) / float(capacity)
+                metrics["memory_utilization"] = float(memory_size) / float(capacity)
             else:
-                metrics['memory_utilization'] = 0.0
+                metrics["memory_utilization"] = 0.0
 
         # Extract dimensions if available
-        sdr_size = memory_stats.get('sdr_size')
+        sdr_size = memory_stats.get("sdr_size")
         if sdr_size is not None:
-            if hasattr(sdr_size, 'item'):
+            if hasattr(sdr_size, "item"):
                 sdr_size = sdr_size.item()
-            metrics['sdr_size'] = float(sdr_size)
+            metrics["sdr_size"] = float(sdr_size)
 
-        content_dim = memory_stats.get('content_dim')
+        content_dim = memory_stats.get("content_dim")
         if content_dim is not None:
-            if hasattr(content_dim, 'item'):
+            if hasattr(content_dim, "item"):
                 content_dim = content_dim.item()
-            metrics['content_dim'] = float(content_dim)
+            metrics["content_dim"] = float(content_dim)
 
         return metrics
 
@@ -102,10 +102,10 @@ class MemoryMetrics:
         layer_counts = []
 
         # Extract layer counts
-        for layer_key in ['l1_count', 'l2_count', 'l3_count', 'l4_count']:
+        for layer_key in ["l1_count", "l2_count", "l3_count", "l4_count"]:
             count = memory_stats.get(layer_key)
             if count is not None:
-                if hasattr(count, 'item'):
+                if hasattr(count, "item"):
                     count = count.item()
                 metrics[layer_key] = float(count)
                 layer_counts.append(float(count))
@@ -113,18 +113,18 @@ class MemoryMetrics:
         # Compute total and fractions
         if layer_counts:
             total = sum(layer_counts)
-            metrics['total_layered_memories'] = total
+            metrics["total_layered_memories"] = total
 
             if total > 0:
                 # Compute fractions for each layer present
-                if 'l1_count' in metrics:
-                    metrics['l1_fraction'] = metrics['l1_count'] / total
-                if 'l2_count' in metrics:
-                    metrics['l2_fraction'] = metrics['l2_count'] / total
-                if 'l3_count' in metrics:
-                    metrics['l3_fraction'] = metrics['l3_count'] / total
-                if 'l4_count' in metrics:
-                    metrics['l4_fraction'] = metrics['l4_count'] / total
+                if "l1_count" in metrics:
+                    metrics["l1_fraction"] = metrics["l1_count"] / total
+                if "l2_count" in metrics:
+                    metrics["l2_fraction"] = metrics["l2_count"] / total
+                if "l3_count" in metrics:
+                    metrics["l3_fraction"] = metrics["l3_count"] / total
+                if "l4_count" in metrics:
+                    metrics["l4_fraction"] = metrics["l4_count"] / total
 
         return metrics
 
@@ -148,10 +148,15 @@ class MemoryMetrics:
         """
         metrics = {}
 
-        for key in ['num_retrievals', 'avg_similarity', 'retrieval_hit_rate', 'avg_retrieved']:
+        for key in [
+            "num_retrievals",
+            "avg_similarity",
+            "retrieval_hit_rate",
+            "avg_retrieved",
+        ]:
             value = memory_stats.get(key)
             if value is not None:
-                if hasattr(value, 'item'):
+                if hasattr(value, "item"):
                     value = value.item()
                 metrics[key] = float(value)
 
@@ -187,8 +192,8 @@ class MemoryMetrics:
         metrics.update(capacity_metrics)
 
         # Add total_size as an alias for memory_size (required by verification)
-        if 'memory_size' in metrics:
-            metrics['total_size'] = metrics['memory_size']
+        if "memory_size" in metrics:
+            metrics["total_size"] = metrics["memory_size"]
 
         # Compute layer statistics
         layer_metrics = MemoryMetrics.compute_layer_statistics(memory_stats)

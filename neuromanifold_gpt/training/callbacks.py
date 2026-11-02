@@ -2,12 +2,12 @@
 PyTorch Lightning callbacks for training monitoring and sample generation.
 """
 
-from typing import Optional, Dict
+from typing import Dict, Optional
 
-import torch
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import Callback
+import torch
 from loguru import logger
+from pytorch_lightning.callbacks import Callback
 
 
 class SampleGenerationCallback(Callback):
@@ -97,7 +97,9 @@ class SampleGenerationCallback(Callback):
             )
 
             text = "".join([self.itos[i] for i in out_idx[0].tolist()])
-            logger.info(f"\n--- Sample (step {trainer.global_step}) ---\n{text}\n--- End Sample ---")
+            logger.info(
+                f"\n--- Sample (step {trainer.global_step}) ---\n{text}\n--- End Sample ---"
+            )
 
             # Log to wandb if available
             if trainer.logger and hasattr(trainer.logger, "experiment"):

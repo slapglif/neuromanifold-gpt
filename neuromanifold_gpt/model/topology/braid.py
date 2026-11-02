@@ -90,7 +90,7 @@ class BraidGroup:
         self.n_generators = n_strands - 1  # Generators σ_1, ..., σ_{n-1}
         self.t_param = t_param
         self.use_reduced = use_reduced
-        self.device = device or torch.device('cpu')
+        self.device = device or torch.device("cpu")
         self.dtype = dtype
 
         # Matrix dimension for representation
@@ -119,7 +119,9 @@ class BraidGroup:
             Matrix representation of shape (rep_dim, rep_dim)
         """
         if i < 0 or i >= self.n_generators:
-            raise ValueError(f"Generator index {i} out of range [0, {self.n_generators})")
+            raise ValueError(
+                f"Generator index {i} out of range [0, {self.n_generators})"
+            )
 
         t = self.t_param
 
@@ -171,14 +173,18 @@ class BraidGroup:
             (n_generators, rep_dim, rep_dim)
         """
         if self._generators is None:
-            generators = torch.stack([
-                self.generator_matrix(i, inverse=False)
-                for i in range(self.n_generators)
-            ])
-            inverses = torch.stack([
-                self.generator_matrix(i, inverse=True)
-                for i in range(self.n_generators)
-            ])
+            generators = torch.stack(
+                [
+                    self.generator_matrix(i, inverse=False)
+                    for i in range(self.n_generators)
+                ]
+            )
+            inverses = torch.stack(
+                [
+                    self.generator_matrix(i, inverse=True)
+                    for i in range(self.n_generators)
+                ]
+            )
             self._generators = generators
             self._inverse_generators = inverses
 
@@ -220,6 +226,7 @@ class BraidGroup:
             List of (generator_index, power) tuples
         """
         import random
+
         word = []
         for _ in range(length):
             gen = random.randint(0, self.n_generators - 1)
@@ -364,7 +371,7 @@ class BraidEncoder(nn.Module):
 
         # Shape: (2 * n_generators, rep_dim, rep_dim)
         self.register_buffer(
-            'generators',
+            "generators",
             torch.stack(generators),
         )
 
@@ -397,7 +404,7 @@ class BraidEncoder(nn.Module):
             position_weights = self.attention(x)
             if mask is not None:
                 position_weights = position_weights.masked_fill(
-                    ~mask.unsqueeze(-1), float('-inf')
+                    ~mask.unsqueeze(-1), float("-inf")
                 )
             position_weights = F.softmax(position_weights, dim=1)
 
@@ -406,10 +413,10 @@ class BraidEncoder(nn.Module):
         else:
             # Simple mean over positions
             if mask is not None:
-                crossing_logits = crossing_logits.masked_fill(
-                    ~mask.unsqueeze(-1), 0.0
+                crossing_logits = crossing_logits.masked_fill(~mask.unsqueeze(-1), 0.0)
+                weighted_logits = crossing_logits.sum(dim=1) / mask.sum(
+                    dim=1, keepdim=True
                 )
-                weighted_logits = crossing_logits.sum(dim=1) / mask.sum(dim=1, keepdim=True)
             else:
                 weighted_logits = crossing_logits.mean(dim=1)
 
@@ -435,10 +442,10 @@ class BraidEncoder(nn.Module):
 
         if return_info:
             info = {
-                'generator_weights': generator_weights,
-                'crossing_logits': weighted_logits,
-                'position_weights': position_weights if self.use_attention else None,
-                'dominant_generator': generator_weights.argmax(dim=-1),
+                "generator_weights": generator_weights,
+                "crossing_logits": weighted_logits,
+                "position_weights": position_weights if self.use_attention else None,
+                "dominant_generator": generator_weights.argmax(dim=-1),
             }
             return representation, info
 
@@ -544,8 +551,12 @@ class BraidCrossing(nn.Module):
             crossing_weights = F.softmax(crossing_logits, dim=-1)
 
             # Apply crossing as weighted mixing
-            mixed = self.mix_proj(x[:, i]) * crossing_weights[:, :self.n_generators].mean(dim=-1, keepdim=True)
-            mixed += self.mix_proj(x[:, j]) * crossing_weights[:, self.n_generators:].mean(dim=-1, keepdim=True)
+            mixed = self.mix_proj(x[:, i]) * crossing_weights[
+                :, : self.n_generators
+            ].mean(dim=-1, keepdim=True)
+            mixed += self.mix_proj(x[:, j]) * crossing_weights[
+                :, self.n_generators :
+            ].mean(dim=-1, keepdim=True)
 
             out = x.clone()
             out[:, i] = self.layer_norm(x[:, i] + self.dropout(mixed))
@@ -607,7 +618,7 @@ class TemperleyLiebAlgebra:
             dtype: Data type for tensors
         """
         self.n = n
-        self.device = device or torch.device('cpu')
+        self.device = device or torch.device("cpu")
         self.dtype = dtype
 
         if delta is None:

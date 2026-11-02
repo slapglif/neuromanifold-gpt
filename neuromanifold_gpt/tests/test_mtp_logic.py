@@ -2,6 +2,7 @@
 """Tests for Multi-Token Prediction (MTP) logic."""
 import pytest
 import torch
+
 from neuromanifold_gpt.config import NeuroManifoldConfigNano
 from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
@@ -17,7 +18,7 @@ class TestMTPInitialization:
         model = NeuroManifoldGPT(config)
 
         assert model.use_mtp is False
-        assert not hasattr(model, 'mtp_projs')
+        assert not hasattr(model, "mtp_projs")
 
     def test_mtp_enabled_config_params(self):
         """MTP config parameters should be loaded correctly."""
@@ -41,7 +42,7 @@ class TestMTPInitialization:
         model = NeuroManifoldGPT(config)
 
         # Should create 3 heads (n_predict - 1, since main lm_head handles t+1)
-        assert hasattr(model, 'mtp_projs')
+        assert hasattr(model, "mtp_projs")
         assert len(model.mtp_projs) == 3
 
     def test_mtp_projection_architecture(self):
@@ -85,7 +86,7 @@ class TestMTPInitialization:
         model = NeuroManifoldGPT(config)
 
         # n_predict=1 means only main lm_head, no auxiliary heads
-        assert not hasattr(model, 'mtp_projs')
+        assert not hasattr(model, "mtp_projs")
 
     def test_mtp_disabled_no_heads(self):
         """Disabled MTP should not create projection heads."""
@@ -95,7 +96,7 @@ class TestMTPInitialization:
 
         model = NeuroManifoldGPT(config)
 
-        assert not hasattr(model, 'mtp_projs')
+        assert not hasattr(model, "mtp_projs")
 
     def test_mtp_with_fp32_lm_head(self):
         """MTP should work with FP32 lm_head enabled."""
@@ -138,8 +139,8 @@ class TestMTPLossComputation:
         assert loss.numel() == 1  # Scalar loss
 
         # MTP loss should be in info dict
-        assert 'mtp_loss' in info
-        assert info['mtp_loss'].numel() == 1
+        assert "mtp_loss" in info
+        assert info["mtp_loss"].numel() == 1
 
     def test_mtp_target_shifting_correctness(self):
         """MTP should shift targets correctly for each prediction depth."""
@@ -152,7 +153,7 @@ class TestMTPLossComputation:
 
         # Create a sequence where tokens are their position indices
         # This makes it easy to verify target shifting
-        batch_size, seq_len = 1, 8
+        _batch_size, seq_len = 1, 8
         # Tokens: [0, 1, 2, 3, 4, 5, 6, 7]
         idx = torch.arange(seq_len).unsqueeze(0)
         targets = torch.arange(seq_len).unsqueeze(0)
@@ -161,9 +162,9 @@ class TestMTPLossComputation:
         _, loss, info = model(idx, targets)
 
         # MTP should compute loss (even if the loss value is high due to untrained model)
-        assert info['mtp_loss'] > 0
-        assert not torch.isnan(info['mtp_loss'])
-        assert not torch.isinf(info['mtp_loss'])
+        assert info["mtp_loss"] > 0
+        assert not torch.isnan(info["mtp_loss"])
+        assert not torch.isinf(info["mtp_loss"])
 
     def test_mtp_loss_computed_for_each_depth(self):
         """MTP should compute loss for all prediction depths."""
@@ -181,11 +182,11 @@ class TestMTPLossComputation:
         _, loss, info = model(idx, targets)
 
         # MTP loss should be non-zero (averaged over 3 heads)
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
 
         # Total loss should include MTP component
         assert loss is not None
-        assert loss > info['ce_loss']  # Total should be larger than just CE
+        assert loss > info["ce_loss"]  # Total should be larger than just CE
 
     def test_mtp_loss_averaged_over_depths(self):
         """MTP loss should be averaged over prediction depths."""
@@ -204,8 +205,10 @@ class TestMTPLossComputation:
 
         # MTP loss is averaged (not summed), so it should be reasonable magnitude
         # Compare to CE loss as reference
-        assert info['mtp_loss'] > 0
-        assert info['mtp_loss'] < info['ce_loss'] * 5  # Sanity check: not absurdly large
+        assert info["mtp_loss"] > 0
+        assert (
+            info["mtp_loss"] < info["ce_loss"] * 5
+        )  # Sanity check: not absurdly large
 
     def test_mtp_loss_weighted_correctly(self):
         """MTP loss should be weighted by mtp_loss_weight in total loss."""
@@ -233,7 +236,7 @@ class TestMTPLossComputation:
 
         # Total loss should approximately equal CE + weighted MTP
         # (with small tolerance for numerical precision)
-        expected_loss = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+        expected_loss = info["ce_loss"] + config.mtp_loss_weight * info["mtp_loss"]
         assert torch.isclose(loss, expected_loss, rtol=1e-4, atol=1e-6)
 
     def test_mtp_loss_integrated_into_total_loss(self):
@@ -261,7 +264,7 @@ class TestMTPLossComputation:
         assert loss_with_mtp > loss_without_mtp
 
         # MTP loss should be zero when disabled
-        assert info_without_mtp['mtp_loss'] == 0.0
+        assert info_without_mtp["mtp_loss"] == 0.0
 
     def test_mtp_with_short_sequence(self):
         """MTP should handle sequences shorter than prediction depth gracefully."""
@@ -284,7 +287,7 @@ class TestMTPLossComputation:
         assert not torch.isnan(loss)
 
         # MTP loss might be zero or very small due to short sequence
-        assert not torch.isnan(info['mtp_loss'])
+        assert not torch.isnan(info["mtp_loss"])
 
     def test_mtp_disabled_zero_loss(self):
         """MTP loss should be zero when MTP is disabled."""
@@ -300,7 +303,7 @@ class TestMTPLossComputation:
         _, loss, info = model(idx, targets)
 
         # MTP loss should be exactly zero
-        assert info['mtp_loss'] == 0.0
+        assert info["mtp_loss"] == 0.0
 
     def test_mtp_loss_backpropagation(self):
         """MTP loss should allow gradient backpropagation."""
@@ -350,7 +353,7 @@ class TestMTPEdgeCases:
         assert not torch.isnan(loss)
         assert not torch.isinf(loss)
         # MTP loss might be zero or very small
-        assert not torch.isnan(info['mtp_loss'])
+        assert not torch.isnan(info["mtp_loss"])
 
     def test_mtp_sequence_shorter_than_n_predict(self):
         """MTP should handle sequences shorter than n_predict gracefully."""
@@ -370,8 +373,8 @@ class TestMTPEdgeCases:
 
         assert loss is not None
         assert not torch.isnan(loss)
-        assert 'mtp_loss' in info
-        assert not torch.isnan(info['mtp_loss'])
+        assert "mtp_loss" in info
+        assert not torch.isnan(info["mtp_loss"])
 
     def test_mtp_training_mode(self):
         """MTP should work correctly in training mode."""
@@ -390,9 +393,9 @@ class TestMTPEdgeCases:
 
         assert model.training is True
         assert loss is not None
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
         assert not torch.isnan(loss)
-        assert not torch.isnan(info['mtp_loss'])
+        assert not torch.isnan(info["mtp_loss"])
 
     def test_mtp_eval_mode(self):
         """MTP should work correctly in eval mode."""
@@ -411,7 +414,7 @@ class TestMTPEdgeCases:
 
         assert model.training is False
         assert loss is not None
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
         assert not torch.isnan(loss)
 
     def test_mtp_with_single_batch(self):
@@ -430,7 +433,7 @@ class TestMTPEdgeCases:
         _, loss, info = model(idx, targets)
 
         assert loss is not None
-        assert info['mtp_loss'] >= 0
+        assert info["mtp_loss"] >= 0
         assert not torch.isnan(loss)
 
     def test_mtp_with_large_batch(self):
@@ -449,7 +452,7 @@ class TestMTPEdgeCases:
         _, loss, info = model(idx, targets)
 
         assert loss is not None
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
         assert not torch.isnan(loss)
 
     def test_mtp_long_sequence(self):
@@ -468,7 +471,7 @@ class TestMTPEdgeCases:
         _, loss, info = model(idx, targets)
 
         assert loss is not None
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
         assert not torch.isnan(loss)
         assert not torch.isinf(loss)
 
@@ -488,7 +491,7 @@ class TestMTPEdgeCases:
         _, loss, info = model(idx, targets)
 
         # MTP loss should still be computed
-        assert 'mtp_loss' in info
+        assert "mtp_loss" in info
         # But shouldn't contribute to total loss
         assert not torch.isnan(loss)
 
@@ -508,11 +511,11 @@ class TestMTPEdgeCases:
         _, loss, info = model(idx, targets)
 
         assert loss is not None
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
         assert not torch.isnan(loss)
         assert not torch.isinf(loss)
         # Total loss should be dominated by MTP
-        assert loss > info['ce_loss']
+        assert loss > info["ce_loss"]
 
     def test_mtp_consistent_across_forward_passes(self):
         """MTP should produce consistent results for same input in eval mode."""
@@ -532,7 +535,7 @@ class TestMTPEdgeCases:
 
         # Results should be identical in eval mode
         assert torch.allclose(loss1, loss2)
-        assert torch.allclose(info1['mtp_loss'], info2['mtp_loss'])
+        assert torch.allclose(info1["mtp_loss"], info2["mtp_loss"])
 
     def test_mtp_gradients_flow_to_transformer(self):
         """MTP gradients should flow back to transformer blocks."""
@@ -579,7 +582,7 @@ class TestMTPEdgeCases:
 
         assert len(model.mtp_projs) == 15  # n_predict - 1
         assert loss is not None
-        assert info['mtp_loss'] > 0
+        assert info["mtp_loss"] > 0
         assert not torch.isnan(loss)
 
     def test_mtp_integration_with_other_losses(self):
@@ -602,12 +605,12 @@ class TestMTPEdgeCases:
         _, loss, info = model(idx, targets)
 
         # All loss components should be present
-        assert 'ce_loss' in info
-        assert 'mtp_loss' in info
+        assert "ce_loss" in info
+        assert "mtp_loss" in info
         assert loss is not None
         assert not torch.isnan(loss)
         # Total loss should be greater than any individual component
-        assert loss >= info['ce_loss']
+        assert loss >= info["ce_loss"]
 
     def test_mtp_mode_switching(self):
         """MTP should handle switching between train and eval modes."""
@@ -660,7 +663,7 @@ class TestMTPEdgeCases:
 
         # Results should be identical
         assert torch.allclose(loss1, loss2)
-        assert torch.allclose(info1['mtp_loss'], info2['mtp_loss'])
+        assert torch.allclose(info1["mtp_loss"], info2["mtp_loss"])
 
 
 class TestMTPIntegration:
@@ -681,10 +684,10 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # MTP loss should be present in info dict
-        assert 'mtp_loss' in info
-        assert isinstance(info['mtp_loss'], torch.Tensor)
-        assert info['mtp_loss'].numel() == 1  # Scalar tensor
-        assert info['mtp_loss'] >= 0  # Loss should be non-negative
+        assert "mtp_loss" in info
+        assert isinstance(info["mtp_loss"], torch.Tensor)
+        assert info["mtp_loss"].numel() == 1  # Scalar tensor
+        assert info["mtp_loss"] >= 0  # Loss should be non-negative
 
     def test_mtp_loss_not_in_info_when_disabled(self):
         """MTP loss should not appear in info dict when MTP is disabled."""
@@ -700,8 +703,8 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # MTP loss should not be in info dict or should be zero
-        if 'mtp_loss' in info:
-            assert info['mtp_loss'] == 0.0
+        if "mtp_loss" in info:
+            assert info["mtp_loss"] == 0.0
 
     def test_mtp_contribution_to_total_loss(self):
         """MTP loss contribution to total loss should be correctly weighted."""
@@ -719,10 +722,10 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # Total loss should equal ce_loss + mtp_loss_weight * mtp_loss
-        assert 'ce_loss' in info
-        assert 'mtp_loss' in info
+        assert "ce_loss" in info
+        assert "mtp_loss" in info
 
-        expected_loss = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+        expected_loss = info["ce_loss"] + config.mtp_loss_weight * info["mtp_loss"]
         assert torch.allclose(loss, expected_loss, rtol=1e-5, atol=1e-6)
 
     def test_info_dict_contains_ce_and_mtp_losses(self):
@@ -740,20 +743,20 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # Both losses should be present
-        assert 'ce_loss' in info
-        assert 'mtp_loss' in info
+        assert "ce_loss" in info
+        assert "mtp_loss" in info
 
         # Both should be valid tensors
-        assert isinstance(info['ce_loss'], torch.Tensor)
-        assert isinstance(info['mtp_loss'], torch.Tensor)
+        assert isinstance(info["ce_loss"], torch.Tensor)
+        assert isinstance(info["mtp_loss"], torch.Tensor)
 
         # Both should be scalar values
-        assert info['ce_loss'].numel() == 1
-        assert info['mtp_loss'].numel() == 1
+        assert info["ce_loss"].numel() == 1
+        assert info["mtp_loss"].numel() == 1
 
         # Both should be non-negative
-        assert info['ce_loss'] >= 0
-        assert info['mtp_loss'] >= 0
+        assert info["ce_loss"] >= 0
+        assert info["mtp_loss"] >= 0
 
     def test_mtp_loss_value_reasonableness(self):
         """MTP loss should be a reasonable value relative to CE loss."""
@@ -771,11 +774,11 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # MTP loss should be in a reasonable range
-        assert not torch.isnan(info['mtp_loss'])
-        assert not torch.isinf(info['mtp_loss'])
-        assert info['mtp_loss'] > 0  # Should have some loss
+        assert not torch.isnan(info["mtp_loss"])
+        assert not torch.isinf(info["mtp_loss"])
+        assert info["mtp_loss"] > 0  # Should have some loss
         # MTP loss shouldn't be absurdly larger than CE loss (sanity check)
-        assert info['mtp_loss'] < info['ce_loss'] * 10
+        assert info["mtp_loss"] < info["ce_loss"] * 10
 
     def test_mtp_with_zero_weight_in_info(self):
         """MTP loss should still be computed and in info dict even with zero weight."""
@@ -793,12 +796,12 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # MTP loss should still be computed and present
-        assert 'mtp_loss' in info
-        assert info['mtp_loss'] >= 0
-        assert not torch.isnan(info['mtp_loss'])
+        assert "mtp_loss" in info
+        assert info["mtp_loss"] >= 0
+        assert not torch.isnan(info["mtp_loss"])
 
         # Total loss should equal CE loss when MTP weight is zero
-        assert torch.allclose(loss, info['ce_loss'], rtol=1e-5, atol=1e-6)
+        assert torch.allclose(loss, info["ce_loss"], rtol=1e-5, atol=1e-6)
 
     def test_mtp_info_dict_different_n_predict(self):
         """Info dict should correctly report MTP loss for different n_predict values."""
@@ -819,13 +822,13 @@ class TestMTPIntegration:
             _, loss, info = model(idx, targets)
 
             # All should have mtp_loss in info dict
-            assert 'mtp_loss' in info
-            assert 'ce_loss' in info
-            assert info['mtp_loss'] >= 0
-            assert not torch.isnan(info['mtp_loss'])
+            assert "mtp_loss" in info
+            assert "ce_loss" in info
+            assert info["mtp_loss"] >= 0
+            assert not torch.isnan(info["mtp_loss"])
 
             # Total loss should be correct
-            expected_loss = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+            expected_loss = info["ce_loss"] + config.mtp_loss_weight * info["mtp_loss"]
             assert torch.allclose(loss, expected_loss, rtol=1e-5, atol=1e-6)
 
     def test_mtp_info_dict_with_other_losses(self):
@@ -848,16 +851,16 @@ class TestMTPIntegration:
         _, loss, info = model(idx, targets)
 
         # All loss components should be present
-        assert 'ce_loss' in info
-        assert 'mtp_loss' in info
+        assert "ce_loss" in info
+        assert "mtp_loss" in info
 
         # All should be valid
-        assert not torch.isnan(info['ce_loss'])
-        assert not torch.isnan(info['mtp_loss'])
+        assert not torch.isnan(info["ce_loss"])
+        assert not torch.isnan(info["mtp_loss"])
         assert not torch.isnan(loss)
 
         # Total loss should be at least CE + weighted MTP
-        min_expected = info['ce_loss'] + config.mtp_loss_weight * info['mtp_loss']
+        min_expected = info["ce_loss"] + config.mtp_loss_weight * info["mtp_loss"]
         assert loss >= min_expected - 1e-5  # Allow small numerical error
 
     def test_mtp_info_dict_consistency_across_calls(self):
@@ -878,12 +881,12 @@ class TestMTPIntegration:
         _, loss3, info3 = model(idx, targets)
 
         # All should have consistent structure
-        assert 'mtp_loss' in info1
-        assert 'mtp_loss' in info2
-        assert 'mtp_loss' in info3
+        assert "mtp_loss" in info1
+        assert "mtp_loss" in info2
+        assert "mtp_loss" in info3
 
         # All should produce identical results (deterministic in eval mode)
-        assert torch.allclose(info1['mtp_loss'], info2['mtp_loss'])
-        assert torch.allclose(info2['mtp_loss'], info3['mtp_loss'])
+        assert torch.allclose(info1["mtp_loss"], info2["mtp_loss"])
+        assert torch.allclose(info2["mtp_loss"], info3["mtp_loss"])
         assert torch.allclose(loss1, loss2)
         assert torch.allclose(loss2, loss3)

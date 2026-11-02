@@ -21,10 +21,10 @@ __version__ = "0.1.0"
 try:
     from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
     from neuromanifold_gpt.model import (
-        NeuroManifoldGPT,
-        NeuroManifoldBlock,
         FHNAttention,
         ManifoldProjection,
+        NeuroManifoldBlock,
+        NeuroManifoldGPT,
         SDREngramMemory,
         SDROperations,
         SemanticFoldingEncoder,

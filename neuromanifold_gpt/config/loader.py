@@ -7,12 +7,41 @@ fields for validation and type checking.
 Example usage:
     from neuromanifold_gpt.config.loader import load_config
     from neuromanifold_gpt.config.training import TrainingConfig
+    from neuromanifold_gpt.config.base import NeuroManifoldConfig
 
-    # Load with CLI overrides
+    # Basic: Load with CLI overrides from command line
     config = load_config(TrainingConfig, sys.argv[1:])
 
-    # Load from preset file
-    config = load_config(TrainingConfig, ['neuromanifold_gpt.config.presets.nano', '--batch_size=32'])
+    # Load from preset module
+    config = load_config(
+        TrainingConfig,
+        ['neuromanifold_gpt.config.presets.nano', '--batch_size=32']
+    )
+
+    # Load defaults and override specific values
+    config = load_config(TrainingConfig, [
+        '--dataset=shakespeare_char',
+        '--batch_size=64',
+        '--learning_rate=1e-3',
+        '--max_iters=5000'
+    ])
+
+    # Load model config with advanced features
+    config = load_config(NeuroManifoldConfig, [
+        '--n_layer=12',
+        '--n_embd=768',
+        '--use_kan=True',
+        '--use_mhc=True',
+        '--use_kaufmann_attention=False'
+    ])
+
+    # Combine preset with multiple overrides
+    config = load_config(TrainingConfig, [
+        'neuromanifold_gpt.config.presets.train_shakespeare',
+        '--wandb_log=True',
+        '--wandb_project=my-experiment',
+        '--learning_rate=3e-4'
+    ])
 """
 
 import sys

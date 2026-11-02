@@ -11,8 +11,9 @@ numerical stability and produces meaningful spectral representations.
 Reference: neuromanifold_gpt/model/spectral.py (SpectralDecomposition)
 """
 
+from typing import Any, Dict
+
 import torch
-from typing import Dict, Any
 
 
 class SpectralMetrics:
@@ -41,11 +42,11 @@ class SpectralMetrics:
                 - eigenvalue_range: Range of eigenvalues (max - min)
         """
         return {
-            'eigenvalue_mean': spectral_freqs.mean().item(),
-            'eigenvalue_std': spectral_freqs.std().item(),
-            'eigenvalue_min': spectral_freqs.min().item(),
-            'eigenvalue_max': spectral_freqs.max().item(),
-            'eigenvalue_range': (spectral_freqs.max() - spectral_freqs.min()).item(),
+            "eigenvalue_mean": spectral_freqs.mean().item(),
+            "eigenvalue_std": spectral_freqs.std().item(),
+            "eigenvalue_min": spectral_freqs.min().item(),
+            "eigenvalue_max": spectral_freqs.max().item(),
+            "eigenvalue_range": (spectral_freqs.max() - spectral_freqs.min()).item(),
         }
 
     @staticmethod
@@ -67,11 +68,11 @@ class SpectralMetrics:
                 - basis_max: Maximum coefficient
         """
         return {
-            'basis_mean': spectral_basis.mean().item(),
-            'basis_std': spectral_basis.std().item(),
-            'basis_abs_mean': spectral_basis.abs().mean().item(),
-            'basis_min': spectral_basis.min().item(),
-            'basis_max': spectral_basis.max().item(),
+            "basis_mean": spectral_basis.mean().item(),
+            "basis_std": spectral_basis.std().item(),
+            "basis_abs_mean": spectral_basis.abs().mean().item(),
+            "basis_min": spectral_basis.min().item(),
+            "basis_max": spectral_basis.max().item(),
         }
 
     @staticmethod
@@ -98,15 +99,15 @@ class SpectralMetrics:
 
         # Extract ortho loss
         if ortho_loss.dim() == 0:
-            metrics['ortho_loss'] = ortho_loss.item()
+            metrics["ortho_loss"] = ortho_loss.item()
         else:
-            metrics['ortho_loss'] = ortho_loss.mean().item()
+            metrics["ortho_loss"] = ortho_loss.mean().item()
 
         # Compute basis vector norms along sequence dimension
         # Shape: (B, T, n_eig) -> compute norm over T for each (B, n_eig)
         basis_norms = torch.norm(spectral_basis, dim=1)  # (B, n_eig)
-        metrics['basis_norm_mean'] = basis_norms.mean().item()
-        metrics['basis_norm_std'] = basis_norms.std().item()
+        metrics["basis_norm_mean"] = basis_norms.mean().item()
+        metrics["basis_norm_std"] = basis_norms.std().item()
 
         return metrics
 
@@ -139,9 +140,9 @@ class SpectralMetrics:
         metrics = {}
 
         # Extract tensors from info dict
-        spectral_basis = info.get('spectral_basis')
-        spectral_freqs = info.get('spectral_freqs')
-        ortho_loss = info.get('ortho_loss')
+        spectral_basis = info.get("spectral_basis")
+        spectral_freqs = info.get("spectral_freqs")
+        ortho_loss = info.get("ortho_loss")
 
         # Compute eigenvalue statistics
         if spectral_freqs is not None:
@@ -149,7 +150,9 @@ class SpectralMetrics:
             if spectral_freqs.dim() == 0:
                 spectral_freqs = spectral_freqs.unsqueeze(0)
 
-            metrics.update(SpectralMetrics.compute_eigenvalue_statistics(spectral_freqs))
+            metrics.update(
+                SpectralMetrics.compute_eigenvalue_statistics(spectral_freqs)
+            )
 
         # Compute basis statistics
         if spectral_basis is not None:
@@ -164,7 +167,9 @@ class SpectralMetrics:
             # Compute orthogonality metrics (requires both basis and ortho_loss)
             if ortho_loss is not None:
                 metrics.update(
-                    SpectralMetrics.compute_orthogonality_metrics(spectral_basis, ortho_loss)
+                    SpectralMetrics.compute_orthogonality_metrics(
+                        spectral_basis, ortho_loss
+                    )
                 )
 
         return metrics

@@ -33,6 +33,7 @@ from neuromanifold_gpt.cli.help_formatter import (
 # Lazy imports for heavy dependencies (allows --help to work without them)
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -52,18 +53,15 @@ defaults = {
     "eval_only": False,
     "always_save_checkpoint": True,
     "init_from": "scratch",  # 'scratch' or 'resume'
-
     # Logging
     "wandb_log": False,
     "wandb_project": "neuromanifold-gpt",
     "wandb_run_name": f"run{int(time.time())}",
-
     # Data
     "dataset": "openwebtext",
     "gradient_accumulation_steps": 40,  # 5 * 8 - simulate larger batches
     "batch_size": 12,  # micro-batch size
     "block_size": 1024,
-
     # Model - NeuroManifold specific
     "use_nano_config": False,  # Use NeuroManifoldConfigNano for fast experimentation
     "n_layer": 6,
@@ -75,7 +73,6 @@ defaults = {
     "n_eigenvectors": 32,
     "dropout": 0.0,
     "bias": False,
-
     # Optimizer
     "learning_rate": 6e-4,
     "max_iters": 600000,
@@ -84,38 +81,54 @@ defaults = {
     "beta2": 0.95,
     "grad_clip": 1.0,
     "early_stopping_patience": 0,  # 0 to disable, >0 for patience steps
-
     # Learning Rate Schedule
     "decay_lr": True,
     "warmup_iters": 2000,
     "lr_decay_iters": 600000,
     "min_lr": 6e-5,  # ~= learning_rate/10 per Chinchilla
-
     # DDP
     "backend": "nccl",
-
     # System
     "device": "cuda" if TORCH_AVAILABLE and torch.cuda.is_available() else "cpu",
-    "dtype": "bfloat16" if TORCH_AVAILABLE and torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16",
+    "dtype": "bfloat16"
+    if TORCH_AVAILABLE and torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    else "float16",
     "compile_model": False,  # Disabled: Python 3.13 doesn't support torch.compile
 }
 
 # Define argument groups for organized help output
 argument_groups = {
     "I/O": [
-        "out_dir", "eval_interval", "log_interval", "eval_iters",
-        "eval_only", "always_save_checkpoint", "init_from"
+        "out_dir",
+        "eval_interval",
+        "log_interval",
+        "eval_iters",
+        "eval_only",
+        "always_save_checkpoint",
+        "init_from",
     ],
     "Logging": ["wandb_log", "wandb_project", "wandb_run_name"],
     "Data": ["dataset", "gradient_accumulation_steps", "batch_size", "block_size"],
     "Model": [
-        "use_nano_config", "n_layer", "n_head", "n_embd",
-        "sdr_size", "sdr_sparsity", "manifold_dim", "n_eigenvectors",
-        "dropout", "bias"
+        "use_nano_config",
+        "n_layer",
+        "n_head",
+        "n_embd",
+        "sdr_size",
+        "sdr_sparsity",
+        "manifold_dim",
+        "n_eigenvectors",
+        "dropout",
+        "bias",
     ],
     "Optimizer": [
-        "learning_rate", "max_iters", "weight_decay",
-        "beta1", "beta2", "grad_clip", "early_stopping_patience"
+        "learning_rate",
+        "max_iters",
+        "weight_decay",
+        "beta1",
+        "beta2",
+        "grad_clip",
+        "early_stopping_patience",
     ],
     "Learning Rate Schedule": ["decay_lr", "warmup_iters", "lr_decay_iters", "min_lr"],
     "DDP": ["backend"],
@@ -146,7 +159,7 @@ if __name__ == "__main__":
     # Convert to config dict for backward compatibility
     config = vars(args)
     # Remove 'config' key (the config file path) from the dict
-    config.pop('config', None)
+    config.pop("config", None)
 
     # Update module-level variables for use in the script
     for key, value in config.items():
@@ -155,10 +168,12 @@ if __name__ == "__main__":
     # Import heavy dependencies after argparse (so --help works without them)
     import pickle
     from contextlib import nullcontext
+
     import numpy as np
     import torch
     from torch.distributed import destroy_process_group, init_process_group
     from torch.nn.parallel import DistributedDataParallel as DDP
+
     from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
     from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 else:
@@ -170,10 +185,12 @@ else:
     # Import heavy dependencies
     import pickle
     from contextlib import nullcontext
+
     import numpy as np
     import torch
     from torch.distributed import destroy_process_group, init_process_group
     from torch.nn.parallel import DistributedDataParallel as DDP
+
     from neuromanifold_gpt.config import NeuroManifoldConfig, NeuroManifoldConfigNano
     from neuromanifold_gpt.model.gpt import NeuroManifoldGPT
 
@@ -208,8 +225,16 @@ torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 device_type = "cuda" if "cuda" in device else "cpu"
-ptdtype = {"float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}[dtype]
-ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+ptdtype = {
+    "float32": torch.float32,
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+}[dtype]
+ctx = (
+    nullcontext()
+    if device_type == "cpu"
+    else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+)
 
 
 # -----------------------------------------------------------------------------
@@ -227,10 +252,19 @@ def get_batch(split: str) -> tuple[torch.Tensor, torch.Tensor]:
     else:
         data = np.memmap(os.path.join(data_dir, "val.bin"), dtype=np.uint16, mode="r")
     ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[i : i + block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i + 1 : i + 1 + block_size]).astype(np.int64)) for i in ix])
+    x = torch.stack(
+        [torch.from_numpy((data[i : i + block_size]).astype(np.int64)) for i in ix]
+    )
+    y = torch.stack(
+        [
+            torch.from_numpy((data[i + 1 : i + 1 + block_size]).astype(np.int64))
+            for i in ix
+        ]
+    )
     if device_type == "cuda":
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(
+            device, non_blocking=True
+        )
     else:
         x, y = x.to(device), y.to(device)
     return x, y
@@ -323,7 +357,9 @@ if master_process:
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
 
 # Optimizer
-optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
+optimizer = model.configure_optimizers(
+    weight_decay, learning_rate, (beta1, beta2), device_type
+)
 if init_from == "resume" and "optimizer" in checkpoint:
     optimizer.load_state_dict(checkpoint["optimizer"])
 checkpoint = None  # Free memory
@@ -351,7 +387,9 @@ def estimate_loss() -> dict[str, float]:
         # Only show progress on master process to avoid duplicate output in DDP
         iterator = range(eval_iters)
         if master_process:
-            iterator = progress_bar(iterator, description=f"Evaluating {split}", total=eval_iters)
+            iterator = progress_bar(
+                iterator, description=f"Evaluating {split}", total=eval_iters
+            )
 
         for k in iterator:
             X, Y = get_batch(split)
@@ -391,7 +429,7 @@ def estimate_mfu(batch_size: int, dt: float) -> float:
     - Soliton attention has wave propagation overhead
     """
     raw_model = model.module if ddp else model
-    N = raw_model.num_parameters()
+    raw_model.num_parameters()
     cfg = raw_model.config
     L, H, Q, T = cfg.n_layer, cfg.n_heads, cfg.n_embd // cfg.n_heads, cfg.block_size
 
@@ -446,8 +484,10 @@ while True:
     # IMPORTANT: skip eval at iter 0 (startup must be <60s)
     if iter_num > 0 and iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        val_perplexity = math.exp(losses['val'])
+        print(
+            f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+        )
+        val_perplexity = math.exp(losses["val"])
         print(f"step {iter_num}: val perplexity {val_perplexity:.4f}")
         if wandb_log:
             wandb.log(
@@ -468,9 +508,14 @@ while True:
         else:
             early_stopping_counter += 1
 
-        if early_stopping_patience > 0 and early_stopping_counter >= early_stopping_patience:
+        if (
+            early_stopping_patience > 0
+            and early_stopping_counter >= early_stopping_patience
+        ):
             if master_process:
-                print(f"Early stopping at step {iter_num} (patience {early_stopping_patience} exceeded)")
+                print(
+                    f"Early stopping at step {iter_num} (patience {early_stopping_patience} exceeded)"
+                )
             break
 
         if improved or always_save_checkpoint:
@@ -534,7 +579,9 @@ while True:
     # Forward backward with gradient accumulation
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
-            model.require_backward_grad_sync = micro_step == gradient_accumulation_steps - 1
+            model.require_backward_grad_sync = (
+                micro_step == gradient_accumulation_steps - 1
+            )
         with ctx:
             logits, loss, info = model(X, Y)
             loss = loss / gradient_accumulation_steps
@@ -566,7 +613,9 @@ while True:
         if local_iter_num >= 5:
             mfu = estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt * 1000:.2f}ms, mfu {running_mfu * 100:.2f}%")
+        print(
+            f"iter {iter_num}: loss {lossf:.4f}, time {dt * 1000:.2f}ms, mfu {running_mfu * 100:.2f}%"
+        )
     iter_num += 1
     local_iter_num += 1
 

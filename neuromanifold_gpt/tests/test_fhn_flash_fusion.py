@@ -2,6 +2,7 @@
 """Tests comparing old vs new FHN modulation with Flash Attention fusion."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.attention.fhn import FHNAttention
 
 
@@ -35,8 +36,8 @@ def test_output_shapes_match():
     out_new, info_new = attn_new(x, spectral_basis)
 
     assert out_old.shape == out_new.shape == (batch_size, seq_len, embed_dim)
-    assert 'pulse_widths' in info_old and 'pulse_widths' in info_new
-    assert 'fhn_state' in info_old and 'fhn_state' in info_new
+    assert "pulse_widths" in info_old and "pulse_widths" in info_new
+    assert "fhn_state" in info_old and "fhn_state" in info_new
 
 
 def test_gradient_flow_old_path():
@@ -84,19 +85,23 @@ def test_fhn_state_computed_both_paths():
     x = torch.randn(2, 10, 384)
     spectral_basis = torch.randn(2, 10, 32)
 
-    attn_old = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False)
-    attn_new = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_old = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
+    attn_new = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     _, info_old = attn_old(x, spectral_basis)
     _, info_new = attn_new(x, spectral_basis)
 
     # Both should have FHN state
-    assert info_old['fhn_state'] is not None
-    assert info_new['fhn_state'] is not None
+    assert info_old["fhn_state"] is not None
+    assert info_new["fhn_state"] is not None
 
     # FHN state should be non-zero (indicates FHN dynamics ran)
-    assert info_old['fhn_state'].abs() > 0
-    assert info_new['fhn_state'].abs() > 0
+    assert info_old["fhn_state"].abs() > 0
+    assert info_new["fhn_state"].abs() > 0
 
 
 def test_no_fhn_steps_matches_flash_attention():
@@ -104,19 +109,23 @@ def test_no_fhn_steps_matches_flash_attention():
     x = torch.randn(2, 10, 384)
     spectral_basis = torch.randn(2, 10, 32)
 
-    attn_old = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=0, use_flash_fhn_fusion=False)
-    attn_new = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=0, use_flash_fhn_fusion=True)
+    attn_old = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=0, use_flash_fhn_fusion=False
+    )
+    attn_new = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=0, use_flash_fhn_fusion=True
+    )
 
     _, info_old = attn_old(x, spectral_basis)
     _, info_new = attn_new(x, spectral_basis)
 
     # With n_fhn_steps=0, FHN state should be zero
-    assert info_old['fhn_state'] == 0.0
-    assert info_new['fhn_state'] == 0.0
+    assert info_old["fhn_state"] == 0.0
+    assert info_new["fhn_state"] == 0.0
 
     # Attention probs should not be computed (Flash Attention)
-    assert info_old['attn_probs'] is None
-    assert info_new['attn_probs'] is None
+    assert info_old["attn_probs"] is None
+    assert info_new["attn_probs"] is None
 
 
 def test_output_stats_computed_both_paths():
@@ -124,22 +133,26 @@ def test_output_stats_computed_both_paths():
     x = torch.randn(2, 10, 384)
     spectral_basis = torch.randn(2, 10, 32)
 
-    attn_old = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False)
-    attn_new = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_old = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
+    attn_new = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     _, info_old = attn_old(x, spectral_basis)
     _, info_new = attn_new(x, spectral_basis)
 
     # Both should have output_stats
-    assert 'output_stats' in info_old
-    assert 'output_stats' in info_new
+    assert "output_stats" in info_old
+    assert "output_stats" in info_new
 
     # Check required keys
-    for key in ['variance', 'std', 'mean']:
-        assert key in info_old['output_stats']
-        assert key in info_new['output_stats']
-        assert isinstance(info_old['output_stats'][key], float)
-        assert isinstance(info_new['output_stats'][key], float)
+    for key in ["variance", "std", "mean"]:
+        assert key in info_old["output_stats"]
+        assert key in info_new["output_stats"]
+        assert isinstance(info_old["output_stats"][key], float)
+        assert isinstance(info_new["output_stats"][key], float)
 
 
 def test_various_sequence_lengths():
@@ -147,8 +160,12 @@ def test_various_sequence_lengths():
     embed_dim = 384
     n_heads = 8
 
-    attn_old = FHNAttention(embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=False)
-    attn_new = FHNAttention(embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_old = FHNAttention(
+        embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
+    attn_new = FHNAttention(
+        embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     for seq_len in [5, 10, 20, 50]:
         x = torch.randn(2, seq_len, embed_dim)
@@ -167,8 +184,12 @@ def test_various_batch_sizes():
     n_heads = 8
     seq_len = 10
 
-    attn_old = FHNAttention(embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=False)
-    attn_new = FHNAttention(embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_old = FHNAttention(
+        embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
+    attn_new = FHNAttention(
+        embed_dim=embed_dim, n_heads=n_heads, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     for batch_size in [1, 2, 4, 8]:
         x = torch.randn(batch_size, seq_len, embed_dim)
@@ -216,10 +237,14 @@ def test_outputs_are_different_due_to_different_proxies():
     torch.manual_seed(42)
 
     # Use same initialization for fair comparison
-    attn_old = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False)
+    attn_old = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
 
     # Copy weights to new model
-    attn_new = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_new = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
     attn_new.load_state_dict(attn_old.state_dict())
 
     torch.manual_seed(100)
@@ -242,20 +267,24 @@ def test_pulse_widths_positive_both_paths():
     x = torch.randn(2, 10, 384)
     spectral_basis = torch.randn(2, 10, 32)
 
-    attn_old = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False)
-    attn_new = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_old = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
+    attn_new = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
 
     _, info_old = attn_old(x, spectral_basis)
     _, info_new = attn_new(x, spectral_basis)
 
-    assert (info_old['pulse_widths'] > 0).all()
-    assert (info_new['pulse_widths'] > 0).all()
+    assert (info_old["pulse_widths"] > 0).all()
+    assert (info_new["pulse_widths"] > 0).all()
 
 
 def test_backward_compatibility_flag_default():
     """Default should be use_flash_fhn_fusion=True after migration to Flash fusion."""
     attn = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2)
-    assert attn.use_flash_fhn_fusion == True
+    assert attn.use_flash_fhn_fusion
 
 
 def test_new_path_attn_probs_is_none():
@@ -263,11 +292,13 @@ def test_new_path_attn_probs_is_none():
     x = torch.randn(2, 10, 384)
     spectral_basis = torch.randn(2, 10, 32)
 
-    attn_new = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True)
+    attn_new = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=True
+    )
     _, info = attn_new(x, spectral_basis)
 
     # Flash Attention doesn't return attention probabilities
-    assert info['attn_probs'] is None
+    assert info["attn_probs"] is None
 
 
 def test_old_path_attn_probs_exists():
@@ -275,9 +306,11 @@ def test_old_path_attn_probs_exists():
     x = torch.randn(2, 10, 384)
     spectral_basis = torch.randn(2, 10, 32)
 
-    attn_old = FHNAttention(embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False)
+    attn_old = FHNAttention(
+        embed_dim=384, n_heads=8, n_fhn_steps=2, use_flash_fhn_fusion=False
+    )
     _, info = attn_old(x, spectral_basis)
 
     # Manual attention computes and returns attention probabilities
-    assert info['attn_probs'] is not None
-    assert info['attn_probs'].shape == (2, 8, 10, 10)  # (B, H, T, T)
+    assert info["attn_probs"] is not None
+    assert info["attn_probs"].shape == (2, 8, 10, 10)  # (B, H, T, T)

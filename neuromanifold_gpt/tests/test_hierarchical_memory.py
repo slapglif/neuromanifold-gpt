@@ -2,6 +2,7 @@
 """Tests for HierarchicalEngramMemory - three-tier memory system."""
 import pytest
 import torch
+
 from neuromanifold_gpt.model.memory.hierarchical_engram import HierarchicalEngramMemory
 
 
@@ -352,7 +353,9 @@ def test_hierarchical_top_k_limit():
 
     # Results should be sorted by similarity
     if len(similarities) > 1:
-        assert all(similarities[i] >= similarities[i + 1] for i in range(len(similarities) - 1))
+        assert all(
+            similarities[i] >= similarities[i + 1] for i in range(len(similarities) - 1)
+        )
 
 
 def test_hierarchical_capacity_enforcement():

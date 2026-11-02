@@ -31,15 +31,14 @@ Reference:
 - Yu et al. "Scaling Autoregressive Models for Content-Rich Text-to-Image Generation"
 """
 
-from dataclasses import dataclass
-from typing import Optional, Literal
 import math
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from neuromanifold_gpt.model.fno.fourier_operator import FNOBlock, FNOEncoder
+from neuromanifold_gpt.model.fno.fourier_operator import FNOEncoder
 
 
 @dataclass
@@ -96,7 +95,7 @@ def sinusoidal_position_encoding(
         Position encoding of shape (seq_len, embed_dim)
     """
     if device is None:
-        device = torch.device('cpu')
+        device = torch.device("cpu")
 
     position = torch.arange(seq_len, device=device, dtype=dtype).unsqueeze(1)
     div_term = torch.exp(
@@ -106,7 +105,9 @@ def sinusoidal_position_encoding(
 
     pe = torch.zeros(seq_len, embed_dim, device=device, dtype=dtype)
     pe[:, 0::2] = torch.sin(position * div_term)
-    pe[:, 1::2] = torch.cos(position * div_term[:embed_dim // 2])  # Handle odd embed_dim
+    pe[:, 1::2] = torch.cos(
+        position * div_term[: embed_dim // 2]
+    )  # Handle odd embed_dim
 
     return pe
 
@@ -154,16 +155,16 @@ class ByteEmbedding(nn.Module):
         if use_learned_pos:
             self.pos_embed = nn.Embedding(max_seq_len, embed_dim)
         else:
-            self.register_parameter('pos_embed', None)
+            self.register_parameter("pos_embed", None)
 
         # Sinusoidal encoding (precomputed buffer)
         if use_sinusoidal_pos:
             self.register_buffer(
-                'sinusoidal_pe',
+                "sinusoidal_pe",
                 sinusoidal_position_encoding(max_seq_len, embed_dim),
             )
         else:
-            self.register_buffer('sinusoidal_pe', None)
+            self.register_buffer("sinusoidal_pe", None)
 
         # Scaling factor for embedding
         self.scale = math.sqrt(embed_dim)
@@ -179,6 +180,7 @@ class ByteEmbedding(nn.Module):
 
     def _init_weights(self):
         """Initialize embedding weights."""
+        # Use standard normal initialization - topological structure will be learned via Braid/Jones loss
         nn.init.normal_(self.token_embed.weight, mean=0.0, std=0.02)
         if self.pos_embed is not None:
             nn.init.normal_(self.pos_embed.weight, mean=0.0, std=0.02)
@@ -220,7 +222,7 @@ class ByteEmbedding(nn.Module):
             embedded[:, :seq_len] = embedded[:, :seq_len] + self.sinusoidal_pe[:seq_len]
 
         # Normalize and dropout
-        embedded = self.norm(embedded)
+        # embedded = self.norm(embedded) # REMOVED: Breaks bijectivity for continuous flow matching
         embedded = self.dropout(embedded)
 
         return embedded
@@ -276,8 +278,11 @@ class AudioEncoder(nn.Module):
 
         # Local feature extraction
         self.conv = nn.Conv1d(
-            embed_dim, embed_dim,
-            kernel_size=3, padding=1, groups=1,
+            embed_dim,
+            embed_dim,
+            kernel_size=3,
+            padding=1,
+            groups=1,
         )
 
         # Layer norm and dropout
@@ -372,8 +377,10 @@ class ImagePatchEncoder(nn.Module):
 
         # Patch embedding via convolution
         self.patch_embed = nn.Conv2d(
-            image_channels, embed_dim,
-            kernel_size=patch_size, stride=patch_size,
+            image_channels,
+            embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
         )
 
         # Layer norm and dropout
@@ -446,6 +453,7 @@ class MultimodalFNOEncoder(nn.Module):
         audio_hop_length: int = 128,
         image_patch_size: int = 16,
         image_channels: int = 3,
+        fno_blend_alpha: float = 0.0,
     ):
         """
         Initialize multimodal FNO encoder.
@@ -507,7 +515,7 @@ class MultimodalFNOEncoder(nn.Module):
             n_layers=fno_layers,
             modes=fno_modes,
             dropout=dropout,
-            activation='gelu',
+            activation="gelu",
             residual=True,
             prenorm=True,
         )
@@ -522,6 +530,9 @@ class MultimodalFNOEncoder(nn.Module):
 
         # Final layer norm
         self.final_norm = nn.LayerNorm(embed_dim)
+
+        # FNO blend alpha: 0=pure embeddings (bypass), 1=pure FNO
+        self.fno_blend_alpha = fno_blend_alpha
 
         # Initialize weights
         self._init_weights()
@@ -540,7 +551,7 @@ class MultimodalFNOEncoder(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        modality: Literal['bytes', 'audio', 'image'] = 'bytes',
+        modality: Literal["bytes", "audio", "image"] = "bytes",
         positions: Optional[torch.Tensor] = None,
         return_fno_features: bool = False,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
@@ -561,30 +572,45 @@ class MultimodalFNOEncoder(nn.Module):
             If return_fno_features=True: tuple of (output, fno_features)
         """
         # Modality-specific embedding
-        if modality == 'bytes':
+        if modality == "bytes":
             modality_idx = 0
             embedded = self.byte_embed(x, positions)
-        elif modality == 'audio':
+        elif modality == "audio":
             modality_idx = 1
             embedded = self.audio_encoder(x)
-        elif modality == 'image':
+        elif modality == "image":
             modality_idx = 2
             embedded = self.image_encoder(x)
         else:
-            raise ValueError(f"Unknown modality: {modality}. Expected 'bytes', 'audio', or 'image'")
+            raise ValueError(
+                f"Unknown modality: {modality}. Expected 'bytes', 'audio', or 'image'"
+            )
 
         B, T, D = embedded.shape
 
         # Add modality type embedding
         modality_type = torch.tensor([modality_idx], device=x.device)
         modality_emb = self.modality_embed(modality_type)  # (1, D)
-        embedded = embedded + modality_emb.unsqueeze(0)  # Broadcast across batch and sequence
+        embedded = embedded + modality_emb.unsqueeze(
+            0
+        )  # Broadcast across batch and sequence
 
-        # Apply FNO backbone for spectral processing
+        # Store pre-FNO embeddings (preserves token distinctiveness)
+        pre_fno = embedded
+
+        # Apply FNO backbone for spectral/global context
         fno_features = self.fno_encoder(embedded)
+        fno_projected = self.output_proj(fno_features)
 
-        # Output projection with residual
-        output = fno_features + self.output_proj(fno_features)
+        # FNO FIX: Blend pre-FNO embeddings with FNO output to preserve token distinctiveness.
+        # The FNO provides global/spectral context (low frequencies) while the residual
+        # preserves local token information (high frequencies).
+        # alpha controls the blend: 0 = pure embeddings, 1 = pure FNO
+        alpha = getattr(self, "fno_blend_alpha", 0.0)
+        if alpha > 0:
+            output = (1 - alpha) * pre_fno + alpha * fno_projected
+        else:
+            output = pre_fno
 
         # Final normalization
         output = self.final_norm(output)
@@ -608,7 +634,7 @@ class MultimodalFNOEncoder(nn.Module):
         Returns:
             Encoded tensor of shape (B, T, embed_dim)
         """
-        return self.forward(x, modality='bytes', positions=positions)
+        return self.forward(x, modality="bytes", positions=positions)
 
     def encode_audio(
         self,
@@ -623,7 +649,7 @@ class MultimodalFNOEncoder(nn.Module):
         Returns:
             Encoded tensor of shape (B, T', embed_dim)
         """
-        return self.forward(x, modality='audio')
+        return self.forward(x, modality="audio")
 
     def encode_image(
         self,
@@ -638,7 +664,7 @@ class MultimodalFNOEncoder(nn.Module):
         Returns:
             Encoded tensor of shape (B, n_patches, embed_dim)
         """
-        return self.forward(x, modality='image')
+        return self.forward(x, modality="image")
 
     def get_num_params(self, non_embedding: bool = True) -> int:
         """
@@ -737,8 +763,8 @@ class MultimodalFusionEncoder(nn.Module):
         self,
         query_input: torch.Tensor,
         context_input: torch.Tensor,
-        query_modality: Literal['bytes', 'audio', 'image'] = 'bytes',
-        context_modality: Literal['bytes', 'audio', 'image'] = 'image',
+        query_modality: Literal["bytes", "audio", "image"] = "bytes",
+        context_modality: Literal["bytes", "audio", "image"] = "image",
     ) -> torch.Tensor:
         """
         Encode with cross-modal attention.
